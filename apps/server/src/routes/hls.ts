@@ -255,6 +255,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         url: target,
       }, { req, cache: DEFAULT_CACHE_POLICIES.api });
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,
       });
@@ -315,6 +319,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         url: target,
       }, { req, cache: DEFAULT_CACHE_POLICIES.subtitles });
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,
       });
@@ -350,6 +358,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         reason: selection?.reason,
       });
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,
       });
