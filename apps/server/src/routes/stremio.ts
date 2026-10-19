@@ -24,6 +24,7 @@ import {
 import type { Router, RouteContext } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
+import { applyContentFilters } from '../library/filters.js';
 
 export interface StremioRouteOptions {
   registry: AddonRegistry;
@@ -182,7 +183,10 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       return;
     }
     const result = await registry.search(term, { type: query.get('type') ?? undefined });
-    sendJson(res, 200, { metas: result.value.metas });
+    // Los filtros de contenido se aplican tambien a la busqueda (WuPlay los
+    // aplica a todas las pantallas de catalogo).
+    const metas = applyContentFilters(result.value.metas, getData().settings.filters);
+    sendJson(res, 200, { metas });
   });
 
   /**

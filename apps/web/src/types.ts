@@ -203,6 +203,47 @@ export interface AppSettings {
     enabled: boolean;
     offsetSeconds: number;
   };
+  /** Filtros de contenido (WuPlay: Content Filters). */
+  filters: {
+    includeGenres: string[];
+    excludeGenres: string[];
+    excludeKeywords: string[];
+    minRating: number;
+    hideAdult: boolean;
+  };
+  /** Menu de navegacion personalizable (mostrar/ocultar y orden). */
+  sidebar: SidebarItem[];
+}
+
+/** Elemento del menu de navegacion. */
+export interface SidebarItem {
+  id: string;
+  hidden: boolean;
+  order: number;
+}
+
+/** Genero de la pantalla de generos. */
+export interface Genre {
+  id: string;
+  name: string;
+  /** Valor canonico que entiende el extra `genre` de los addons. */
+  catalog: string;
+  emoji: string;
+  color: string;
+}
+
+/** Decada de la pantalla de decadas. */
+export interface Decade {
+  id: string;
+  label: string;
+  from: number;
+  to: number;
+}
+
+/** Entrada del historial de busquedas. */
+export interface SearchHistoryEntry {
+  term: string;
+  at: number;
 }
 
 /** Respuesta del servidor con el segmento saltable. */

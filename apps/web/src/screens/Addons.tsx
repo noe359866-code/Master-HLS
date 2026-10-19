@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useApp } from '../store';
+import { NAV_ITEMS, DEFAULT_NAV_ORDER } from '../navigation-items';
 import { canInstall, isInstalled, onInstallChange, promptInstall } from '../pwa';
 import { api } from '../api';
 import { Button, EmptyState, ErrorState, Loader } from '../components/ui';
-import type { AppSettings } from '../types';
+import type { AppSettings, Genre } from '../types';
 
 /** Gestor de addons: instalar, actualizar y quitar. */
 export function AddonsScreen() {
@@ -156,6 +157,7 @@ export function SettingsScreen() {
   const [debridError, setDebridError] = useState<string | null>(null);
   const [installable, setInstallable] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [genres, setGenres] = useState<Genre[]>([]);
 
   useEffect(() => {
     const sync = () => {
@@ -166,7 +168,70 @@ export function SettingsScreen() {
     return onInstallChange(sync);
   }, []);
 
+  // Generos para los filtros de contenido.
+  useEffect(() => {
+    void api
+      .genres()
+      .then((result) => setGenres(result.genres))
+      .catch(() => setGenres([]));
+  }, []);
+
   if (!settings) return <Loader />;
+
+  const filters = settings.filters ?? {
+    includeGenres: [],
+    excludeGenres: [],
+    excludeKeywords: [],
+    minRating: 0,
+    hideAdult: false,
+  };
+
+  /** Menu de navegacion con el orden guardado en el servidor. */
+  const navItems = useMemo(() => {
+    const saved = settings.sidebar?.length ? settings.sidebar : DEFAULT_NAV_ORDER;
+    const byId = new Map(saved.map((item) => [item.id, item]));
+    return NAV_ITEMS.map((item, index) => ({
+      ...item,
+      hidden: byId.get(item.id)?.hidden ?? false,
+      order: byId.get(item.id)?.order ?? index,
+    })).sort((a, b) => a.order - b.order);
+  }, [settings.sidebar]);
+
+  /** Guarda el orden/visibilidad del menu. */
+  const saveNav = async (items: Array<{ id: string; hidden: boolean; order: number }>) => {
+    await api.saveSidebar(items);
+    await saveSettings({ sidebar: items });
+  };
+
+  const toggleNav = async (id: string) => {
+    const items = navItems.map((item) => ({
+      id: item.id,
+      hidden: item.id === id ? !item.hidden : item.hidden,
+      order: item.order,
+    }));
+    await saveNav(items);
+  };
+
+  const moveNav = async (id: string, direction: -1 | 1) => {
+    const ordered = [...navItems];
+    const index = ordered.findIndex((item) => item.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    const [moved] = ordered.splice(index, 1);
+    ordered.splice(target, 0, moved!);
+    await saveNav(
+      ordered.map((item, position) => ({
+        id: item.id,
+        hidden: item.hidden,
+        order: position,
+      })),
+    );
+  };
+
+  /** Guarda los filtros de contenido (se fusionan en el servidor). */
+  const saveFilters = async (patch: Partial<typeof filters>) => {
+    await saveSettings({ filters: { ...filters, ...patch } });
+  };
 
   const install = async () => {
     await promptInstall();
@@ -395,6 +460,127 @@ export function SettingsScreen() {
             }
           />
         </label>
+      </section>
+
+      <section className="panel">
+        <h2>Personalización del menú</h2>
+        <p className="panel__hint">
+          Muestra, oculta y reordena las secciones de la app (WuPlay lo llama
+          &laquo;manage sidebar items&raquo;). Se guarda en el servidor, así que la
+          misma菜单 se aplica en la web, en la TV y en el addon.
+        </p>
+        <ul className="nav-custom">
+          {navItems.map((item) => (
+            <li key={item.id} className="nav-custom__row">
+              <span className="nav-custom__label">
+                <strong>{item.label}</strong>
+                <em>{item.description}</em>
+              </span>
+              <span className="nav-custom__actions">
+                <button
+                  type="button"
+                  data-focusable="true"
+                  className="button button--ghost"
+                  onClick={() => void moveNav(item.id, -1)}
+                  aria-label={`Subir ${item.label}`}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  data-focusable="true"
+                  className="button button--ghost"
+                  onClick={() => void moveNav(item.id, 1)}
+                  aria-label={`Bajar ${item.label}`}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  data-focusable="true"
+                  className="button button--ghost"
+                  onClick={() => void toggleNav(item.id)}
+                >
+                  {item.hidden ? 'Mostrar' : 'Ocultar'}
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel">
+        <h2>Filtros de contenido</h2>
+        <p className="panel__hint">
+          Limpian el catálogo de la búsqueda, los géneros y las décadas (WuPlay:
+          &laquo;Content Filters&raquo;). Se aplican en el servidor, así que afectan a
+          todos los dispositivos.
+        </p>
+        <label className="setting">
+          <span>Puntuación mínima (IMDb)</span>
+          <input
+            type="number"
+            min={0}
+            max={10}
+            step={0.1}
+            data-focusable="true"
+            value={filters.minRating}
+            onChange={(event) =>
+              void saveFilters({
+                minRating: Number(event.target.value) || 0,
+              })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>Ocultar contenido para adultos</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={filters.hideAdult}
+            onChange={(event) => void saveFilters({ hideAdult: event.target.checked })}
+          />
+        </label>
+        <label className="setting">
+          <span>Palabras clave excluidas (separadas por comas)</span>
+          <input
+            type="text"
+            data-focusable="true"
+            value={filters.excludeKeywords.join(', ')}
+            placeholder="por ejemplo: terror, remake"
+            onChange={(event) =>
+              void saveFilters({
+                excludeKeywords: event.target.value
+                  .split(',')
+                  .map((word) => word.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </label>
+        <p className="panel__hint">Géneros ocultos:</p>
+        <div className="chip-row">
+          {genres.map((genre) => {
+            const active = filters.excludeGenres.includes(genre.catalog);
+            return (
+              <button
+                key={genre.id}
+                type="button"
+                data-focusable="true"
+                className={`chip ${active ? 'chip--active' : ''}`}
+                onClick={() =>
+                  void saveFilters({
+                    excludeGenres: active
+                      ? filters.excludeGenres.filter((value) => value !== genre.catalog)
+                      : [...filters.excludeGenres, genre.catalog],
+                  })
+                }
+              >
+                {genre.emoji} {genre.name}
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <section className="panel">

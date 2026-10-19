@@ -190,6 +190,35 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { list });
   });
 
+  /**
+   * Anade varios titulos a una lista de una vez (WuPlay: "Save search results
+   * to list"). No alterna: si el titulo ya esta, se conserva.
+   */
+  router.post('/api/lists/:id/items/batch', async ({ res, body: rawBody, params, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const listId = params['id'] ?? '';
+    const body = (rawBody ?? {}) as { items?: WatchlistItem[] };
+    const items = Array.isArray(body.items) ? body.items.filter((item) => item?.id) : [];
+    if (!items.length) {
+      sendJson(res, 400, { error: 'Falta items' });
+      return;
+    }
+    await save((data) => {
+      const list = (data.watchlists[profileId] ?? []).find((entry) => entry.id === listId);
+      if (!list) return;
+      for (const item of items) {
+        const existing = list.items.findIndex(
+          (entry) => entry.id === item.id && entry.episodeId === item.episodeId,
+        );
+        if (existing >= 0) continue;
+        list.items.push({ ...item, addedAt: item.addedAt ?? Date.now() });
+      }
+      list.updatedAt = Date.now();
+    });
+    const list = (getData().watchlists[profileId] ?? []).find((entry) => entry.id === listId);
+    sendJson(res, 200, { list, added: items.length });
+  });
+
   // ---------------------------------------------------------------- historial
 
   router.get('/api/history', ({ res, query }) => {
@@ -348,11 +377,12 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     const body = (rawBody ?? {}) as Record<string, unknown>;
     await save((data) => {
       // Los objetos anidados (debrid, device) se fusionan en vez de sustituirse.
-      const { debrid, device, opensubtitles, skipIntro, ...rest } = body as {
+      const { debrid, device, opensubtitles, skipIntro, filters, ...rest } = body as {
         debrid?: Partial<AppSettings['debrid']>;
         device?: Partial<AppSettings['device']>;
         opensubtitles?: Partial<AppSettings['opensubtitles']>;
         skipIntro?: Partial<AppSettings['skipIntro']>;
+        filters?: Partial<AppSettings['filters']>;
       } & Record<string, unknown>;
       Object.assign(data.settings, rest);
       if (debrid) data.settings.debrid = { ...data.settings.debrid, ...debrid };
@@ -361,6 +391,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         data.settings.opensubtitles = { ...data.settings.opensubtitles, ...opensubtitles };
       }
       if (skipIntro) data.settings.skipIntro = { ...data.settings.skipIntro, ...skipIntro };
+      if (filters) data.settings.filters = { ...data.settings.filters, ...filters };
     });
     // La metadata integrada vive en el registro de addons y el debrid en el
     // servicio de resolucion: hay que aplicar los cambios.

@@ -18,6 +18,8 @@ data class HomeUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val rows: List<CatalogRow> = emptyList(),
+    /** Secciones visibles segun la personalizacion del menu. */
+    val visibleSections: Set<String> = setOf("search", "genres", "decades"),
 )
 
 data class CatalogRow(
@@ -53,7 +55,20 @@ class HomeViewModel @Inject constructor(
                     }
                 }.awaitAll()
 
-                _state.value = HomeUiState(loading = false, rows = rows)
+                // El menu se personaliza desde los ajustes (web o TV): el
+                // servidor decide que secciones estan visibles.
+                val visible = runCatching { repository.settings().sidebar }
+                    .getOrNull()
+                    ?.filter { !it.hidden }
+                    ?.map { it.id }
+                    ?.toSet()
+                    ?: _state.value.visibleSections
+
+                _state.value = HomeUiState(
+                    loading = false,
+                    rows = rows,
+                    visibleSections = visible,
+                )
             } catch (error: Throwable) {
                 _state.value = HomeUiState(
                     loading = false,

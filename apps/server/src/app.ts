@@ -18,6 +18,7 @@ import { registerLibraryRoutes } from './routes/library.js';
 import { registerHlsRoutes } from './routes/hls.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerSubtitleRoutes } from './routes/subtitles.js';
+import { registerBrowseRoutes } from './routes/browse.js';
 import type { OpenSubtitlesService } from './services/opensubtitles.js';
 
 export const APP_VERSION = '1.0.0';
@@ -119,6 +120,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       app.applyDebrid(data);
     },
   });
+  registerBrowseRoutes(router, { registry, getData, save });
   registerHlsRoutes(router, {});
   registerDeviceRoutes(router, { getData, save });
   registerSubtitleRoutes(router, {
@@ -248,7 +250,18 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       if (ctx.req.method && ctx.req.method !== 'GET' && ctx.req.method !== 'HEAD') {
         ctx.body = await readJsonBody(ctx.req);
       }
-      await matched.handler(ctx);
+      try {
+        await matched.handler(ctx);
+      } catch (error) {
+        // Una ruta que falla no puede dejar la peticion colgada: se responde
+        // con un 500 y el mensaje del error.
+        console.error('[vibe-flix] error en la ruta', ctx.url.pathname, error);
+        if (!ctx.res.headersSent) {
+          sendJson(ctx.res, 500, { error: (error as Error).message || 'Error interno' });
+        } else {
+          ctx.res.end();
+        }
+      }
     },
   };
 

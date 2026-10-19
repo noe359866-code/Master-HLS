@@ -7,6 +7,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.vibeflix.tv.ui.screens.addons.AddonsScreen
+import com.vibeflix.tv.ui.screens.browse.BrowseDetailScreen
+import com.vibeflix.tv.ui.screens.browse.DecadesScreen
+import com.vibeflix.tv.ui.screens.browse.GenresScreen
+import com.vibeflix.tv.ui.screens.search.SearchScreen
 import com.vibeflix.tv.ui.screens.detail.DetailScreen
 import com.vibeflix.tv.ui.screens.home.HomeScreen
 import com.vibeflix.tv.ui.screens.player.PlayerScreen
@@ -18,8 +22,19 @@ object Routes {
     const val HOME = "home"
     const val DETAIL = "detail/{type}/{id}"
     const val PLAYER = "player/{type}/{id}?url={url}&name={name}&title={title}&h={h}&sub={sub}"
+    const val SEARCH = "search"
+    const val GENRES = "genres"
+    const val DECADES = "decades"
+    const val GENRE = "genre/{catalog}/{name}"
+    const val DECADE = "decade/{id}/{label}"
 
     fun detail(type: String, id: String) = "detail/$type/${encode(id)}"
+
+    /** Ficha de un genero. */
+    fun genre(catalog: String, name: String) = "genre/${encode(catalog)}/${encode(name)}"
+
+    /** Ficha de una decada. */
+    fun decade(id: String, label: String) = "decade/${encode(id)}/${encode(label)}"
 
     /**
      * Ruta del reproductor.
@@ -77,6 +92,9 @@ fun VibeFlixNavHost(navController: NavHostController) {
             HomeScreen(
                 onOpenDetail = { type, id -> navController.navigate(Routes.detail(type, id)) },
                 onOpenAddons = { navController.navigate("addons") },
+                onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                onOpenGenres = { navController.navigate(Routes.GENRES) },
+                onOpenDecades = { navController.navigate(Routes.DECADES) },
             )
         }
 
@@ -143,6 +161,65 @@ fun VibeFlixNavHost(navController: NavHostController) {
 
         composable("addons") {
             AddonsScreen(onBack = { navController.popBackStack() })
+        }
+
+        // Buscador nativo con teclado en pantalla (estilo WuPlay).
+        composable(Routes.SEARCH) {
+            SearchScreen(
+                onOpenDetail = { type, id -> navController.navigate(Routes.detail(type, id)) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // Pantallas de generos y decadas (estilo WuPlay).
+        composable(Routes.GENRES) {
+            GenresScreen(
+                onOpenGenre = { catalog, name ->
+                    navController.navigate(Routes.genre(catalog, name))
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Routes.DECADES) {
+            DecadesScreen(
+                onOpenDecade = { id, label -> navController.navigate(Routes.decade(id, label)) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = Routes.GENRE,
+            arguments = listOf(
+                navArgument("catalog") { type = NavType.StringType },
+                navArgument("name") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            val catalog = Routes.decode(entry.arguments?.getString("catalog"))
+            val name = Routes.decode(entry.arguments?.getString("name"))
+            BrowseDetailScreen(
+                title = name.ifBlank { "Género" },
+                genre = catalog,
+                onOpenDetail = { type, id -> navController.navigate(Routes.detail(type, id)) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = Routes.DECADE,
+            arguments = listOf(
+                navArgument("id") { type = NavType.StringType },
+                navArgument("label") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            val id = Routes.decode(entry.arguments?.getString("id"))
+            val label = Routes.decode(entry.arguments?.getString("label"))
+            BrowseDetailScreen(
+                title = label.ifBlank { "Década" },
+                decade = id,
+                onOpenDetail = { type, id2 -> navController.navigate(Routes.detail(type, id2)) },
+                onBack = { navController.popBackStack() },
+            )
         }
     }
 }

@@ -53,6 +53,30 @@ Detalles del motor (`packages/addon-engine`):
 - `streamQuality.ts` — heurística de calidad (resolución, codec, HDR, Dolby
   Vision, Atmos, cacheado) usada para ordenar los streams de forma estable.
 
+### 2.1 Contenido por género, década y búsqueda (`apps/server/src/library/`, `routes/browse.ts`)
+
+La Fase 3/4 añade una capa de descubrimiento **propia**, calculada sobre los
+catálogos que ya están agregados:
+
+- **`library/genres.ts`** — 21 géneros (es → EN) con emoji y color, alias de
+  normalización (`normalizeGenre`), las décadas 1950–2020 (`DECADES`) y
+  `decadeOf()`.
+- **`library/filters.ts`** — `ContentFilters` (géneros incluidos/excluidos,
+  palabras clave excluidas, puntuación mínima, ocultar adultos) y
+  `applyContentFilters()`, que normaliza título, géneros y descripción antes
+  de comparar (`normalizeText` quita acentos y signos).
+- **`routes/browse.ts`** — `GET /api/genres`, `GET /api/browse` (por `genre`
+  usando el extra real del catálogo, por `decade` filtrando por año de
+  estreno, o por `q`), `GET/POST/DELETE /api/search-history` y
+  `PUT /api/sidebar`.
+- Los filtros se aplican **en el servidor**, de modo que la búsqueda, los
+  géneros y las décadas quedan limpios a la vez, en todos los clientes.
+- `PUT /api/settings` **fusiona** `filters` (igual que `debrid`,
+  `opensubtitles` y `skipIntro`): un guardado parcial nunca borra el resto de
+  los ajustes.
+- `app.handle` envuelve cada ruta en un `try/catch`: un error devuelve un
+  `500` JSON en vez de dejar la petición colgada.
+
 ## 3. Flujo de reproducción (núcleo HLS master)
 
 ```
@@ -101,7 +125,9 @@ AppData {
   devices:    PairedDevice[]              // dispositivos vinculados (token)
   pairings:   PairingCode[]               // códigos de vinculación pendientes
   catalogPreferences: CatalogPreference[]  // order + hidden por `type:id`
-  settings: AppSettings                    // tema, device (maxHeight, hdr…), debrid
+  searchHistory:  Record<profileId, SearchHistoryEntry[]>  // búsquedas recientes
+  settings: AppSettings                    // tema, device (maxHeight, hdr…), debrid,
+                                            // filters (content filters) y sidebar (menú)
 }
 ```
 
@@ -159,6 +185,25 @@ streams agregados  ->  candidatos (infoHash / externalUrl)
   de la barra a los 3 s.
 - El subtitulo externo se carga con `<track kind="subtitles">` (WebVTT), que
   es lo que hls.js v1 no puede hacer con pistas externas del propio stream.
+
+### 5.4 Teclado, buscador, géneros, décadas y personalización (web)
+
+- **`components/Keyboard.tsx`**: teclado en pantalla (letras, `ñ`, números,
+  símbolos, mayús, espacio, borrar y «Buscar»). Cada tecla es un
+  `button[data-focusable]`, de modo que la navegación espacial existente la
+  recorre con el D-pad sin ningún código de foco nuevo. La pulsación larga
+  sobre «⌫» limpia la consulta entera (`HOLD_TO_CLEAR_MS = 700`).
+- **`screens/Search.tsx`**: buscador nativo. Con la consulta vacía muestra los
+  chips del historial (`/api/search-history`); al buscar, guarda el término y
+  ofrece «Guardar en una lista» (`/api/lists/{id}/items/batch`).
+- **`screens/Browse.tsx`**: `GenresScreen` (tarjetas con emoji y color),
+  `DecadesScreen` (1950–2020) y las fichas de género y década
+  (`/api/browse`).
+- **`navigation-items.ts`**: define las secciones del menú; `App.tsx` las
+  ordena y filtra según `settings.sidebar`, y *Ajustes* permite subirlas,
+  bajarlas u ocultarlas (`PUT /api/sidebar`).
+- Los **filtros de contenido** se editan en *Ajustes* y se guardan en
+  `settings.filters` (el servidor los fusiona, no los reemplaza).
 
 ## 6. Shell Android TV
 
@@ -227,6 +272,21 @@ web y la TV se comportan igual:
   `PlayerScreen` muestra la tarjeta del siguiente episodio con una cuenta
   atrás (`AUTOPLAY_COUNTDOWN = 5`); al llegar a cero se navega a la ruta del
   reproductor del episodio siguiente.
+
+### 6.4 Teclado, buscador, géneros y décadas (Android TV)
+
+El shell Android TV replica el comportamiento de la web:
+
+- **`ui/components/OnScreenKeyboard.kt`**: teclado de Compose for TV. Las
+  teclas son `Button`, así que el foco de la TV las recorre con el D-pad. Dos
+  pulsaciones seguidas sobre «⌫» borran la consulta completa.
+- **`ui/screens/search/`** (`SearchViewModel` + `SearchScreen`): historial en
+  chips, búsqueda contra `/api/browse?q=` y resultados en un `PosterRow`.
+- **`ui/screens/browse/`** (`BrowseViewModel` + `BrowseScreen`): tarjetas de
+  género y de década (`LazyVerticalGrid`) y ficha de contenido.
+- **`HomeScreen`** muestra solo las secciones visibles según
+  `settings.sidebar`, de modo que la personalización del menú es la misma en la
+  TV y en la web.
 
 ## 7. Endurecimiento pendiente
 

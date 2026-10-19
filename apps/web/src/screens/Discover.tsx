@@ -3,78 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { Meta } from '../types';
-import { Button, ErrorState, Loader, Poster, Row } from '../components/ui';
-
-/** Buscador global: consulta todos los catalogos que soportan `search`. */
-export function SearchScreen() {
-  const { navigate } = useApp();
-  const [term, setTerm] = useState('');
-  const [results, setResults] = useState<Meta[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  const search = async (value: string) => {
-    if (!value.trim()) {
-      setResults([]);
-      setHasSearched(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.search(value.trim());
-      setResults(response.metas);
-      setHasSearched(true);
-    } catch (cause) {
-      setError((cause as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => void search(term), 350);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [term]);
-
-  return (
-    <div className="screen">
-      <div className="search">
-        <input
-          className="search__input"
-          type="text"
-          value={term}
-          placeholder="Busca películas, series, personas…"
-          onChange={(event) => setTerm(event.target.value)}
-          autoFocus
-        />
-      </div>
-
-      {loading ? <Loader label="Buscando…" /> : null}
-      {error ? <ErrorState message={error} onRetry={() => void search(term)} /> : null}
-
-      {hasSearched && !loading && results.length === 0 ? (
-        <p className="row__empty">Sin resultados para “{term}”.</p>
-      ) : null}
-
-      {results.length ? (
-        <Row title={`Resultados (${results.length})`}>
-          {results.map((meta) => (
-            <Poster
-              key={meta.id}
-              meta={meta}
-              onSelect={(selected) =>
-                navigate({ name: 'detail', id: selected.id, type: selected.type ?? 'movie' })
-              }
-            />
-          ))}
-        </Row>
-      ) : null}
-    </div>
-  );
-}
+import { Button, Loader, Poster, Row } from '../components/ui';
 
 /** Descubrimiento: generos y catalogo completo. */
 export function DiscoverScreen() {
@@ -158,6 +87,11 @@ export function DiscoverScreen() {
       </Row>
 
       <div className="discover__actions">
+        <Button onClick={() => navigate({ name: 'genres' })}>Géneros</Button>
+        <Button onClick={() => navigate({ name: 'decades' })}>Décadas</Button>
+        <Button variant="ghost" onClick={() => navigate({ name: 'search' })}>
+          Buscar
+        </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'addons' })}>
           Gestionar addons
         </Button>

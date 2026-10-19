@@ -1,6 +1,7 @@
 package com.vibeflix.tv.data.repository
 
 import com.vibeflix.tv.data.remote.VibeFlixApi
+import com.vibeflix.tv.data.remote.dto.BrowseResponseDto
 import com.vibeflix.tv.data.remote.dto.CatalogDto
 import com.vibeflix.tv.data.remote.dto.CatalogResponseDto
 import com.vibeflix.tv.data.remote.dto.DebridInfoDto
@@ -12,6 +13,8 @@ import com.vibeflix.tv.data.remote.dto.MetaDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitleDownloadDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitlesResponseDto
 import com.vibeflix.tv.data.remote.dto.RatingDto
+import com.vibeflix.tv.data.remote.dto.GenresResponseDto
+import com.vibeflix.tv.data.remote.dto.SearchHistoryEntryDto
 import com.vibeflix.tv.data.remote.dto.ServerSettingsDto
 import com.vibeflix.tv.data.remote.dto.SkipIntroResponseDto
 import com.vibeflix.tv.data.remote.dto.StreamDto
@@ -107,6 +110,33 @@ class VibeFlixRepository @Inject constructor(
 
     suspend fun devices(): List<DeviceDto> =
         withContext(Dispatchers.IO) { api.devices().devices }
+
+    /** Generos y decadas de las pantallas de contenido. */
+    suspend fun genres(): GenresResponseDto = withContext(Dispatchers.IO) { api.genres() }
+
+    /** Contenido por genero, decada o texto. */
+    suspend fun browse(
+        type: String? = null,
+        genre: String? = null,
+        decade: String? = null,
+        query: String? = null,
+    ): BrowseResponseDto = withContext(Dispatchers.IO) {
+        api.browse(type = type, genre = genre, decade = decade, query = query)
+    }
+
+    /** Historial de busquedas del perfil. */
+    suspend fun searchHistory(): List<SearchHistoryEntryDto> =
+        withContext(Dispatchers.IO) { api.searchHistory().history }
+
+    /** Anade una busqueda al historial. */
+    suspend fun addSearchHistory(term: String): List<SearchHistoryEntryDto> =
+        withContext(Dispatchers.IO) {
+            api.addSearchHistory(mapOf("term" to term)).history
+        }
+
+    /** Vacia el historial de busquedas. */
+    suspend fun clearSearchHistory(): List<SearchHistoryEntryDto> =
+        withContext(Dispatchers.IO) { api.clearSearchHistory().history }
 
     /** Ajustes del servidor (OpenSubtitles, omitir intro, debrid…). */
     suspend fun settings(): ServerSettingsDto = withContext(Dispatchers.IO) {

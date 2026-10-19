@@ -23,6 +23,10 @@ import type {
 export type Route =
   | { name: 'home' }
   | { name: 'discover' }
+  | { name: 'genres' }
+  | { name: 'genre'; genre: string; label?: string }
+  | { name: 'decades' }
+  | { name: 'decade'; decade: string; label?: string }
   | { name: 'search' }
   | { name: 'detail'; id: string; type: string }
   | { name: 'person'; person: string }

@@ -19,7 +19,8 @@ Revisión hecha contra el código real de las dos bases:
 | Metadata | Integrada + addons | Addons + TMDB/Trakt/MDBList | **Integrada (Cinemeta) + addons** |
 | Núcleo HLS | Delega en el reproductor | Media3 + libmpv + motor DV | **Selección de variante en el servidor** |
 | Biblioteca | Perfiles, listas, historial, sync | Colecciones, Trakt, sync Supabase | Perfiles, listas, historial, progreso |
-| Multi-dispositivo | Sí (sync proprietary) | Sí (Supabase) | No (en roadmap) |
+| Multi-dispositivo | Sí (sync proprietary) | Sí (Supabase) | Sí (código de vinculación) |
+| Búsqueda / géneros / décadas | Nativas (cliente) | ⚠️ addons | ✅ **En el servidor** (web + TV + addon) |
 
 **Conclusión**: Vibe Flix no es un clon de ninguna de las dos, es la
 convergencia de ambas con un núcleo que las dos tienen duplicado en cliente
@@ -96,7 +97,27 @@ instalable como addon en las tres apps existentes.
 | Configurador web | ✅ (profile key) | ❌ | ✅ (API + panel web) |
 | Privacidad / sin telemetría | ✅ | ❌ (Sentry) | ✅ |
 
-### 2.5 Extras de plataforma
+### 2.5 Descubrimiento: teclado, buscador, géneros, décadas y personalización
+
+Comparado con el CHANGELOG de WuPlay v0.7.0 → v0.7.4 (búsqueda nativa, historial
+en chips, "save search results to list", "long press on backspace clears entire
+search query", pantalla de géneros, pantalla de décadas y "manage sidebar items
+in web configurator"):
+
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
+| --- | --- | --- | --- |
+| **Teclado en pantalla** para buscar | ✅ (nativo) | ❌ | ✅ (web + Android TV, con `ñ`, números y símbolos) |
+| **Borrado de la consulta completa** (pulsación larga) | ✅ | ❌ | ✅ (web: mantener pulsado; Android: dos pulsaciones) |
+| **Búsqueda nativa** (no depende de addons) | ✅ | ⚠️ (búsqueda de addons) | ✅ (sobre los catálogos agregados, en el servidor) |
+| **Historial de búsquedas en chips** | ✅ | ❌ | ✅ (por perfil, máximo 12, se puede limpiar) |
+| **Guardar los resultados en una lista** | ✅ | ❌ | ✅ (`/api/lists/{id}/items/batch`) |
+| **Pantalla de géneros** | ✅ (v0.7.3, con reality y anime) | ❌ | ✅ (21 géneros con emoji y color, extra `genre` real) |
+| **Pantalla de décadas** (+ hub) | ✅ (v0.7.4) | ❌ | ✅ (1950–2020, por año de estreno) |
+| **Content Filters** (excluir keywords/géneros) | ✅ | ❌ | ✅ (+ puntuación mínima y ocultar adultos) |
+| **Personalizar el menú** (mostrar/ocultar/ordenar) | ✅ (configurador web) | ❌ | ✅ (misma opción en web y Android TV, guardada en el servidor) |
+| Filtros aplicados en el **servidor** (todos los clientes) | ❌ | ❌ | ✅ |
+
+### 2.6 Extras de plataforma
 
 | Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
@@ -157,7 +178,26 @@ instalable como addon en las tres apps existentes.
 
 ---
 
-## 5. Pendientes priorizados
+## 5. Qué aporta la Fase 3/4 (WuPlay: teclado, buscador, géneros, décadas y personalización)
+
+| Gap | Cómo se ha cerrado | Dónde |
+| --- | --- | --- |
+| Teclado en pantalla | Teclado propio con letras, `ñ`, números, símbolos, mayús y borrado; cada tecla es un botón enfocable, así que el D-pad la recorre con la navegación espacial (web) o con el foco de Compose for TV (Android) | `apps/web/src/components/Keyboard.tsx`, `android/.../ui/components/OnScreenKeyboard.kt` |
+| Buscador nativo | Historial en chips por perfil, resultados guardables en una lista y búsqueda sobre el fan-out de catálogos | `apps/web/src/screens/Search.tsx`, `android/.../ui/screens/search/`, `routes/browse.ts` |
+| Pantalla de géneros | 21 géneros (es → EN) con emoji y color; usa el extra `genre` real de los catálogos, no una clasificación inventada | `apps/server/src/library/genres.ts`, `apps/web/src/screens/Browse.tsx` |
+| Pantalla de décadas | Décadas 1950–2020 calculadas en el servidor a partir del año de estreno (`releaseInfo`) y ordenadas por puntuación | `library/genres.ts` (`DECADES`), `routes/browse.ts` |
+| Content Filters | Géneros y palabras clave excluidos, puntuación mínima y ocultar adultos; se aplican en el servidor, así que limpian búsqueda, géneros y décadas a la vez | `apps/server/src/library/filters.ts` |
+| Personalización del menú | Mostrar, ocultar y reordenar las secciones; el orden se guarda en el servidor y es el mismo en la web y en Android TV | `navigation-items.ts`, `PUT /api/sidebar`, `settings.sidebar` |
+| Guardar resultados en una lista | Endpoint de lote que añade varios títulos a una watchlist sin alternar | `POST /api/lists/{id}/items/batch` |
+
+**Diferencia de fondo**: en WuPlay estas funciones son del cliente Android
+cerrado; en Vibe Flix el cálculo (géneros, décadas, filtros, historial) vive
+en el **servidor**, así que el mismo resultado se ve en la web TV, en el shell
+Android TV y en el propio addon instalado en Stremio, WuPlay o NuvioTV.
+
+---
+
+## 6. Pendientes priorizados
 
 ### Alta (impacto directo en el usuario)
 
@@ -175,6 +215,8 @@ instalable como addon en las tres apps existentes.
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [x] Catálogos predefinidos (Populares, Mejor valorados, Estrenos)
 - [x] Valoraciones y recomendaciones personalizadas
+- [x] Teclado en pantalla, buscador nativo con historial, pantalla de géneros,
+      pantalla de décadas y personalización del menú (estilo WuPlay)
 - [ ] Subtítulos: SDH limpio, opacidad, color, solo-audio-extranjero
 - [x] PWA instalable (usar la web TV como app sin APK)
 

@@ -1,6 +1,8 @@
 package com.vibeflix.tv.ui.screens.home
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -21,6 +23,9 @@ import com.vibeflix.tv.ui.components.PosterRow
 fun HomeScreen(
     onOpenDetail: (type: String, id: String) -> Unit,
     onOpenAddons: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenGenres: () -> Unit,
+    onOpenDecades: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -68,6 +73,21 @@ fun HomeScreen(
                     onOpenDetail(meta.type ?: row.catalog.type, meta.id)
                 },
             )
+        }
+
+        Row(
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (state.visibleSections.contains("search")) {
+                Button(onClick = onOpenSearch) { Text("Buscar") }
+            }
+            if (state.visibleSections.contains("genres")) {
+                Button(onClick = onOpenGenres) { Text("Géneros") }
+            }
+            if (state.visibleSections.contains("decades")) {
+                Button(onClick = onOpenDecades) { Text("Décadas") }
+            }
         }
 
         Button(

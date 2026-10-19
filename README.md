@@ -69,7 +69,7 @@ Y abre <http://localhost:8181>.
 ```bash
 npm run dev          # servidor con recarga (tsx watch) en :8181
 npm run dev -w @vibe-flix/web   # cliente Vite en :5173 (proxy al servidor)
-npm test             # 119 tests (addon-engine, hls-master, server)
+npm test             # 166 tests (addon-engine, hls-master, skip-intro, server)
 npm run typecheck    # TypeScript estricto en modo estricto
 ```
 
@@ -106,6 +106,11 @@ tocar el cliente.
 | `GET`/`POST`/`DELETE` | `/api/devices` · `/api/pairing` · `/api/pairing/claim` | Vinculación de dispositivos (biblioteca compartida) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles |
+| `GET` | `/api/genres` | Catálogo de géneros (21) y décadas (1950–2020) para las pantallas de contenido |
+| `GET` | `/api/browse?genre=&decade=&q=&type=` | Contenido por género, por década o por texto (aplica los filtros de contenido) |
+| `GET`/`POST`/`DELETE` | `/api/search-history` | Historial de búsquedas del perfil (chips de «búsquedas recientes») |
+| `PUT` | `/api/sidebar` | Personalización del menú: qué secciones se ven y en qué orden |
+| `POST` | `/api/lists/{id}/items/batch` | Guarda varios títulos en una lista de golpe (resultados de una búsqueda) |
 | `GET` | `/api/skip-intro?type=&id=&season=&episode=` | Detecta el final de la intro (o del «anteriormente en…») con los subtítulos y devuelve el punto de salto |
 | `GET` | `/api/opensubtitles?imdbId=&season=&episode=` | Busca subtítulos en OpenSubtitles (API oficial, con la API key de los ajustes) |
 | `GET` | `/api/opensubtitles/download?fileId=` | Descarga un subtítulo y lo sirve convertido a WebVTT |
@@ -309,6 +314,59 @@ el addon de subtítulos**:
 
 ---
 
+## Teclado, buscador, géneros, décadas y personalización (estilo WuPlay)
+
+La Fase 3/4 replica el diseño de WuPlay (v0.7.0 → v0.7.4 de su CHANGELOG) en
+las cinco piezas que faltaban, **sin ningún servicio externo de pago**: todo se
+calcula con los catálogos que ya están agregados en el servidor.
+
+### Teclado en pantalla
+
+En una TV no hay teclado, así que la búsqueda se escribe con el mando. El
+teclado (`Keyboard.tsx` en la web, `OnScreenKeyboard.kt` en Android) dibuja
+letras, números, símbolos y la **ñ**, y cada tecla es un botón enfocable: el
+D-pad recorre el teclado con la navegación espacial (web) o con el sistema de
+foco de Compose for TV (Android), sin código de navegación propio.
+
+- **Borrar** quita un carácter; **mantener pulsado** (web) o **pulsar dos
+  veces** (Android) borra la consulta entera, como en WuPlay.
+- **Mayús** alterna mayúsculas/minúsculas y **123/ABC** cambia a números y
+  símbolos.
+
+### Buscador nativo
+
+`SearchScreen` (web) y `SearchScreen` (Android) sustituyen al campo de
+búsqueda clásico:
+
+- **Historial en chips**: las búsquedas recientes se guardan en el servidor
+  (`/api/search-history`, por perfil, máximo 12) y aparecen como chips
+  pulsables; se pueden limpiar.
+- **Guardar los resultados en una lista**: un botón envía todos los resultados
+  a una watchlist (`POST /api/lists/{id}/items/batch`).
+- La búsqueda la hace el servidor sobre **todos** los catálogos que soportan
+  `search`, ya filtrados por los filtros de contenido.
+
+### Géneros y décadas
+
+- **Géneros**: 21 géneros (accion, comedia, drama, ciencia ficción, terror,
+  animación, documental, reality, anime…) con emoji y color. La pantalla usa
+  el extra `genre` real de los catálogos (`extraSupported: ['genre']`), de
+  modo que el resultado es el que da el addon, no una clasificación inventada.
+- **Décadas**: de los años 50 a los 2020. El servidor recorre los catálogos
+  filtrando por el año de estreno (`releaseInfo`) y ordena por puntuación.
+
+### Filtros de contenido y personalización
+
+- **Content Filters**: se pueden excluir géneros y palabras clave, poner una
+  puntuación mínima y ocultar el contenido para adultos. Se aplican en el
+  servidor, así que limpian a la vez la búsqueda, los géneros y las décadas.
+- **Menú personalizable**: cada sección (Inicio, Descubrir, Géneros, Décadas,
+  Buscar, Mis listas, Historial, Addons, Ajustes) se puede ocultar o reordenar
+  desde *Ajustes → Personalización del menú*. El orden guardado en el servidor
+  es el mismo en la web y en Android TV.
+
+---
+
 ## Decisiones de diseño
 
 1. **El núcleo va en el servidor.** Agregación, caché, HLS master y biblioteca
@@ -357,6 +415,16 @@ el addon de subtítulos**:
       servidor) con descarga y conversión a WebVTT
 - [x] Reproductor rediseñado en la web: barra de control propia, selector de
       calidad/audio/subtítulos, tamaño de subtítulos y atajos de teclado
+- [x] **Teclado en pantalla** para la búsqueda (letras, números, símbolos, ñ,
+      mayús y borrado con pulsación larga), navegable con el D-pad
+- [x] **Buscador nativo** estilo WuPlay: historial en chips, resultados
+      guardables en una lista y búsqueda sobre todos los catálogos
+- [x] **Pantalla de géneros** (21 géneros con emoji y color, extra `genre`
+      real de los catálogos) y **pantalla de décadas** (1950–2020)
+- [x] **Filtros de contenido** (géneros y palabras clave excluidos, puntuación
+      mínima, ocultar adultos) aplicados en el servidor
+- [x] **Personalización del menú**: mostrar, ocultar y reordenar las secciones
+      desde los ajustes, con el mismo orden en todos los dispositivos
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [ ] Watch parties y Chromecast
 

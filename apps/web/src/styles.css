@@ -1274,3 +1274,288 @@ button {
 .stream--locked .stream__url {
   color: var(--accent);
 }
+
+/* ------------------------------------------------- teclado en pantalla (TV) */
+
+.keyboard {
+  position: sticky;
+  bottom: 0;
+  margin-top: 20px;
+  background: linear-gradient(0deg, var(--bg, #0b0e14) 70%, transparent);
+  padding: 18px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.keyboard__preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px 16px;
+  background: var(--bg-card, #141926);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-size: 20px;
+  color: var(--text);
+}
+
+.keyboard__preview em {
+  color: var(--text-dim);
+  font-style: normal;
+  font-size: 15px;
+}
+
+.keyboard__caret {
+  width: 2px;
+  height: 22px;
+  background: var(--accent, #5b8cff);
+  animation: keyboard-blink 1s steps(2, start) infinite;
+}
+
+@keyframes keyboard-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.keyboard__keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keyboard__row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.keyboard__key {
+  flex: 1 1 0;
+  min-width: 38px;
+  max-width: 78px;
+  background: var(--bg-card, #141926);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 12px 6px;
+  font-size: 16px;
+  text-transform: lowercase;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.keyboard__key:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.keyboard__key--wide {
+  flex: 1.6 1 0;
+  font-size: 14px;
+  text-transform: none;
+}
+
+.keyboard__key--submit {
+  flex: 2 1 0;
+  max-width: 160px;
+  background: var(--accent, #5b8cff);
+  border-color: transparent;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.keyboard__key--submit:hover {
+  background: var(--accent, #5b8cff);
+  filter: brightness(1.1);
+}
+
+/* ------------------------------------------------- pantalla de busqueda */
+
+.search-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.search-screen__header h1,
+.browse-screen__header h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.search-screen__hint,
+.browse-screen__hint {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.search-screen__history-header,
+.search-screen__results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.search-screen__history-header h2,
+.search-screen__results-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.search-screen__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.search-screen__results {
+  margin-bottom: 18px;
+}
+
+.search-screen__results .row__items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+/* ------------------------------------- generos y decadas (estilo WuPlay) */
+
+.browse-screen__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.genre-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.genre-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 130px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.genre-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+}
+
+.genre-card__emoji {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 40px;
+  opacity: 0.85;
+}
+
+.genre-card__name {
+  font-size: 18px;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.decade-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.decade-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 18px;
+  background: linear-gradient(140deg, #1d2536, #0e121b);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.decade-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent, #5b8cff);
+}
+
+.decade-card__years {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent, #5b8cff);
+}
+
+.decade-card__label {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ------------------------------------------- personalizacion del menu */
+
+.nav-custom {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-custom__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  background: var(--bg-card, #141926);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.nav-custom__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-custom__label em {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.nav-custom__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}

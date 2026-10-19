@@ -266,6 +266,15 @@ data class ServerSettingsDto(
     @Json(name = "language") val language: String = "es",
     @Json(name = "opensubtitles") val opensubtitles: OpenSubtitlesSettingsDto? = null,
     @Json(name = "skipIntro") val skipIntro: SkipIntroSettingsDto? = null,
+    /** Menu de navegacion personalizado (WuPlay: "manage sidebar items"). */
+    @Json(name = "sidebar") val sidebar: List<SidebarItemDto>? = null,
+)
+
+/** Elemento del menu de navegacion (id, visible y orden). */
+data class SidebarItemDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "hidden") val hidden: Boolean = false,
+    @Json(name = "order") val order: Int = 0,
 )
 
 data class OpenSubtitlesSettingsDto(
@@ -279,4 +288,44 @@ data class SkipIntroSettingsDto(
 
 data class SettingsResponseDto(
     @Json(name = "settings") val settings: ServerSettingsDto? = null,
+)
+
+/** Genero de la pantalla de generos (estilo WuPlay). */
+data class GenreDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "name") val name: String = "",
+    /** Valor canonico que entiende el extra `genre` de los addons. */
+    @Json(name = "catalog") val catalog: String = "",
+    @Json(name = "emoji") val emoji: String = "",
+    @Json(name = "color") val color: String = "#5b8cff",
+)
+
+/** Decada de la pantalla de decadas. */
+data class DecadeDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "label") val label: String = "",
+    @Json(name = "from") val from: Int = 0,
+    @Json(name = "to") val to: Int = 0,
+)
+
+data class GenresResponseDto(
+    @Json(name = "genres") val genres: List<GenreDto> = emptyList(),
+    @Json(name = "decades") val decades: List<DecadeDto> = emptyList(),
+)
+
+/** Respuesta de la pantalla de contenido (por genero, decada o texto). */
+data class BrowseResponseDto(
+    @Json(name = "metas") val metas: List<MetaDto> = emptyList(),
+    @Json(name = "source") val source: String = "",
+    @Json(name = "total") val total: Int = 0,
+)
+
+/** Entrada del historial de busquedas. */
+data class SearchHistoryEntryDto(
+    @Json(name = "term") val term: String = "",
+    @Json(name = "at") val at: Long = 0L,
+)
+
+data class SearchHistoryDto(
+    @Json(name = "history") val history: List<SearchHistoryEntryDto> = emptyList(),
 )

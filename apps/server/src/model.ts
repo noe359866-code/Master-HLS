@@ -169,6 +169,31 @@ export interface AppSettings {
     /** Offset por defecto (segundos) cuando no se puede detectar la intro. */
     offsetSeconds: number;
   };
+  /**
+   * Filtros de contenido (WuPlay: "Content Filters").
+   *
+   * Se aplican a las pantallas de busqueda, generos y decadas, de modo que
+   * el usuario puede limpiar el catalogo sin instalar nada.
+   */
+  filters: {
+    /** Generos a mostrar (vacio = todos). */
+    includeGenres: string[];
+    /** Generos a ocultar. */
+    excludeGenres: string[];
+    /** Palabras clave a excluir. */
+    excludeKeywords: string[];
+    /** Puntuacion minima (0 = sin filtro). */
+    minRating: number;
+    /** Ocultar el contenido para adultos. */
+    hideAdult: boolean;
+  };
+  /**
+   * Menu de navegacion personalizable (WuPlay: "manage sidebar items").
+   *
+   * Guarda el orden y la visibilidad de cada seccion; es compartido por
+   * todos los dispositivos (web, TV y addon).
+   */
+  sidebar: Array<{ id: string; hidden: boolean; order: number }>;
   /** Capacidades declaradas del dispositivo (afectan a la seleccion HLS). */
   device: {
     maxHeight: number;
@@ -198,6 +223,8 @@ export interface AppData {
   pairings: PairingCode[];
   /** Preferencia de orden/visibilidad de catalogos. */
   catalogPreferences: CatalogPreference[];
+  /** Historial de busquedas por id de perfil. */
+  searchHistory: Record<string, Array<{ term: string; at: number }>>;
   settings: AppSettings;
 }
 
@@ -213,6 +240,24 @@ export const DEFAULT_SETTINGS: AppSettings = {
   debrid: { provider: '', apiKey: '' },
   opensubtitles: { apiKey: '' },
   skipIntro: { enabled: true, offsetSeconds: 90 },
+  filters: {
+    includeGenres: [],
+    excludeGenres: [],
+    excludeKeywords: [],
+    minRating: 0,
+    hideAdult: false,
+  },
+  sidebar: [
+    { id: 'home', hidden: false, order: 0 },
+    { id: 'discover', hidden: false, order: 1 },
+    { id: 'genres', hidden: false, order: 2 },
+    { id: 'decades', hidden: false, order: 3 },
+    { id: 'search', hidden: false, order: 4 },
+    { id: 'lists', hidden: false, order: 5 },
+    { id: 'history', hidden: false, order: 6 },
+    { id: 'addons', hidden: false, order: 7 },
+    { id: 'settings', hidden: false, order: 8 },
+  ],
   device: {
     maxHeight: 1080,
     maxFrameRate: 60,
@@ -259,6 +304,11 @@ export function normalizeData(data: AppData): AppData {
       ...DEFAULT_SETTINGS.skipIntro,
       ...(settings.skipIntro ?? {}),
     },
+    filters: {
+      ...DEFAULT_SETTINGS.filters,
+      ...(settings.filters ?? {}),
+    },
+    sidebar: settings.sidebar?.length ? settings.sidebar : DEFAULT_SETTINGS.sidebar,
   };
   data.addons ??= [];
   data.profiles ??= [];
@@ -269,6 +319,7 @@ export function normalizeData(data: AppData): AppData {
   data.devices ??= [];
   data.pairings ??= [];
   data.catalogPreferences ??= [];
+  data.searchHistory ??= {};
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
 }
@@ -286,6 +337,7 @@ export function emptyData(): AppData {
     devices: [],
     pairings: [],
     catalogPreferences: [],
+    searchHistory: {},
     settings: { ...DEFAULT_SETTINGS },
   };
 }

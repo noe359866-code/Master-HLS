@@ -71,6 +71,21 @@
 - [x] **Reproductor web rediseñado**: barra de control propia, selección de
       calidad/audio/subtítulos, tamaño de subtítulos y atajos de teclado
 
+- [x] **Teclado, buscador, géneros, décadas y personalización** (Fase 3/4,
+      diseño de WuPlay v0.7.0 → v0.7.4)
+  - [x] Teclado en pantalla (letras, `ñ`, números, símbolos, mayús) navegable
+        con el D-pad, con borrado de la consulta completa
+  - [x] Buscador nativo: historial en chips por perfil y guardado de los
+        resultados en una lista
+  - [x] Pantalla de géneros (21, con emoji y color) usando el extra `genre`
+        real de los catálogos
+  - [x] Pantalla de décadas (1950–2020) por año de estreno
+  - [x] Filtros de contenido (géneros y palabras clave excluidos, puntuación
+        mínima, ocultar adultos) aplicados en el servidor
+  - [x] Menú personalizable (mostrar/ocultar/reordenar secciones) con el mismo
+        orden en la web y en Android TV
+  - [x] Endpoint `POST /api/lists/{id}/items/batch` para guardar resultados
+
 ## Siguiente
 
 - [ ] **Plugins estilo Nuvio** — repositorios de plugins y CloudStream.

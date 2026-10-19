@@ -11,6 +11,9 @@ import com.vibeflix.tv.data.remote.dto.MetaResponseDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitleDownloadDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitlesResponseDto
 import com.vibeflix.tv.data.remote.dto.RatingsResponseDto
+import com.vibeflix.tv.data.remote.dto.BrowseResponseDto
+import com.vibeflix.tv.data.remote.dto.GenresResponseDto
+import com.vibeflix.tv.data.remote.dto.SearchHistoryDto
 import com.vibeflix.tv.data.remote.dto.SettingsResponseDto
 import com.vibeflix.tv.data.remote.dto.SkipIntroResponseDto
 import com.vibeflix.tv.data.remote.dto.StreamResponseDto
@@ -95,6 +98,29 @@ interface VibeFlixApi {
 
     /** Segmento saltable (intro/recap) detectado por el servidor. */
     /** Ajustes del servidor (compartidos con la web y el addon). */
+    /** Generos y decadas de las pantallas de contenido. */
+    @GET("api/genres")
+    suspend fun genres(): GenresResponseDto
+
+    /** Contenido por genero, decada o texto (el servidor aplica los filtros). */
+    @GET("api/browse")
+    suspend fun browse(
+        @Query("type") type: String? = null,
+        @Query("genre") genre: String? = null,
+        @Query("decade") decade: String? = null,
+        @Query("q") query: String? = null,
+    ): BrowseResponseDto
+
+    /** Historial de busquedas del perfil. */
+    @GET("api/search-history")
+    suspend fun searchHistory(): SearchHistoryDto
+
+    @POST("api/search-history")
+    suspend fun addSearchHistory(@Body body: Map<String, Any>): SearchHistoryDto
+
+    @DELETE("api/search-history")
+    suspend fun clearSearchHistory(): SearchHistoryDto
+
     @GET("api/settings")
     suspend fun settings(): SettingsResponseDto
 

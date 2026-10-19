@@ -2,7 +2,11 @@ import type {
   AppSettings,
   Catalog,
   DebridStatus,
+  Decade,
+  Genre,
   OpenSubtitleEntry,
+  SearchHistoryEntry,
+  SidebarItem,
   SkipIntroResult,
   HistoryEntry,
   InstalledAddon,
@@ -177,6 +181,14 @@ export const api = {
   async deleteList(id: string, profileId?: string): Promise<void> {
     await request(`/api/lists/${encodeURIComponent(id)}${query({ profileId })}`, {
       method: 'DELETE',
+    });
+  },
+
+  /** Anade varios titulos a una lista de una vez (guardar resultados). */
+  async addListItems(listId: string, items: WatchlistItem[]): Promise<{ list: Watchlist }> {
+    return request<{ list: Watchlist }>(`/api/lists/${listId}/items/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
     });
   },
 
@@ -360,6 +372,58 @@ export const api = {
     return request<{ path: string; url: string }>(
       `/api/opensubtitles/download${query({ fileId })}`,
     );
+  },
+
+  // ------------------------------------------------- generos, decadas y menu
+
+  /** Generos y decadas de las pantallas de contenido. */
+  async genres(): Promise<{ genres: Genre[]; decades: Decade[] }> {
+    return request<{ genres: Genre[]; decades: Decade[] }>('/api/genres');
+  },
+
+  /**
+   * Contenido por genero, decada o texto.
+   *
+   * El servidor aplica los filtros de contenido configurados.
+   */
+  async browse(params: {
+    type?: string;
+    genre?: string;
+    decade?: string;
+    q?: string;
+    skip?: number;
+  }): Promise<{ metas: Meta[]; source: string; total?: number }> {
+    return request<{ metas: Meta[]; source: string; total?: number }>(
+      `/api/browse${query({ ...params })}`,
+    );
+  },
+
+  /** Historial de busquedas del perfil. */
+  async searchHistory(): Promise<{ history: SearchHistoryEntry[] }> {
+    return request<{ history: SearchHistoryEntry[] }>('/api/search-history');
+  },
+
+  /** Anade una busqueda al historial. */
+  async addSearchHistory(term: string): Promise<{ history: SearchHistoryEntry[] }> {
+    return request<{ history: SearchHistoryEntry[] }>('/api/search-history', {
+      method: 'POST',
+      body: JSON.stringify({ term }),
+    });
+  },
+
+  /** Vacia el historial de busquedas. */
+  async clearSearchHistory(): Promise<{ history: SearchHistoryEntry[] }> {
+    return request<{ history: SearchHistoryEntry[] }>('/api/search-history', {
+      method: 'DELETE',
+    });
+  },
+
+  /** Personalizacion del menu de navegacion. */
+  async saveSidebar(items: SidebarItem[]): Promise<{ items: SidebarItem[] }> {
+    return request<{ items: SidebarItem[] }>('/api/sidebar', {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
+    });
   },
 
   // --------------------------------------------------------------------- HLS
