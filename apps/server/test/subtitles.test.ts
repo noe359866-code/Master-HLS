@@ -75,6 +75,12 @@ describe('subtitulos nativos y omitir intro', () => {
         { status: 200 },
       );
     }
+    if (url === 'https://meta.tld/subtitles/series/tt1%3A2%3A3.json') {
+      return new Response(
+        JSON.stringify({ subtitles: [{ url: 'https://cdn.tld/es.vtt', lang: 'es' }] }),
+        { status: 200 },
+      );
+    }
     if (url === 'https://cdn.tld/es.vtt') {
       return new Response(VTT, { status: 200 });
     }
@@ -232,6 +238,13 @@ describe('subtitulos nativos y omitir intro', () => {
     // El primer dialogo real empieza en 52 s: la intro acaba 1,5 s antes.
     assert.equal(body.segment.endMs, 50_500);
     assert.equal(body.segment.kind, 'intro');
+    assert.equal(body.source, 'subtitles');
+  });
+
+  it('pide los subtitulos del episodio con el id completo', async () => {
+    const response = await fetch(`${base}/api/skip-intro?type=series&id=tt1&season=2&episode=3`);
+    const body = (await response.json()) as { source: string; cues: number };
+    assert.equal(body.cues, 3);
     assert.equal(body.source, 'subtitles');
   });
 

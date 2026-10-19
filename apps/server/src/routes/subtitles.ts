@@ -149,11 +149,19 @@ export function registerSubtitleRoutes(
     };
 
     // 1) Subtitulos del addon (o de OpenSubtitles) para analizar el dialogo.
+    //
+    // En Stremio, un episodio se pide como tipo `series` con el id completo
+    // (`tt123:1:2`): por eso se recompone aqui.
+    const resourceId =
+      season !== undefined && episode !== undefined
+        ? `${imdbId || id}:${season}:${episode}`
+        : id || imdbId;
+
     const cues = await collectCues({
       registry,
       getData,
       type,
-      id,
+      id: resourceId,
       imdbId,
       season,
       episode,
