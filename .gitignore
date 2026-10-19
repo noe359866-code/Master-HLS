@@ -1,0 +1,34 @@
+# Dependencias
+node_modules/
+.pnp/
+.pnp.js
+
+# Builds
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Datos locales del servidor (addons, perfiles, historial)
+data/
+*.log
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/.idea/
+*.apk
+*.aab
+*.iml
+
+# Editores / SO
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Entorno
+.env
+.env.local

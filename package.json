@@ -1,0 +1,30 @@
+{
+  "name": "master-hls",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Master-HLS — app basada en Stremio (bases: WuPlay + NuvioTV) con motor de agregacion de addons y nucleo HLS master",
+  "license": "CC0-1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:packages": "npm run build -w @master-hls/addon-engine -w @master-hls/hls-master",
+    "dev": "npm run dev -w @master-hls/server",
+    "start": "npm run start -w @master-hls/server",
+    "build:web": "npm run build -w @master-hls/web",
+    "test": "npm run test -w @master-hls/addon-engine && npm run test -w @master-hls/hls-master && npm run test -w @master-hls/server",
+    "typecheck": "tsc -b packages/addon-engine packages/hls-master apps/server --pretty",
+    "clean": "rm -rf packages/*/dist apps/server/dist apps/web/dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

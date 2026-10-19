@@ -1,0 +1,20 @@
+{
+  "name": "@master-hls/server",
+  "version": "1.0.0",
+  "description": "Servidor Master-HLS: addon Stremio local, API de biblioteca/profiles, proxy HLS y hosting del cliente TV",
+  "license": "CC0-1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "tsx --test test/*.test.ts",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@master-hls/addon-engine": "1.0.0",
+    "@master-hls/hls-master": "1.0.0"
+  }
+}
