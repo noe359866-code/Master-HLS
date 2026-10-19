@@ -236,6 +236,8 @@ export interface AddonMetaRequest {
 export interface AddonStreamRequest {
   type: string;
   id: string;
+  /** Ámbito local de caché (perfil/idioma); no forma parte de la URL Stremio. */
+  cacheScope?: string;
 }
 
 export interface AddonSubtitleRequest {

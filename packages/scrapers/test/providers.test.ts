@@ -54,6 +54,97 @@ describe('proveedor por configuracion', () => {
     assert.equal(sources[0]!.provider, 'Demo');
   });
 
+  it('no confunde los episodios: busca ficha y URL de temporada/episodio', async () => {
+    const urls: string[] = [];
+    const provider = createConfigProvider({
+      id: 'series', name: 'Series', types: ['anime', 'dorama'], languages: ['es-419'],
+      searchUrl: 'https://site.example/buscar?q={title}',
+      itemPattern: 'href="/serie/(\\w+)"[^>]*>([^<]+)',
+      itemUrl: 'https://site.example/serie/{id}',
+      episodeUrl: 'https://site.example/serie/{id}/{season}/{episode}',
+      streamPatterns: ['src="(https?://[^" ]+\.mp4)"'],
+    });
+    const ctx = context({
+      fetchText: async (url) => {
+        urls.push(url);
+        if (url.includes('/buscar')) {
+          return '<a href="/serie/otra">Serie diferente</a><a href="/serie/elegida">Dorama elegido</a>';
+        }
+        if (url.endsWith('/2/4')) return '<video src="https://cdn.example/2-4.mp4">';
+        if (url.endsWith('/serie/elegida')) return '<video src="https://cdn.example/episodio-equivocado.mp4">';
+        return '';
+      },
+    });
+    const sources = await provider.fetchSources({
+      type: 'series', kind: 'dorama', id: 'tt99:2:4', titleId: 'tt99', title: 'Dorama elegido',
+      season: 2, episode: 4,
+    }, ctx);
+    assert.deepEqual(urls, [
+      'https://site.example/buscar?q=Dorama%20elegido',
+      'https://site.example/serie/elegida/2/4',
+    ]);
+    assert.equal(sources[0]?.url, 'https://cdn.example/2-4.mp4');
+    assert.equal(sources[0]?.headers?.Referer, 'https://site.example/serie/elegida/2/4');
+  });
+
+  it('admite una página de episodio enlazada desde la ficha', async () => {
+    const provider = createConfigProvider({
+      id: 'episodios', name: 'Episodios', types: ['series'],
+      searchUrl: 'https://site.example/buscar?q={title}',
+      itemUrl: 'https://site.example/serie/{id}',
+      itemPattern: 'href="/serie/(\\w+)"[^>]*>([^<]+)',
+      episodePattern: 'href="([^"]*/{season}/{episode})"',
+      streamPatterns: ['src="(https?://[^" ]+\\.mp4)"'],
+    });
+    const urls: string[] = [];
+    const ctx = context({ fetchText: async (url) => {
+      urls.push(url);
+      if (url.includes('/buscar')) return '<a href="/serie/legit">Serie legit</a>';
+      if (url.endsWith('/serie/legit')) return '<a href="/capitulo/2/4">Ep 4</a>';
+      if (url.endsWith('/capitulo/2/4')) return '<video src="https://cdn.example/4.mp4">';
+      return '';
+    } });
+    const sources = await provider.fetchSources({
+      type: 'series', id: 'tt1:2:4', title: 'Serie legit', season: 2, episode: 4,
+    }, ctx);
+    assert.equal(sources[0]?.url, 'https://cdn.example/4.mp4');
+    assert.deepEqual(urls, [
+      'https://site.example/buscar?q=Serie%20legit',
+      'https://site.example/serie/legit',
+      'https://site.example/capitulo/2/4',
+    ]);
+  });
+
+  it('no presenta la ficha de una serie como un episodio diferente', async () => {
+    const provider = createConfigProvider({
+      id: 'old', name: 'Old', types: ['series'],
+      searchUrl: 'https://site.example/buscar?q={title}',
+      itemUrl: 'https://site.example/serie/{id}',
+      itemPattern: 'href="/serie/(\\w+)"',
+      streamPatterns: ['src="(https?://[^" ]+\.mp4)"'],
+    });
+    let called = false;
+    const sources = await provider.fetchSources(
+      { type: 'series', id: 'tt99:2:4', title: 'Dorama', season: 2, episode: 4 },
+      context({ fetchText: async () => { called = true; return ''; } }),
+    );
+    assert.deepEqual(sources, []);
+    assert.equal(called, false);
+  });
+
+  it('puede resolver directamente un ID externo sin pantalla de búsqueda', async () => {
+    const provider = createConfigProvider({
+      id: 'directo', name: 'Directo', types: ['movie'],
+      itemUrl: 'https://site.example/video/{tmdbId}',
+      streamPatterns: ['src="(https?://[^" ]+\.mp4)"'],
+    });
+    const sources = await provider.fetchSources(
+      { type: 'movie', id: 'tmdb:123', tmdbId: '123', title: 'Mi peli' },
+      context({ fetchText: async () => '<video src="https://cdn.example/m.mp4">' }),
+    );
+    assert.equal(sources[0]?.url, 'https://cdn.example/m.mp4');
+  });
+
   it('devuelve una lista vacia si la busqueda falla', async () => {
     const provider = createConfigProvider({
       id: 'demo',

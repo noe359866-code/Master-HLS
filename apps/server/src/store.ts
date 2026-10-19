@@ -66,7 +66,10 @@ export class JsonStore<T extends object> {
     this.writeQueue = this.writeQueue.then(async () => {
       await fs.mkdir(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.tmp`;
-      await fs.writeFile(tmp, snapshot, 'utf8');
+      await fs.writeFile(tmp, snapshot, { encoding: 'utf8', mode: 0o600 });
+      // La configuración también contiene claves API y tokens de dispositivos.
+      // chmod cubre temporales preexistentes con permisos antiguos.
+      await fs.chmod(tmp, 0o600);
       await fs.rename(tmp, this.file);
     });
     await this.writeQueue;

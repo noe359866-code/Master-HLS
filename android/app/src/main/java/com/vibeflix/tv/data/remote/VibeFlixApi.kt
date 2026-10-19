@@ -10,6 +10,8 @@ import com.vibeflix.tv.data.remote.dto.MasterInfoDto
 import com.vibeflix.tv.data.remote.dto.MetaResponseDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitleDownloadDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitlesResponseDto
+import com.vibeflix.tv.data.remote.dto.ProfileResponseDto
+import com.vibeflix.tv.data.remote.dto.ProfilesResponseDto
 import com.vibeflix.tv.data.remote.dto.RatingsResponseDto
 import com.vibeflix.tv.data.remote.dto.BrowseResponseDto
 import com.vibeflix.tv.data.remote.dto.GenresResponseDto
@@ -56,6 +58,24 @@ interface VibeFlixApi {
         @Path("type") type: String,
         @Path("id") id: String,
     ): StreamResponseDto
+
+    @GET("api/profiles")
+    suspend fun profiles(): ProfilesResponseDto
+
+    @POST("api/profiles")
+    suspend fun createProfile(@Body body: Map<String, String>): ProfileResponseDto
+
+    @PUT("api/profiles/{id}")
+    suspend fun updateProfile(
+        @Path("id") id: String,
+        @Body body: Map<String, String>,
+    ): ProfileResponseDto
+
+    @POST("api/profiles/{id}/activate")
+    suspend fun activateProfile(
+        @Path("id") id: String,
+        @Body body: Map<String, String>,
+    ): Map<String, String>
 
     @GET("api/addons")
     suspend fun addons(): AddonsResponseDto

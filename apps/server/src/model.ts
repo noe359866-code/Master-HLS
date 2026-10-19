@@ -28,6 +28,8 @@ export interface Profile {
   color: string;
   /** PIN opcional para cambiar de perfil (WuPlay). */
   pin?: string;
+  /** Idioma/región de fuentes elegido explícitamente al entrar al perfil. */
+  contentLanguage?: string;
   /** Idioma de audio preferido (ISO 639-1). */
   audioLanguage?: string;
   /** Idioma de subtitulos preferido. */
@@ -138,7 +140,7 @@ export interface AppSettings {
   autoplayTrailers: boolean;
   /** Numero de elementos por fila en las listas. */
   itemsPerRow: number;
-  /** Mostrar el prefijo del addon en el nombre del stream. */
+  /** Legado: las fuentes públicas siempre muestran el título, no el proveedor. */
   showAddonPrefix: boolean;
   /** Addons de streams por defecto para los que no中选择. */
   preferredStreamAddons: string[];
@@ -252,7 +254,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   autoplayTrailers: true,
   itemsPerRow: 8,
-  showAddonPrefix: true,
+  showAddonPrefix: false,
   preferredStreamAddons: [],
   debrid: { provider: '', apiKey: '' },
   opensubtitles: { apiKey: '' },

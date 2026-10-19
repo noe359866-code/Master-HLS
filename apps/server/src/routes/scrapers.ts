@@ -13,7 +13,12 @@
 import type { AddonRegistry } from '@vibeflix/addon-engine';
 import {
   createConfigProvider,
+  createScrapeContext,
   DEFAULT_PROVIDERS,
+  normalizeLanguage,
+  parseEpisodeId,
+  STREAMFLIX_PROVIDER_CATALOG,
+  STREAMFLIX_UPSTREAM_COMMIT,
   type ProviderConfig,
   type ScrapeProvider,
   type ScraperRegistry,
@@ -42,6 +47,10 @@ function describe(provider: ScrapeProvider) {
     region: provider.region ?? '',
     languages: provider.languages ?? [],
     types: provider.types,
+    // Implementado y probado con mocks no significa reproducción verificada.
+    verification: DEFAULT_PROVIDERS.some((builtin) => builtin.id === provider.id)
+      ? 'mock-tested' as const : 'not-tested' as const,
+    liveVerified: false,
   };
 }
 
@@ -49,10 +58,14 @@ function describe(provider: ScrapeProvider) {
 function isValidConfig(config: unknown): config is ProviderConfig {
   if (!config || typeof config !== 'object') return false;
   const value = config as Partial<ProviderConfig>;
-  if (typeof value.id !== 'string' || !value.id) return false;
+  if (typeof value.id !== 'string' || !value.id ||
+      DEFAULT_PROVIDERS.some((provider) => provider.id === value.id)) return false;
   if (typeof value.name !== 'string' || !value.name) return false;
-  if (!Array.isArray(value.types) || !value.types.length) return false;
-  return true;
+  if (!Array.isArray(value.types) || !value.types.length ||
+      !value.types.every((type) => ['movie', 'series', 'episode', 'anime', 'dorama'].includes(type))) return false;
+  if (value.languages !== undefined && (!Array.isArray(value.languages) ||
+      !value.languages.every((language) => !!normalizeLanguage(language)))) return false;
+  return Boolean(value.searchUrl || value.itemUrl || value.episodeUrl);
 }
 
 export function registerScraperRoutes(router: Router, options: ScraperRouteOptions): void {
@@ -60,13 +73,29 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
 
   router.get('/api/scrapers', ({ res }) => {
     const settings = getData().settings.scrapers;
-    const active = new Set(settings?.providers ?? []);
     sendJson(res, 200, {
       enabled: Boolean(settings?.enabled),
       providers: scrapers.list().map(describe),
       available: DEFAULT_PROVIDERS.map(describe),
       configs: settings?.configs ?? [],
       selected: settings?.providers ?? [],
+      upstreamInventory: '/api/scrapers/upstream',
+    });
+  });
+
+  /** Inventario de investigación: NO se confunde con los adaptadores activos. */
+  router.get('/api/scrapers/upstream', ({ res }) => {
+    sendJson(res, 200, {
+      repository: 'https://git.gay/streamflix-reborn2/streamflix',
+      commit: STREAMFLIX_UPSTREAM_COMMIT,
+      counts: {
+        vod: STREAMFLIX_PROVIDER_CATALOG.filter((item) => item.state === 'registered-vod').length,
+        iptv: STREAMFLIX_PROVIDER_CATALOG.filter((item) => item.state === 'registered-iptv').length,
+        unregistered: STREAMFLIX_PROVIDER_CATALOG.filter((item) => item.state === 'unregistered').length,
+        native: STREAMFLIX_PROVIDER_CATALOG.filter((item) => item.nativeId).length,
+      },
+      providers: STREAMFLIX_PROVIDER_CATALOG,
+      note: 'Idioma del catálogo, no garantía de audio. IPTV y referencias sin port no son fuentes VOD.',
     });
   });
 
@@ -77,14 +106,18 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
       configs?: ProviderConfig[];
     };
 
-    const configs = Array.isArray(body.configs)
-      ? body.configs.filter(isValidConfig).map((config) => ({
-          ...config,
-          types: config.types.filter((type) =>
-            ['movie', 'series', 'episode'].includes(type),
-          ) as ProviderConfig['types'],
-        }))
-      : getData().settings.scrapers?.configs ?? [];
+    if (body.configs !== undefined && (!Array.isArray(body.configs) ||
+        !body.configs.every(isValidConfig))) {
+      sendJson(res, 400, { error: 'Configuración de fuentes no válida' });
+      return;
+    }
+    if (body.providers !== undefined && (!Array.isArray(body.providers) ||
+        !body.providers.every((id) => typeof id === 'string' &&
+          DEFAULT_PROVIDERS.some((provider) => provider.id === id)))) {
+      sendJson(res, 400, { error: 'Sólo puedes seleccionar adaptadores implementados' });
+      return;
+    }
+    const configs = body.configs ?? getData().settings.scrapers?.configs ?? [];
 
     await save((data) => {
       data.settings.scrapers = {
@@ -106,9 +139,15 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
   router.post('/api/scrapers/test', async ({ res, body: rawBody }) => {
     const body = (rawBody ?? {}) as {
       config?: ProviderConfig;
+      providerId?: string;
       title?: string;
       year?: number;
       id?: string;
+      tmdbId?: string;
+      type?: 'movie' | 'series' | 'episode' | 'anime' | 'dorama';
+      season?: number;
+      episode?: number;
+      language?: string;
     };
 
     const title = (body.title ?? '').trim();
@@ -117,37 +156,46 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
       return;
     }
 
+    if (body.config && !isValidConfig(body.config)) {
+      sendJson(res, 400, { error: 'Configuración de fuentes no válida' });
+      return;
+    }
+    if (body.language && !normalizeLanguage(body.language)) {
+      sendJson(res, 400, { error: 'Idioma no válido' });
+      return;
+    }
+
     let provider: ScrapeProvider;
-    if (body.config && isValidConfig(body.config)) {
+    if (body.config) {
       provider = createConfigProvider(body.config);
     } else {
-      const existing = scrapers.list()[0];
+      const existing = body.providerId ? scrapers.get(body.providerId) : scrapers.list()[0];
       if (!existing) {
-        sendJson(res, 400, { error: 'No hay proveedores configurados' });
+        sendJson(res, 400, { error: 'Proveedor no activo o desconocido' });
         return;
       }
       provider = existing;
     }
 
-    const fetchImpl = options.fetchImpl ?? fetch;
-    const userAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-    const context = {
-      userAgent,
-      fetchText: async (url: string) => {
-        const response = await fetchImpl(url, { headers: { 'User-Agent': userAgent } });
-        return response.text();
-      },
-      fetchJson: async <T>(url: string) => {
-        const response = await fetchImpl(url, { headers: { 'User-Agent': userAgent } });
-        return (await response.json()) as T;
-      },
-    };
-
+    const type = body.type ?? 'movie';
+    const id = body.id ?? 'tt0000000';
+    const titleId = parseEpisodeId(type, id).titleId;
+    const profile = getData().profiles.find((entry) => entry.id === getData().activeProfileId);
     const result = await scrapers.runProvider(
       provider,
-      { type: 'movie', id: body.id ?? 'tt0000000', title, year: body.year },
-      context,
+      {
+        type,
+        kind: body.type === 'anime' || body.type === 'dorama' ? body.type : undefined,
+        id,
+        titleId,
+        tmdbId: body.tmdbId ?? (titleId.startsWith('tmdb:') ? titleId.slice(5) : undefined),
+        title,
+        year: body.year,
+        season: body.season,
+        episode: body.episode,
+        language: normalizeLanguage(body.language) ?? profile?.contentLanguage,
+      },
+      createScrapeContext({ fetchImpl: options.fetchImpl }),
     );
     sendJson(res, 200, {
       provider: result.provider,

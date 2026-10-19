@@ -48,7 +48,7 @@ consumen exactamente la misma lógica.
 
 ```bash
 npm install
-npm run build          # compila los dos paquetes y el servidor
+npm run build          # compila los paquetes, el servidor y la web
 npm run build:web      # compila el cliente web
 npm start              # servidor en http://localhost:8181
 ```
@@ -70,7 +70,7 @@ Y abre <http://localhost:8181>.
 ```bash
 npm run dev          # servidor con recarga (tsx watch) en :8181
 npm run dev -w @vibe-flix/web   # cliente Vite en :5173 (proxy al servidor)
-npm test             # 166 tests (addon-engine, hls-master, skip-intro, server)
+npm test             # suites de addon-engine, HLS, skip-intro, scrapers y servidor
 npm run typecheck    # TypeScript estricto en modo estricto
 ```
 
@@ -96,7 +96,7 @@ tocar el cliente.
 | `GET` | `/manifest.json` | Manifest del addon (catálogos agregados) |
 | `GET` | `/catalog/{type}/{id}[/{extra}].json` | Catálogo fusionado de todos los addons |
 | `GET` | `/meta/{type}/{id}.json` | Metadatos fusionados (cast, episodios, pósters) |
-| `GET` | `/stream/{type}/{id}.json` | Streams de todos los addons, ordenados por calidad |
+| `GET` | `/stream/{type}/{id}.json` | Streams: fuente nativa del idioma preferida, resto como alternativa; etiqueta solo con título y, si aplica, temporada/episodio |
 | `GET` | `/subtitles/{type}/{id}.json` | Subtítulos agregados |
 | `GET` | `/api/search?q=` | Búsqueda global en todos los catálogos con `search` |
 | `GET` | `/api/person?name=` | Ficha de persona con su filmografía (cast & crew) |
@@ -104,11 +104,12 @@ tocar el cliente.
 | `GET` | `/api/recommended` | Recomendaciones según las valoraciones del perfil |
 | `GET`/`POST` | `/api/ratings` | Valoraciones «Me gusta» / «No para mí» |
 | `GET`/`POST` | `/api/debrid` · `/api/debrid/test` | Estado y comprobación del proveedor de debrid |
-| `GET`/`PUT` | `/api/scrapers` | Estado, proveedores activos y proveedores propios (configuración) de los scrapers nativos |
-| `POST` | `/api/scrapers/test` | Prueba un proveedor de scrapers con un título y devuelve las fuentes que encuentra |
+| `GET`/`PUT` | `/api/scrapers` | Estado y adaptadores realmente implementados/activos; `liveVerified: false` no implica disponibilidad |
+| `GET` | `/api/scrapers/upstream` | Inventario de referencia por idioma: VOD registrado, IPTV y archivos no registrados; **no** fuentes instaladas |
+| `POST` | `/api/scrapers/test` | Prueba avanzada de un proveedor activo (`providerId`, título, tipo, ID TMDb, temporada/episodio) |
 | `GET`/`POST`/`DELETE` | `/api/devices` · `/api/pairing` · `/api/pairing/claim` | Vinculación de dispositivos (biblioteca compartida) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
-| `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles (nombre e idioma `contentLanguage` persistidos) |
 | `GET` | `/api/genres` | Catálogo de géneros (21) y décadas (1950–2020) para las pantallas de contenido |
 | `GET` | `/api/browse?genre=&decade=&q=&type=` | Contenido por género, por década o por texto (aplica los filtros de contenido) |
 | `GET`/`POST`/`DELETE` | `/api/search-history` | Historial de búsquedas del perfil (chips de «búsquedas recientes») |
@@ -174,35 +175,80 @@ embeds y ejecución en paralelo) pero implementado desde cero en TypeScript.
 
 - **Fan-out en paralelo** con aislamiento de fallos: cada proveedor tiene su
   propio timeout; si uno se cae, el resto del resultado se entrega igual.
-- **Un solo camino de streams**: las fuentes resueltas se mezclan con las de los
-  addons instalados y el cliente las ve igual (mismo orden por calidad, mismo
-  proxy HLS, misma resolución de debrid para los magnets).
+- **Selección por perfil**, como en la organización de StreamFlix Reborn: se
+  pregunta el nombre e idioma al entrar por primera vez (web o Android TV),
+  se guarda `contentLanguage` en el perfil y se eligen proveedores compatibles
+  con la región (`es-419`, `es-ES`, `en`, etc.) y el tipo (`movie`, `series`,
+  `anime`, `dorama`). Primero se usan fuentes exactas, después el idioma base
+  y por último fuentes sin idioma declarado. Las series usan el episodio real
+  `id:temporada:episodio`, no la ficha general de la serie.
+- **Un solo camino de streams**: si hay una fuente nativa para el idioma del
+  perfil, se prioriza sobre los addons externos. Dentro de cada grupo se
+  mantiene la ordenación por calidad, el proxy HLS y la resolución de debrid.
+  Los addons externos no anuncian siempre su idioma: quedan como alternativa
+  y no se filtran por una suposición sobre su audio.
+- **Nombres discretos en reproducción**: el addon se llama **Vibe Flix** y
+  `name`/`title` de cada stream público solo muestran el título de la obra y,
+  si corresponde, `T2 E4`. Se suprimen descripción, nombre de servidor,
+  release y pistas de origen; la URL/cabeceras de reproducción se conservan
+  porque son necesarias para el vídeo (esto no anonimiza la conexión).
 - **Resolutor de embeds**: extrae la URL directa de un player (`hls`, `file`,
   `sources[]`, `<video>`, `$.get(...)`) y **desempaqueta** el JavaScript
   empaquetado de Dean Edwards (decodificado, nunca ejecutado).
-- **Proveedores por configuración**: se añaden desde *Ajustes → Scrapers
-  nativos* con un JSON (URL de búsqueda, expresiones regulares del item y del
-  stream) **sin tocar el código**; se pueden probar antes de activarlos.
-- **Proveedor incluido y legítimo**: *Internet Archive* (dominio público), que
-  además sirve de referencia de cómo escribir un proveedor nuevo.
-- Caché de resultados por título (5 min) que se invalida al cambiar los
-  proveedores.
+- **Proveedores por configuración**: se añaden desde *Ajustes → Fuentes
+  nativas → Opciones avanzadas* con un JSON (idiomas y categorías, URL de
+  búsqueda, URL/patrón de episodio y patrón de stream) **sin tocar el código**.
+  `POST /api/scrapers/test` sirve para diagnosticar un proveedor; los nombres
+  y URLs devueltos por esa API avanzada no son las etiquetas de reproducción.
+- **Adaptadores incluidos**: puertos TypeScript de **CineHax**, **Fanpelis**,
+  **Doramasflix** y **TioAnime** (`es`: películas, series, doramas y anime), y
+  **Frembed** (`fr`: películas/series), **Ridomovies** (`en`: películas/series),
+  **MStream** (`de`: películas/series), **GuardaFlix** (`it`: películas) y
+  **Zaluknij** (`pl`: solo películas en este port, sin WebView antibot);
+  además **Internet Archive** como respaldo de dominio público con audio
+  **no declarado**. El inventario completo del upstream (51 archivos VOD registrados, 15 IPTV y 10 sin
+  registrar) está en [docs/streamflix-reborn-inventory.md](docs/streamflix-reborn-inventory.md)
+  y `GET /api/scrapers/upstream`. **El inventario no activa esos proveedores**:
+  solo los nueve puertos y Archive están en `DEFAULT_PROVIDERS`; IPTV no
+  se confunde con capítulos. **42 VOD registrados aún no están portados.**
+- Caché de resultados por título **e idioma del perfil** (5 min), invalidada
+  al cambiar el proveedor o editar/cambiar el perfil. Listas, historial,
+  progreso y preferencia persisten en `DATA_DIR/vibe-flix.json` (por defecto
+  `data/vibe-flix.json`). Los PIN existentes se migran a un hash y la API solo
+  indica que existe PIN; el archivo de datos se escribe con permisos `0600`.
+- **Disponibilidad real**: los nueve puertos tienen pruebas **con mocks**, no
+  una comprobación de reproducción real. El idioma del catálogo no garantiza
+  el audio; italiano y polaco solo tienen películas y Zaluknij puede requerir
+  WebView para superar el antibot. Un stream puede estar vacío aun cuando
+  exista un archivo upstream. Usa solo fuentes que tengas derecho a reproducir.
 
 ```json
 {
   "id": "mi-sitio",
   "name": "Mi sitio",
-  "types": ["movie"],
-  "searchUrl": "https://sitio.example/buscar?q={title}&y={year}",
-  "itemUrl": "https://sitio.example/pelicula/{id}",
-  "itemPattern": "href="\/pelicula\/(\w+)"",
-  "streamPatterns": ["src="(https?:\/\/[^\"]+\.m3u8)""]
+  "types": ["anime"],
+  "languages": ["es-419"],
+  "searchUrl": "https://sitio.example/buscar?q={title}",
+  "itemPattern": "href=\"/serie/([^\"/]+)\"[^>]*>([^<]+)",
+  "itemUrl": "https://sitio.example/serie/{id}",
+  "episodeUrl": "https://sitio.example/serie/{id}/{season}/{episode}",
+  "streamPatterns": ["src=\"(https?://[^\" ]+\\.m3u8)\""]
 }
 ```
 
-> Vibe Flix **no incluye extractores de sitios pirateados**: la arquitectura
-> está preparada para que cada uno añada sus propios proveedores (legales o
-> propios) por configuración, igual que se hace con los addons.
+> Los adaptadores integrados se inspiran en código Apache-2.0 de terceros;
+> **no** certifican derechos de emisión ni disponibilidad de los vídeos.
+> Verifica la autorización de cada fuente y las condiciones de sus sitios
+> antes de usarla o configurarla en tu servidor.
+
+**Primer inicio:** entra en la web o abre la APK conectada al servidor, elige
+un perfil, escribe tu nombre y selecciona el idioma. En la web puedes cambiarlo
+en *Perfiles → Editar nombre e idioma*; en Android TV, *Cambiar perfil e idioma*.
+El servidor comparte el **perfil activo** con los clientes que usan ese mismo
+servidor, también al instalar su manifest en Stremio: cambiarlo en un
+dispositivo afecta a los demás. Cada perfil conserva sus preferencias, listas,
+historial y progreso. Para uso simultáneo con perfiles independientes, utiliza
+instancias separadas del servidor por ahora.
 
 ---
 
@@ -249,6 +295,11 @@ cd android
   fuera un addon Stremio, igual que harían Stremio, WuPlay o Nuvio.
 - `BuildConfig.DEFAULT_SERVER_URL` apunta a `http://10.0.2.2:8181` (emulador);
   en un dispositivo real, a la IP LAN del servidor.
+- La pantalla inicial de perfiles guarda nombre e idioma en el servidor antes
+  de entrar; desde Inicio se puede reabrir para cambiar de perfil/idioma.
+- Este repositorio no trae `android/gradlew`; se necesita una instalación de
+  Gradle/Android SDK para compilar la APK. Esa compilación **no se ha podido
+  verificar** aquí.
 - Antes de compilar hay que exportar el artefacto `hilt.compiler` en el catálogo
   de versiones (ver `android/gradle/libs.versions.toml`).
 

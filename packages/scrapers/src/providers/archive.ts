@@ -60,8 +60,10 @@ export const archiveProvider: ScrapeProvider = {
   id: 'internet-archive',
   name: 'Internet Archive',
   types: ['movie'],
-  languages: ['en', 'es', 'de', 'fr', 'it'],
-  region: 'Dominio público',
+  // Archive busca títulos en muchos idiomas, pero su API no declara el audio
+  // de cada archivo: usarlo como último recurso, nunca como doblaje garantizado.
+  languages: [],
+  region: 'Dominio público · idioma de audio desconocido',
 
   async fetchSources(request: ScrapeRequest, context: ScrapeContext): Promise<ScrapedSource[]> {
     const title = (request.title ?? '').trim();

@@ -124,6 +124,8 @@ export interface Profile {
   avatar: string;
   color: string;
   pin?: string;
+  /** Idioma/región de fuentes elegido en el perfil. */
+  contentLanguage?: string;
   audioLanguage?: string;
   subtitleLanguage?: string;
   autoplay: boolean;
@@ -300,15 +302,19 @@ export interface Rating {
 export interface ProviderConfig {
   id: string;
   name: string;
-  types: Array<'movie' | 'series' | 'episode'>;
+  types: Array<'movie' | 'series' | 'episode' | 'anime' | 'dorama'>;
   languages?: string[];
   region?: string;
   /** URL de busqueda con las plantillas {title}, {year}, {season}... */
   searchUrl?: string;
-  /** URL del item con {id} = id encontrado en la busqueda. */
+  /** URL del item con {id} = id encontrado en la búsqueda. */
   itemUrl?: string;
-  /** Expresion regular que extrae el id del item de la pagina de resultados. */
+  /** Grupo 1 = id, grupo 2 opcional = título. */
   itemPattern?: string;
+  /** URL del episodio concreto, con {season}/{episode}. */
+  episodeUrl?: string;
+  /** Patrón de la ficha que captura la URL del episodio (grupo 1). */
+  episodePattern?: string;
   /** Expresiones regulares que extraen la URL del stream. */
   streamPatterns?: string[];
   /** Usar el resolutor de embeds generico. */
@@ -326,6 +332,8 @@ export interface ScraperProviderInfo {
   region: string;
   languages: string[];
   types: string[];
+  verification: 'mock-tested' | 'not-tested';
+  liveVerified: boolean;
 }
 
 /** Estado de los scrapers nativos en el servidor. */
@@ -335,6 +343,7 @@ export interface ScraperStatus {
   available: ScraperProviderInfo[];
   configs: ProviderConfig[];
   selected: string[];
+  upstreamInventory?: string;
 }
 
 /** Estado del servicio de debrid en el servidor. */

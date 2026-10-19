@@ -7,6 +7,7 @@
  * mundo de los scrapers.
  */
 
+import { languagePriority } from '../language.js';
 import { mergeSources } from '../normalize.js';
 import type {
   ProviderConfig,
@@ -76,20 +77,33 @@ export class ScraperRegistry {
    * timeout: si uno se cuelga, el resto del resultado se entrega igual.
    */
   async resolve(request: ScrapeRequest, context: ScrapeContext): Promise<ScrapedSource[]> {
-    const candidates = this.list().filter((provider) => {
-      if (!provider.types.includes(request.type as never)) return false;
-      if (request.language && provider.languages?.length) {
-        return provider.languages.includes(request.language);
-      }
-      return true;
-    });
+    // Todos se prueban en paralelo (como en StreamFlix), pero solo se entregan
+    // fuentes del mejor nivel disponible: idioma/región preferidos y categoría
+    // específica antes que un proveedor genérico de series/películas.
+    const candidates = this.list()
+      .map((provider) => ({
+        provider,
+        language: languagePriority(provider, request.language),
+        kind: contentPriority(provider, request),
+      }))
+      .filter((candidate) => candidate.language >= 0 && candidate.kind > 0);
 
     const settled = await Promise.all(
-      candidates.map((provider) => this.runProvider(provider, request, context)),
+      candidates.map(({ provider }) => this.runProvider(provider, request, context)),
     );
 
+    let best = -1;
     const sources: ScrapedSource[] = [];
-    for (const result of settled) sources.push(...result.sources);
+    settled.forEach((result, index) => {
+      if (!result.sources.length) return;
+      const candidate = candidates[index]!;
+      const rank = candidate.language * 10 + candidate.kind;
+      if (rank > best) {
+        best = rank;
+        sources.length = 0;
+      }
+      if (rank === best) sources.push(...result.sources);
+    });
     return mergeSources(sources);
   }
 
@@ -114,6 +128,18 @@ export class ScraperRegistry {
       };
     }
   }
+}
+
+/** Anime/dorama pueden caer en una fuente genérica si no hay una especializada. */
+function contentPriority(provider: ScrapeProvider, request: ScrapeRequest): number {
+  const kind = request.kind ?? (request.type === 'episode' ? 'series' : request.type);
+  if (provider.types.includes(kind as ScrapeProvider['types'][number])) return 3;
+  if (request.season !== undefined && provider.types.includes('episode')) return 2;
+  if (kind === 'anime' || kind === 'dorama') {
+    const base = request.type === 'movie' ? 'movie' : 'series';
+    if (provider.types.includes(base)) return 1;
+  }
+  return 0;
 }
 
 /** Promesa con limite de tiempo. */

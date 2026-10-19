@@ -22,6 +22,7 @@ import com.vibeflix.tv.ui.components.PosterRow
 @Composable
 fun HomeScreen(
     onOpenDetail: (type: String, id: String) -> Unit,
+    onOpenProfiles: () -> Unit,
     onOpenAddons: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenGenres: () -> Unit,
@@ -90,11 +91,12 @@ fun HomeScreen(
             }
         }
 
-        Button(
-            onClick = onOpenAddons,
+        Row(
             modifier = Modifier.padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Gestionar addons")
+            Button(onClick = onOpenProfiles) { Text("Cambiar perfil e idioma") }
+            Button(onClick = onOpenAddons) { Text("Gestionar addons") }
         }
     }
 }

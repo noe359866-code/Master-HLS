@@ -12,6 +12,8 @@ import com.vibeflix.tv.data.remote.dto.MasterInfoDto
 import com.vibeflix.tv.data.remote.dto.MetaDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitleDownloadDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitlesResponseDto
+import com.vibeflix.tv.data.remote.dto.ProfileDto
+import com.vibeflix.tv.data.remote.dto.ProfilesResponseDto
 import com.vibeflix.tv.data.remote.dto.RatingDto
 import com.vibeflix.tv.data.remote.dto.GenresResponseDto
 import com.vibeflix.tv.data.remote.dto.SearchHistoryEntryDto
@@ -38,6 +40,23 @@ class VibeFlixRepository @Inject constructor(
 ) {
 
     suspend fun manifest() = withContext(Dispatchers.IO) { api.manifest() }
+
+    suspend fun profiles(): ProfilesResponseDto = withContext(Dispatchers.IO) { api.profiles() }
+
+    suspend fun createProfile(name: String): ProfileDto = withContext(Dispatchers.IO) {
+        api.createProfile(mapOf("name" to name)).profile
+            ?: error("No se pudo crear el perfil")
+    }
+
+    suspend fun activateProfile(id: String, pin: String = "") = withContext(Dispatchers.IO) {
+        api.activateProfile(id, if (pin.isBlank()) emptyMap() else mapOf("pin" to pin))
+    }
+
+    suspend fun updateProfile(id: String, name: String, language: String): ProfileDto =
+        withContext(Dispatchers.IO) {
+            api.updateProfile(id, mapOf("name" to name, "contentLanguage" to language)).profile
+                ?: error("No se pudo guardar el perfil")
+        }
 
     suspend fun catalog(
         type: String,

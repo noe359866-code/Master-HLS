@@ -14,11 +14,13 @@ import com.vibeflix.tv.ui.screens.search.SearchScreen
 import com.vibeflix.tv.ui.screens.detail.DetailScreen
 import com.vibeflix.tv.ui.screens.home.HomeScreen
 import com.vibeflix.tv.ui.screens.player.PlayerScreen
+import com.vibeflix.tv.ui.screens.profiles.ProfilesScreen
 import com.vibeflix.tv.util.HeaderCodec
 import java.net.URLDecoder
 import java.net.URLEncoder
 
 object Routes {
+    const val PROFILES = "profiles"
     const val HOME = "home"
     const val DETAIL = "detail/{type}/{id}"
     const val PLAYER = "player/{type}/{id}?url={url}&name={name}&title={title}&h={h}&sub={sub}"
@@ -87,9 +89,25 @@ object Routes {
 
 @Composable
 fun VibeFlixNavHost(navController: NavHostController) {
-    NavHost(navController = navController, startDestination = Routes.HOME) {
+    NavHost(navController = navController, startDestination = Routes.PROFILES) {
+        composable(Routes.PROFILES) {
+            ProfilesScreen(
+                onEntered = {
+                    val previous = navController.previousBackStackEntry?.destination?.route
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(if (previous == Routes.HOME) Routes.HOME else Routes.PROFILES) {
+                            inclusive = true
+                        }
+                    }
+                },
+                onBack = { navController.popBackStack() },
+                canGoBack = navController.previousBackStackEntry != null,
+            )
+        }
+
         composable(Routes.HOME) {
             HomeScreen(
+                onOpenProfiles = { navController.navigate(Routes.PROFILES) },
                 onOpenDetail = { type, id -> navController.navigate(Routes.detail(type, id)) },
                 onOpenAddons = { navController.navigate("addons") },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
@@ -111,11 +129,11 @@ fun VibeFlixNavHost(navController: NavHostController) {
                 type = type,
                 id = id,
                 onBack = { navController.popBackStack() },
-                onPlay = { streamUrl, streamName, title, headers, subtitleUrl ->
+                onPlay = { episodeId, streamUrl, streamName, title, headers, subtitleUrl ->
                     navController.navigate(
                         Routes.player(
-                            type = type,
-                            id = id,
+                            type = if (episodeId == id) type else "episode",
+                            id = episodeId,
                             url = streamUrl,
                             name = streamName,
                             title = title,

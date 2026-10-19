@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
+import { api } from '../api';
 import { useApp } from '../store';
+import { ProfilePreferences, languageLabel } from './ProfilePreferences';
 import { PageHeader } from '../components/PageHeader';
 import { Button, EmptyState, Modal } from '../components/ui';
 
@@ -8,23 +10,29 @@ const AVATARS = ['👤', '🧑', '👩', '👨', '🧒', '🐱', '🐼', '🚀',
 const COLORS = ['#5b8cff', '#ff5b8c', '#4cd964', '#ffb340', '#9d7bff', '#40c8e0'];
 
 export function ProfilesScreen() {
-  const { profiles, activeProfile, setActiveProfile, navigate } = useApp();
+  const { profiles, activeProfile, setActiveProfile, refreshAll, navigate } = useApp();
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState(AVATARS[0]!);
   const [color, setColor] = useState(COLORS[0]!);
   const [pinProfile, setPinProfile] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const { api } = await import('../api');
-    await api.createProfile({ name: trimmed, avatar, color });
-    setName('');
-    navigate({ name: 'home' });
-    // Recarga para actualizar la lista de perfiles.
-    window.location.reload();
+    setCreateError(null);
+    try {
+      const profile = await api.createProfile({ name: trimmed, avatar, color });
+      await refreshAll();
+      await setActiveProfile(profile.id);
+      setName('');
+      navigate({ name: 'home' }); // el nuevo perfil elegirá su idioma al entrar
+    } catch (cause) {
+      setCreateError((cause as Error).message);
+    }
   };
 
   return (
@@ -56,6 +64,7 @@ export function ProfilesScreen() {
                 {profile.avatar}
               </span>
               <span className="profile__name">{profile.name}</span>
+              <span className="profile__language">{languageLabel(profile.contentLanguage)}</span>
             </button>
           ))}
         </div>
@@ -98,6 +107,24 @@ export function ProfilesScreen() {
         </Modal>
       ) : null}
 
+      {activeProfile && activeProfile.contentLanguage ? (
+        <div className="profiles__edit">
+          <p>Perfil activo: <strong>{activeProfile.name}</strong> · {languageLabel(activeProfile.contentLanguage)}</p>
+          <Button variant="ghost" onClick={() => setEditing(true)}>Editar nombre e idioma</Button>
+        </div>
+      ) : null}
+
+      {editing && activeProfile ? (
+        <Modal title="Editar perfil" onClose={() => setEditing(false)}>
+          <ProfilePreferences
+            key={activeProfile.id}
+            profile={activeProfile}
+            onSaved={() => setEditing(false)}
+            onCancel={() => setEditing(false)}
+          />
+        </Modal>
+      ) : null}
+
       <section className="panel profile-create">
         <h2>Nuevo perfil</h2>
         <input
@@ -133,7 +160,8 @@ export function ProfilesScreen() {
             />
           ))}
         </div>
-        <Button onClick={() => void create()}>Crear perfil</Button>
+        {createError ? <p className="pin-dialog__error" role="alert">{createError}</p> : null}
+        <Button onClick={() => void create()} disabled={!name.trim()}>Crear perfil</Button>
       </section>
     </div>
   );
