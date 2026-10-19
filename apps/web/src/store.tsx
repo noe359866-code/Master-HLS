@@ -242,9 +242,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [profiles, activeProfileId],
   );
 
+  /**
+   * Navegación con historial del navegador.
+   *
+   * La ruta se guarda en el `history` del navegador para que el botón
+   * «atrás» del mando (BACK) vuelva a la pantalla anterior, igual que en
+   * cualquier aplicación de TV. La URL no cambia: sólo el estado.
+   */
+  const navigate = useCallback((next: Route) => {
+    setRoute(next);
+    try {
+      window.history.pushState({ route: next }, '');
+    } catch {
+      /* navegadores sin history: se ignora */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPop = (event: PopStateEvent) => {
+      const restored = (event.state as { route?: Route } | null)?.route;
+      setRoute(restored ?? { name: 'home' });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const value: AppState = {
     route,
-    navigate: setRoute,
+    navigate,
     manifest,
     catalogs,
     addons,

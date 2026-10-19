@@ -1259,23 +1259,6 @@ img {
   gap: 18px;
 }
 
-.person__header {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.person__header h1 {
-  margin: 0;
-  font-size: 34px;
-  letter-spacing: -0.8px;
-}
-
-.person__subtitle {
-  color: var(--text-dim);
-}
-
 /* ---------------------------------------------------------------- trailer */
 
 .trailer {
@@ -1452,20 +1435,6 @@ img {
   min-height: 100%;
 }
 
-.search-screen__header h1,
-.browse-screen__header h1 {
-  margin: 0 0 4px;
-  font-size: 26px;
-  letter-spacing: -0.6px;
-}
-
-.search-screen__hint,
-.browse-screen__hint {
-  margin: 0 0 14px;
-  color: var(--text-dim);
-  font-size: 13px;
-}
-
 .search-screen__history-header,
 .search-screen__results-header {
   display: flex;
@@ -1500,14 +1469,6 @@ img {
 }
 
 /* ------------------------------------- generos y decadas (estilo WuPlay) */
-
-.browse-screen__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 
 .genre-grid {
   display: grid;
