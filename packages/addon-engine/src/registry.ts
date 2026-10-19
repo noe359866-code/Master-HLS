@@ -23,6 +23,8 @@ import {
   supportsResource,
   supportsType,
 } from './client.js';
+import type { AddonSource } from './source.js';
+import { BUILTIN_METADATA_ID, BuiltinMetadataAddon, DEFAULT_METADATA_BASE_URL } from './builtin.js';
 import { mergeMeta, mergeVideos } from './normalize.js';
 import { sortStreamsByQuality, streamDedupeKey } from './streamQuality.js';
 import {
@@ -44,6 +46,8 @@ export interface InstalledAddon {
   name: string;
   version: string;
   manifestUrl: string;
+  /** true si es el addon de metadata integrada del servidor. */
+  builtin?: boolean;
   manifest: AddonManifest;
   /** Catálogos que aporta este addon (ya filtrados por los que declara). */
   catalogs: CatalogDescriptor[];
@@ -83,7 +87,7 @@ export interface CatalogEntry extends CatalogDescriptor {
 }
 
 export class AddonRegistry {
-  private readonly clients = new Map<string, AddonClient>();
+  private readonly clients = new Map<string, AddonSource>();
   private readonly manifests = new Map<string, AddonManifest>();
   private readonly http: HttpClient;
   private readonly singleFlight = new SingleFlight();
@@ -120,8 +124,9 @@ export class AddonRegistry {
   async refreshAll(): Promise<InstalledAddon[]> {
     const results: InstalledAddon[] = [];
     for (const client of this.clients.values()) {
+      if (client.builtin) continue;
       try {
-        const manifest = await client.manifest({ force: true });
+        const manifest = await client.getManifest({ force: true });
         this.manifests.set(manifest.id, manifest);
         results.push(this.describe(manifest));
       } catch {
@@ -152,6 +157,106 @@ export class AddonRegistry {
 
   get size(): number {
     return this.clients.size;
+  }
+
+  /**
+   * Activa el addon de metadata integrada.
+   *
+   * Permite usar la app sin instalar nada (el "built-in metadata" de WuPlay y
+   * el modo "essential" de NuvioTV). Se registra como un addon mas, asi que
+   * el fan-out, la cache y la fusion funcionan sin casos especiales y puede
+   * convivir con los addons de metadata que instale el usuario.
+   */
+  enableBuiltinMetadata(baseUrl: string = DEFAULT_METADATA_BASE_URL): void {
+    this.disableBuiltinMetadata();
+    const addon = new BuiltinMetadataAddon({ baseUrl, http: this.http });
+    this.clients.set(addon.id, addon);
+    this.manifests.set(addon.id, addon.manifest);
+    this.resourceCache.clear();
+  }
+
+  disableBuiltinMetadata(): void {
+    this.clients.delete(BUILTIN_METADATA_ID);
+    this.manifests.delete(BUILTIN_METADATA_ID);
+    this.resourceCache.clear();
+  }
+
+  get hasBuiltinMetadata(): boolean {
+    return this.clients.has(BUILTIN_METADATA_ID);
+  }
+
+  /**
+   * Busqueda global: consulta en paralelo todos los catalogos que soportan el
+   * extra `search` y fusiona los resultados (WuPlay: buscar y guardar
+   * directamente en una watchlist).
+   */
+  async search(
+    query: string,
+    options: { type?: string; limit?: number } = {},
+  ): Promise<AggregatedResult<CatalogResponse>> {
+    const term = query.trim();
+    const key = `search:${options.type ?? '*'}:${term}`;
+    const cached = this.resourceCache.get(key) as AggregatedResult<CatalogResponse> | undefined;
+    if (cached) return cached;
+
+    const result = await this.singleFlight.run(key, async () => {
+      const tasks: Array<{ addonId: string; type: string; id: string }> = [];
+      for (const manifest of this.manifests.values()) {
+        if (!supportsResource(manifest, 'catalog')) continue;
+        for (const catalog of manifest.catalogs ?? []) {
+          if (options.type && catalog.type !== options.type) continue;
+          if (!catalog.extraSupported?.includes('search')) continue;
+          if (!supportsType(manifest, catalog.type)) continue;
+          tasks.push({ addonId: manifest.id, type: catalog.type, id: catalog.id });
+        }
+      }
+
+      const settled = await Promise.allSettled(
+        tasks.map(async (task) => {
+          const value = await withTimeout(
+            this.clientFor(task.addonId).catalog({
+              type: task.type,
+              id: task.id,
+              extra: { search: term },
+            }),
+            this.fanoutTimeoutMs,
+            `Timeout de ${this.fanoutTimeoutMs}ms`,
+          );
+          return { addonId: task.addonId, value };
+        }),
+      );
+
+      const sources: string[] = [];
+      const errors: Array<{ addonId: string; message: string }> = [];
+      const byId = new Map<string, CatalogResponse['metas'][number]>();
+
+      settled.forEach((outcome, index) => {
+        const addonId = tasks[index]!.addonId;
+        if (outcome.status === 'fulfilled') {
+          if (!sources.includes(addonId)) sources.push(addonId);
+          for (const meta of outcome.value.value.metas) {
+            const existing = byId.get(meta.id);
+            byId.set(meta.id, existing ? { ...meta, ...existing } : meta);
+          }
+        } else {
+          const reason = outcome.reason;
+          errors.push({
+            addonId,
+            message: reason instanceof Error ? reason.message : String(reason),
+          });
+        }
+      });
+
+      const metas = [...byId.values()];
+      return {
+        value: { metas: options.limit ? metas.slice(0, options.limit) : metas },
+        sources,
+        errors,
+      };
+    });
+
+    this.resourceCache.set(key, result);
+    return result;
   }
 
   /** Catalogo unificado de todos los addons instalados. */
@@ -314,7 +419,7 @@ export class AddonRegistry {
     for (const client of this.clients.values()) client.invalidateResourceCache();
   }
 
-  private clientFor(addonId: string): AddonClient {
+  private clientFor(addonId: string): AddonSource {
     const client = this.clients.get(addonId);
     if (!client) throw new AddonError(addonId, 'Addon no instalado');
     return client;
@@ -418,6 +523,7 @@ export class AddonRegistry {
       name: manifest.name,
       version: manifest.version,
       manifestUrl: this.clients.get(manifest.id)?.manifestUrl ?? '',
+      builtin: this.clients.get(manifest.id)?.builtin ?? false,
       manifest,
       catalogs: manifest.catalogs ?? [],
       supports: {

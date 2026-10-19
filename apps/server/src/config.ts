@@ -18,6 +18,8 @@ export interface ServerConfig {
   defaultAddons: string[];
   /** Timeout del fan-out a addons (ms). */
   fanoutTimeoutMs: number;
+  /** Proveedor de metadata integrada (compatible con Cinemeta). */
+  builtInMetadataUrl: string;
   /** Directorio del cliente web compilado (apps/web/dist). */
   webRoot: string;
 }
@@ -45,6 +47,8 @@ export function loadConfig(): ServerConfig {
     publicUrl: publicUrl.replace(/\/$/, ''),
     defaultAddons: envList('DEFAULT_ADDONS'),
     fanoutTimeoutMs: Number(process.env['FANOUT_TIMEOUT_MS'] ?? 10_000),
+    builtInMetadataUrl:
+      process.env['BUILTIN_METADATA_URL'] ?? 'https://v3-cinemeta.strem.io',
     webRoot: process.env['WEB_ROOT'] ?? path.resolve(here, '../../../apps/web/dist'),
   };
 }

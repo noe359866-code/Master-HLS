@@ -4,5 +4,8 @@ export * from './http.js';
 export * from './cache.js';
 export * from './normalize.js';
 export * from './client.js';
+export * from './source.js';
+export * from './builtin.js';
 export * from './registry.js';
 export * from './streamQuality.js';
+export * from './discover.js';

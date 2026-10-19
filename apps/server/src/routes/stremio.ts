@@ -15,7 +15,7 @@
  *   GET /subtitles/{type}/{id}.json
  */
 
-import type { AddonRegistry } from '@master-hls/addon-engine';
+import { findPersonFilmography, findSimilarTitles, type AddonRegistry } from '@master-hls/addon-engine';
 import type { Router, RouteContext } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
@@ -143,39 +143,57 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     sendJson(res, 200, { subtitles: result.value.subtitles });
   });
 
-  /** Busqueda global: consulta todos los catalogos que soportan `search`. */
+  /**
+   * Busqueda global: consulta en paralelo todos los catalogos que soportan el
+   * extra `search` (WuPlay: buscar y guardar el resultado en una watchlist).
+   */
   router.get('/api/search', async ({ res, query }) => {
     const term = (query.get('q') ?? '').trim();
     if (!term) {
       sendJson(res, 200, { metas: [] });
       return;
     }
-    const data = getData();
-    const preferences = new Map(data.catalogPreferences.map((pref) => [pref.key, pref]));
-    const searchable = registry.catalogs().filter((catalog) => {
-      if (preferences.get(`${catalog.type}:${catalog.id}`)?.hidden) return false;
-      const supported = catalog.extraSupported ?? [];
-      return supported.includes('search');
-    });
+    const result = await registry.search(term, { type: query.get('type') ?? undefined });
+    sendJson(res, 200, { metas: result.value.metas });
+  });
 
-    const results = await Promise.all(
-      searchable.map(async (catalog) => {
-        const response = await registry.catalog({
-          type: catalog.type,
-          id: catalog.id,
-          extra: { search: term },
-        });
-        return response.value.metas;
-      }),
-    );
-
-    const byId = new Map<string, (typeof results)[number][number]>();
-    for (const metas of results) {
-      for (const meta of metas) {
-        if (!byId.has(meta.id)) byId.set(meta.id, meta);
-      }
+  /**
+   * Ficha de persona: filmografia completa (WuPlay: "Cast & crew" con ficha
+   * de persona). Se busca por nombre y se filtran los titulos en los que
+   * aparece.
+   */
+  router.get('/api/person', async ({ res, query }) => {
+    const name = (query.get('name') ?? '').trim();
+    if (!name) {
+      sendJson(res, 400, { error: 'Falta name' });
+      return;
     }
-    sendJson(res, 200, { metas: [...byId.values()] });
+    const result = await findPersonFilmography(registry, name, {
+      type: query.get('type') ?? undefined,
+    });
+    sendJson(res, 200, { name: result.name, titles: result.titles, sources: result.sources });
+  });
+
+  /**
+   * Titulos similares (WuPlay: "Similar Titles" desde la ficha de detalle).
+   */
+  router.get('/api/similar', async ({ res, query }) => {
+    const id = (query.get('id') ?? '').trim();
+    const type = query.get('type') ?? 'movie';
+    if (!id) {
+      sendJson(res, 400, { error: 'Falta id' });
+      return;
+    }
+    const metaResult = await registry.meta({ type, id });
+    const meta = metaResult.value.meta;
+    if (!meta) {
+      sendJson(res, 200, { titles: [] });
+      return;
+    }
+    const titles = await findSimilarTitles(registry, meta, {
+      type: query.get('filterType') ?? type,
+    });
+    sendJson(res, 200, { titles });
   });
 }
 

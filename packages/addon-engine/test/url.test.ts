@@ -61,12 +61,19 @@ describe('buildResourceUrl', () => {
     assert.equal(url, 'https://host.tld/meta/series/tt1234567%3A1%3A2.json');
   });
 
-  it('anade el extra de catalogos', () => {
+  it('anade el extra de catalogos EN LA RUTA (estilo canonico de Stremio)', () => {
     const url = buildResourceUrl('https://host.tld/manifest.json', 'catalog', ['movie', 'top'], {
       extra: { genre: 'Action', skip: 0 },
     });
-    assert.ok(url.includes('genre=Action'));
-    assert.ok(url.includes('skip=0'));
+    // Los addons reales (Cinemeta, Torrentio...) leen el extra de la ruta.
+    assert.equal(url, 'https://host.tld/catalog/movie/top/genre=Action&skip=0.json');
+  });
+
+  it('mantiene la query del manifest junto al extra de la ruta', () => {
+    const url = buildResourceUrl('https://host.tld/manifest.json?apiKey=abc', 'catalog', ['movie', 'top'], {
+      extra: { search: 'batman' },
+    });
+    assert.equal(url, 'https://host.tld/catalog/movie/top/search=batman.json?apiKey=abc');
   });
 
   it('da prioridad a la configuracion sobre la query del manifest', () => {

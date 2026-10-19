@@ -1,18 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
 import type { Meta, Stream, Video } from '../types';
-import { Button, ErrorState, Loader, useBackdrop } from '../components/ui';
+import { Button, ErrorState, Loader, Modal, Poster, useBackdrop } from '../components/ui';
 
 export function DetailScreen({ id, type }: { id: string; type: string }) {
-  const { navigate, lists, toggleWatchlistItem, settings } = useApp();
+  const { navigate, lists, toggleWatchlistItem, settings, activeProfile } = useApp();
   const [meta, setMeta] = useState<Meta | null>(null);
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [season, setSeason] = useState<number | null>(null);
   const [episode, setEpisode] = useState<Video | null>(null);
+  const [similar, setSimilar] = useState<Meta[]>([]);
+  const [trailerOpen, setTrailerOpen] = useState(false);
+  const autoplayed = useRef(false);
 
   const backdrop = useBackdrop(meta);
 
@@ -46,6 +49,22 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
     };
   }, [id, type]);
 
+  // Titulos similares (WuPlay: "Similar Titles").
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await api.similar(id, type);
+        if (!cancelled) setSimilar(result.titles);
+      } catch {
+        if (!cancelled) setSimilar([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, type]);
+
   const videos = useMemo(() => meta?.videos ?? [], [meta]);
   const seasons = useMemo(
     () => [...new Set(videos.map((video) => video.season ?? 1))].sort((a, b) => a - b),
@@ -58,6 +77,20 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
         .sort((a, b) => (a.episode ?? a.number ?? 0) - (b.episode ?? b.number ?? 0)),
     [videos, season, seasons],
   );
+
+  // Autoplay: si el perfil lo pide, se reproduce el primer stream disponible.
+  useEffect(() => {
+    if (!activeProfile?.autoplayFirstStream) return;
+    if (autoplayed.current || !streams.length || !meta) return;
+    autoplayed.current = true;
+    play(streams[0]!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streams, meta, activeProfile?.autoplayFirstStream]);
+
+  const trailer = useMemo(() => {
+    const fromMeta = meta?.trailers?.find((entry) => entry.ytId);
+    return fromMeta?.ytId ?? null;
+  }, [meta]);
 
   const isInWatchlist = useMemo(
     () => lists.some((list) => list.items.some((item) => item.id === id)),
@@ -130,6 +163,11 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
               >
                 {isInWatchlist ? '✓ En favoritos' : '+ Favoritos'}
               </Button>
+              {trailer ? (
+                <Button variant="ghost" onClick={() => setTrailerOpen(true)}>
+                  ▶ Trailer
+                </Button>
+              ) : null}
             </div>
           </div>
         </header>
@@ -204,17 +242,59 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
             <h2>Reparto y equipo</h2>
             <div className="cast-list">
               {meta.director?.map((name) => (
-                <span key={`dir-${name}`} className="chip">
+                <button
+                  key={`dir-${name}`}
+                  type="button"
+                  data-focusable="true"
+                  className="chip"
+                  onClick={() => navigate({ name: 'person', person: name })}
+                >
                   🎬 {name}
-                </span>
+                </button>
               ))}
               {meta.cast?.map((name) => (
-                <span key={`cast-${name}`} className="chip">
+                <button
+                  key={`cast-${name}`}
+                  type="button"
+                  data-focusable="true"
+                  className="chip"
+                  onClick={() => navigate({ name: 'person', person: name })}
+                >
                   {name}
-                </span>
+                </button>
               ))}
             </div>
           </section>
+        ) : null}
+
+        {similar.length ? (
+          <section className="detail__section">
+            <h2>Similares</h2>
+            <div className="row__items">
+              {similar.map((item) => (
+                <Poster
+                  key={item.id}
+                  meta={item}
+                  onSelect={(selected) =>
+                    navigate({ name: 'detail', id: selected.id, type: selected.type ?? 'movie' })
+                  }
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {trailerOpen && trailer ? (
+          <Modal title="Trailer" onClose={() => setTrailerOpen(false)}>
+            <div className="trailer">
+              <iframe
+                src={`https://www.youtube.com/embed/${trailer}?autoplay=1&rel=0`}
+                title="Trailer"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </Modal>
         ) : null}
 
         {settings?.showAddonPrefix ? null : null}

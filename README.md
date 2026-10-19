@@ -68,7 +68,7 @@ Y abre <http://localhost:8181>.
 ```bash
 npm run dev          # servidor con recarga (tsx watch) en :8181
 npm run dev -w @master-hls/web   # cliente Vite en :5173 (proxy al servidor)
-npm test             # 76 tests (addon-engine, hls-master, server)
+npm test             # 92 tests (addon-engine, hls-master, server)
 npm run typecheck    # TypeScript estricto en modo estricto
 ```
 
@@ -97,6 +97,8 @@ tocar el cliente.
 | `GET` | `/stream/{type}/{id}.json` | Streams de todos los addons, ordenados por calidad |
 | `GET` | `/subtitles/{type}/{id}.json` | Subtítulos agregados |
 | `GET` | `/api/search?q=` | Búsqueda global en todos los catálogos con `search` |
+| `GET` | `/api/person?name=` | Ficha de persona con su filmografía (cast & crew) |
+| `GET` | `/api/similar?id=&type=` | Títulos similares (por género compartido) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles |
 | `GET` | `/hls/master?url=` | Analiza un master playlist y devuelve variantes + selección |
@@ -166,9 +168,15 @@ cd android
 ## Estado
 
 - [x] Motor de agregación de addons (fan-out, caché, normalización, calidad)
+- [x] Metadata integrada (addon embebido): la app funciona sin instalar nada
+- [x] Ficha de persona con filmografía y títulos similares
 - [x] Núcleo HLS master (parser, selección, proxy)
 - [x] Servidor: addon Stremio local + API de biblioteca + proxy HLS
 - [x] Cliente web TV (React + hls.js, navegación D-pad)
+- [x] Reproductor: pistas de audio y subtítulos (incluidos los externos del
+      stream), continuar donde lo dejó y autoplay del siguiente episodio
+- [x] PIN de perfil aplicado (servidor + cliente)
+- [x] Trailers en la ficha de detalle
 - [x] Shell Android TV (Kotlin, Compose for TV, Media3)
 - [ ] Sincronización multi-dispositivo (servidor ↔ TV ↔ móvil)
 - [ ] Integración de debrid nativa (RealDebrid/AllDebrid/TorBox)

@@ -94,6 +94,13 @@ export interface CatalogPreference {
 export interface AppSettings {
   /** Idioma de la interfaz. */
   language: string;
+  /**
+   * Metadata integrada: permite usar la app sin instalar ningun addon
+   * (el "built-in metadata" de WuPlay / modo "essential" de NuvioTV).
+   */
+  builtInMetadata: boolean;
+  /** Proveedor de la metadata integrada (compatible con Cinemeta). */
+  builtInMetadataUrl: string;
   /** Imagen de fondo preferida en la pantalla de inicio. */
   theme: 'dark' | 'midnight' | 'amoled';
   /** Reproducir trailers en las tarjetas. */
@@ -132,6 +139,8 @@ export interface AppData {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   language: 'es',
+  builtInMetadata: true,
+  builtInMetadataUrl: 'https://v3-cinemeta.strem.io',
   theme: 'dark',
   autoplayTrailers: true,
   itemsPerRow: 8,
@@ -155,6 +164,32 @@ export const DEFAULT_PROFILE: Omit<Profile, 'id' | 'createdAt'> = {
   audioLanguage: 'es',
   subtitleLanguage: 'es',
 };
+
+/**
+ * Completa los campos que falten tras cargar un fichero de datos antiguo.
+ *
+ * El store hace un merge superficial: si el JSON guardado no tiene `settings`
+ * nuevo (por ejemplo un `builtInMetadata` que no existia), se perderia.
+ */
+export function normalizeData(data: AppData): AppData {
+  const settings = data.settings ?? ({} as AppSettings);
+  data.settings = {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    device: {
+      ...DEFAULT_SETTINGS.device,
+      ...(settings.device ?? {}),
+    },
+  };
+  data.addons ??= [];
+  data.profiles ??= [];
+  data.watchlists ??= {};
+  data.history ??= {};
+  data.progress ??= {};
+  data.catalogPreferences ??= [];
+  if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
+  return data;
+}
 
 export function emptyData(): AppData {
   return {

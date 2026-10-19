@@ -10,12 +10,14 @@ import { DEFAULT_PROFILE, type AppData, type ProgressEntry, type WatchlistItem }
 export interface LibraryRouteOptions {
   getData: () => AppData;
   save: (mutate: (data: AppData) => void) => Promise<void>;
+  /** Se invoca cuando cambian los ajustes que afectan al registro de addons. */
+  onSettingsChanged?: (data: AppData) => void;
 }
 
 const MAX_HISTORY = 200;
 
 export function registerLibraryRoutes(router: Router, options: LibraryRouteOptions): void {
-  const { getData, save } = options;
+  const { getData, save, onSettingsChanged } = options;
 
   const profileScope = (profileId: string) => {
     const data = getData();
@@ -77,10 +79,27 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { deleted: true });
   });
 
-  router.post('/api/profiles/:id/activate', async ({ res, params }) => {
+  router.post('/api/profiles/:id/activate', async ({ res, body: rawBody, params }) => {
     const id = params['id'] ?? '';
+    const body = (rawBody ?? {}) as { pin?: string };
+    const profile = getData().profiles.find((entry) => entry.id === id);
+    if (!profile) {
+      sendJson(res, 404, { error: 'Perfil no encontrado' });
+      return;
+    }
+    // Perfil protegido por PIN (WuPlay: "Profile Set PIN").
+    if (profile.pin) {
+      if (body.pin === undefined || body.pin === '') {
+        sendJson(res, 401, { error: 'PIN requerido', requiresPin: true });
+        return;
+      }
+      if (body.pin !== profile.pin) {
+        sendJson(res, 403, { error: 'PIN incorrecto', requiresPin: true });
+        return;
+      }
+    }
     await save((data) => {
-      if (data.profiles.some((profile) => profile.id === id)) data.activeProfileId = id;
+      if (data.profiles.some((entry) => entry.id === id)) data.activeProfileId = id;
     });
     sendJson(res, 200, { activeProfileId: getData().activeProfileId });
   });
@@ -274,6 +293,8 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     await save((data) => {
       Object.assign(data.settings, body);
     });
+    // La metadata integrada vive en el registro de addons: hay que aplicarlo.
+    onSettingsChanged?.(getData());
     sendJson(res, 200, { settings: getData().settings });
   });
 }

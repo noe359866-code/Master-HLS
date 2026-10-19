@@ -9,7 +9,7 @@ import { AddonRegistry, HttpClient } from '@master-hls/addon-engine';
 
 import { loadConfig, type ServerConfig } from './config.js';
 import { JsonStore } from './store.js';
-import { emptyData, DEFAULT_PROFILE, type AppData } from './model.js';
+import { emptyData, normalizeData, DEFAULT_PROFILE, type AppData } from './model.js';
 import { Router, readJsonBody, sendJson, type RouteContext } from './http/router.js';
 import { registerStremioRoutes } from './routes/stremio.js';
 import { registerAddonRoutes } from './routes/addons.js';
@@ -25,6 +25,8 @@ export interface App {
   router: Router;
   /** Reinstala los addons guardados (al arrancar). */
   bootstrap: () => Promise<void>;
+  /** Activa/desactiva la metadata integrada segun los ajustes. */
+  applyBuiltinMetadata: (data: AppData) => void;
   handle: (ctx: RouteContext) => Promise<void>;
 }
 
@@ -53,7 +55,11 @@ export function createApp(overrides: CreateAppOptions = {}): App {
 
   registerStremioRoutes(router, { registry, getData, appVersion: APP_VERSION });
   registerAddonRoutes(router, { registry, getData, save });
-  registerLibraryRoutes(router, { getData, save });
+  registerLibraryRoutes(router, {
+    getData,
+    save,
+    onSettingsChanged: (data) => app.applyBuiltinMetadata(data),
+  });
   registerHlsRoutes(router, {});
 
   router.get('/api/health', ({ res }) => {
@@ -70,8 +76,25 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     store,
     registry,
     router,
+    /** Activa o desactiva el addon de metadata integrada segun los ajustes. */
+    applyBuiltinMetadata(data: AppData) {
+      if (data.settings.builtInMetadata) {
+        registry.enableBuiltinMetadata(
+          data.settings.builtInMetadataUrl || config.builtInMetadataUrl,
+        );
+      } else {
+        registry.disableBuiltinMetadata();
+      }
+    },
     async bootstrap() {
-      const data = await store.load();
+      // El store mantiene el mismo objeto en memoria: `normalizeData` completa
+      // los campos que falten (ajustes nuevos) y se persisten.
+      const data = normalizeData(await store.load());
+      store.mutate(() => undefined);
+      await store.flush();
+
+      // Metadata integrada: la app es utilizable sin instalar addons.
+      this.applyBuiltinMetadata(data);
 
       // Garantiza al menos un perfil (WuPlay arranca pidiendo un perfil).
       if (!data.profiles.length) {

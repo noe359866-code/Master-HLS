@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useApp } from '../store';
-import { Button, EmptyState } from '../components/ui';
+import { Button, EmptyState, Modal } from '../components/ui';
 
 const AVATARS = ['👤', '🧑', '👩', '👨', '🧒', '🐱', '🐼', '🚀', '🎬', '⚽'];
 const COLORS = ['#5b8cff', '#ff5b8c', '#4cd964', '#ffb340', '#9d7bff', '#40c8e0'];
@@ -11,6 +11,9 @@ export function ProfilesScreen() {
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState(AVATARS[0]!);
   const [color, setColor] = useState(COLORS[0]!);
+  const [pinProfile, setPinProfile] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const create = async () => {
     const trimmed = name.trim();
@@ -38,6 +41,13 @@ export function ProfilesScreen() {
               data-focusable="true"
               className={`profile ${profile.id === activeProfile?.id ? 'profile--active' : ''}`}
               onClick={() => {
+                // Perfil protegido por PIN: se pide antes de activar.
+                if (profile.pin) {
+                  setPinProfile(profile.id);
+                  setPin('');
+                  setPinError(null);
+                  return;
+                }
                 void setActiveProfile(profile.id).then(() => navigate({ name: 'home' }));
               }}
             >
@@ -49,6 +59,43 @@ export function ProfilesScreen() {
           ))}
         </div>
       )}
+
+      {pinProfile ? (
+        <Modal title="Introduce el PIN" onClose={() => setPinProfile(null)}>
+          <div className="pin-dialog">
+            <input
+              className="pin-dialog__input"
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(event) => setPin(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void setActiveProfile(pinProfile, pin)
+                    .then(() => {
+                      setPinProfile(null);
+                      navigate({ name: 'home' });
+                    })
+                    .catch((cause: Error) => setPinError(cause.message));
+                }
+              }}
+            />
+            {pinError ? <p className="pin-dialog__error">{pinError}</p> : null}
+            <Button
+              onClick={() => {
+                void setActiveProfile(pinProfile, pin)
+                  .then(() => {
+                    setPinProfile(null);
+                    navigate({ name: 'home' });
+                  })
+                  .catch((cause: Error) => setPinError(cause.message));
+              }}
+            >
+              Entrar
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
 
       <section className="panel profile-create">
         <h2>Nuevo perfil</h2>

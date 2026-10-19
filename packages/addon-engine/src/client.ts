@@ -17,6 +17,7 @@ import {
   normalizeSubtitleResponse,
 } from './normalize.js';
 import { buildConfigureUrl, buildResourceUrl, normalizeManifestUrl, type ResourceKind } from './url.js';
+import type { AddonSource } from './source.js';
 import {
   AddonError,
   type AddonCatalogRequest,
@@ -38,7 +39,7 @@ export interface AddonClientOptions {
   resourceTtlMs?: number;
 }
 
-export class AddonClient {
+export class AddonClient implements AddonSource {
   readonly transport: AddonTransport;
   readonly manifestUrl: string;
 
@@ -56,7 +57,11 @@ export class AddonClient {
   }
 
   get id(): string {
-    return `pending:${this.manifestUrl}`;
+    return this.cachedManifest?.id ?? `pending:${this.manifestUrl}`;
+  }
+
+  get builtin(): boolean {
+    return false;
   }
 
   get configureUrl(): string {
@@ -66,6 +71,10 @@ export class AddonClient {
   /** Manifest cacheado (sin red). */
   get cachedManifest(): AddonManifest | undefined {
     return this.manifestCache.get(this.manifestUrl);
+  }
+
+  async getManifest(options: { force?: boolean } = {}): Promise<AddonManifest> {
+    return this.manifest(options);
   }
 
   async manifest(options: { force?: boolean } = {}): Promise<AddonManifest> {

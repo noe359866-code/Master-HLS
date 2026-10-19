@@ -10,7 +10,7 @@ out/
 *.tsbuildinfo
 
 # Datos locales del servidor (addons, perfiles, historial)
-data/
+/data/
 *.log
 
 # Android

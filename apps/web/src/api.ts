@@ -134,12 +134,22 @@ export const api = {
     await request(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
-  async activateProfile(id: string): Promise<string> {
+  async activateProfile(id: string, pin?: string): Promise<string> {
     const body = await request<{ activeProfileId: string }>(
       `/api/profiles/${encodeURIComponent(id)}/activate`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ pin }) },
     );
     return body.activeProfileId;
+  },
+
+  /** Ficha de persona con su filmografia (cast & crew). */
+  async person(name: string): Promise<{ name: string; titles: Meta[] }> {
+    return request<{ name: string; titles: Meta[] }>(`/api/person${query({ name })}`);
+  },
+
+  /** Titulos similares a partir de un id. */
+  async similar(id: string, type: string): Promise<{ titles: Meta[] }> {
+    return request<{ titles: Meta[] }>(`/api/similar${query({ id, type })}`);
   },
 
   // -------------------------------------------------------------- watchlists

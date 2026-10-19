@@ -25,6 +25,7 @@ export type Route =
   | { name: 'discover' }
   | { name: 'search' }
   | { name: 'detail'; id: string; type: string }
+  | { name: 'person'; person: string }
   | { name: 'player'; id: string; type: string; streamUrl?: string; streamName?: string; title?: string; poster?: string }
   | { name: 'lists' }
   | { name: 'history' }
@@ -49,7 +50,7 @@ interface AppState {
   error: string | null;
   refreshAll: () => Promise<void>;
   reloadLibrary: () => Promise<void>;
-  setActiveProfile: (id: string) => Promise<void>;
+  setActiveProfile: (id: string, pin?: string) => Promise<void>;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
   installAddon: (url: string) => Promise<void>;
   removeAddon: (id: string) => Promise<void>;
@@ -127,8 +128,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [reloadLibrary]);
 
   const setActiveProfile = useCallback(
-    async (id: string) => {
-      await api.activateProfile(id);
+    async (id: string, pin?: string) => {
+      // El servidor responde 401/403 si el perfil esta protegido por PIN.
+      await api.activateProfile(id, pin);
       setActiveProfileId(id);
     },
     [],

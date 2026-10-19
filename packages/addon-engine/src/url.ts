@@ -82,6 +82,10 @@ export type ResourceKind = 'catalog' | 'meta' | 'stream' | 'subtitles' | 'other'
  *
  * `https://host/manifest.json?apiKey=1` + `catalog/movie/top` =>
  * `https://host/catalog/movie/top.json?apiKey=1`
+ *
+ * El `extra` de los catalogos va **en la ruta** (estilo canonico de Stremio:
+ * `/catalog/movie/top/search=batman&skip=100.json`), no en la query: addons
+ * como Cinemeta leen el extra de la ruta y descartan los query params.
  */
 export function buildResourceUrl(
   manifestUrl: string,
@@ -97,11 +101,14 @@ export function buildResourceUrl(
   const url = new URL(`${base}/${pathSegments.join('/')}.json`);
 
   const params = mergeQuery(manifestUrl, options?.config);
-  for (const [key, value] of Object.entries(options?.extra ?? {})) {
-    if (value === undefined || value === null || value === '') continue;
-    params.set(key, String(value));
-  }
   url.search = params.toString();
+
+  const extra = serializeExtra(options?.extra);
+  if (extra) {
+    // El extra va como ultimo segmento de la ruta: `.../top/search=x.json`.
+    url.pathname = `${url.pathname.replace(/\.json$/, '')}/${extra}.json`;
+  }
+
   return url.toString();
 }
 
@@ -126,13 +133,16 @@ export function decodeContentId(id: string): string {
   }
 }
 
-/** `extra` serializado como query: `genre=Action&skip=0`. */
+/**
+ * `extra` serializado como query en estilo ruta: `genre=Action&skip=0`.
+ * Los valores se codifican (un espacio debe ser `%20`), las claves no.
+ */
 export function serializeExtra(extra?: Record<string, string | number | undefined>): string {
   if (!extra) return '';
-  const params = new URLSearchParams();
+  const parts: string[] = [];
   for (const [key, value] of Object.entries(extra)) {
     if (value === undefined || value === null || value === '') continue;
-    params.set(key, String(value));
+    parts.push(`${key}=${encodeURIComponent(String(value))}`);
   }
-  return params.toString();
+  return parts.join('&');
 }

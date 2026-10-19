@@ -38,7 +38,7 @@ function createFetch(): typeof fetch {
     if (manifest) {
       return new Response(JSON.stringify(manifest), { status: 200 });
     }
-    if (url.startsWith('https://meta.tld/catalog/movie/top.json')) {
+    if (url.startsWith('https://meta.tld/catalog/movie/top')) {
       return new Response(
         JSON.stringify({ metas: [{ id: 'tt1', name: 'Pelicula Uno', type: 'movie' }] }),
         { status: 200 },
@@ -46,7 +46,16 @@ function createFetch(): typeof fetch {
     }
     if (url.startsWith('https://meta.tld/meta/movie/tt1.json')) {
       return new Response(
-        JSON.stringify({ meta: { id: 'tt1', name: 'Pelicula Uno', description: 'Desc' } }),
+        JSON.stringify({
+          meta: {
+            id: 'tt1',
+            name: 'Pelicula Uno',
+            description: 'Desc',
+            cast: ['Actor Famoso'],
+            director: ['Directora Famosa'],
+            genres: ['Accion'],
+          },
+        }),
         { status: 200 },
       );
     }
@@ -201,10 +210,71 @@ describe('servidor Master-HLS', () => {
     assert.equal(progress.progress[0]?.position, 120);
   });
 
+  it('devuelve la filmografia de una persona', async () => {
+    const response = await fetch(`${base}/api/person?name=Actor%20Famoso`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { name: string; titles: Array<{ id: string }> };
+    assert.equal(body.name, 'Actor Famoso');
+    assert.equal(body.titles[0]?.id, 'tt1');
+  });
+
+  it('devuelve titulos similares', async () => {
+    const response = await fetch(`${base}/api/similar?id=tt1&type=movie`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { titles: Array<{ id: string }> };
+    assert.ok(Array.isArray(body.titles));
+  });
+
+  it('exige el PIN para activar un perfil protegido', async () => {
+    const created = await fetch(`${base}/api/profiles`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Protegido', pin: '1234' }),
+    });
+    const { profile } = (await created.json()) as { profile: { id: string } };
+
+    const sinPin = await fetch(`${base}/api/profiles/${profile.id}/activate`, { method: 'POST' });
+    assert.equal(sinPin.status, 401);
+
+    const pinMalo = await fetch(`${base}/api/profiles/${profile.id}/activate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin: '0000' }),
+    });
+    assert.equal(pinMalo.status, 403);
+
+    const pinOk = await fetch(`${base}/api/profiles/${profile.id}/activate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin: '1234' }),
+    });
+    assert.equal(pinOk.status, 200);
+  });
+
+  it('puede desactivar la metadata integrada', async () => {
+    const update = await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ builtInMetadata: false }),
+    });
+    assert.equal(update.status, 200);
+
+    const health = (await (await fetch(`${base}/api/health`)).json()) as { addons: number };
+    assert.equal(health.addons, 2);
+
+    // Se vuelve a activar para no arrastrar el cambio a otros tests.
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ builtInMetadata: true }),
+    });
+  });
+
   it('expone el estado de salud', async () => {
     const response = await fetch(`${base}/api/health`);
     const body = (await response.json()) as { ok: boolean; addons: number };
     assert.equal(body.ok, true);
-    assert.equal(body.addons, 2);
+    // 2 addons instalados + el addon de metadata integrada.
+    assert.equal(body.addons, 3);
   });
 });

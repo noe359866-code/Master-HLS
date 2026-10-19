@@ -173,6 +173,10 @@ export interface ProgressEntry {
 
 export interface AppSettings {
   language: string;
+  /** Metadata integrada: usar la app sin instalar addons. */
+  builtInMetadata: boolean;
+  /** Proveedor de la metadata integrada (compatible con Cinemeta). */
+  builtInMetadataUrl: string;
   theme: 'dark' | 'midnight' | 'amoled';
   autoplayTrailers: boolean;
   itemsPerRow: number;

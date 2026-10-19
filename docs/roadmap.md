@@ -26,6 +26,14 @@
   - [x] Gestor de addons y ajustes de dispositivo
 - [x] **Shell Android TV** (Kotlin, Compose for TV, Media3)
 - [x] Addon de demostración para trabajar sin conexión
+- [x] **Metadata integrada** (addon embebido, conmutable desde Ajustes)
+- [x] **Ficha de persona** con filmografía (`/api/person`)
+- [x] **Títulos similares** (`/api/similar`)
+- [x] **Reproductor**: pistas de audio y subtítulos (incluidos los externos del
+      stream), continuar donde lo dejó y autoplay del siguiente episodio
+- [x] **PIN de perfil** aplicado en servidor y cliente
+- [x] **Trailers** en la ficha de detalle
+- [x] `extra` de catálogo en estilo de ruta (estándar real de Stremio)
 
 ## Siguiente
 

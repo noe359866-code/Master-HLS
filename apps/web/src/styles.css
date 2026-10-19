@@ -928,3 +928,63 @@ button {
     flex-direction: column;
   }
 }
+
+/* ------------------------------------------------------- ficha de persona */
+
+.person {
+  gap: 20px;
+}
+
+.person__header h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.person__subtitle {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------- trailer */
+
+.trailer {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #000;
+}
+
+.trailer iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* ------------------------------------------------------------- pin dialog */
+
+.pin-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pin-dialog__input {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 20px;
+  letter-spacing: 8px;
+  text-align: center;
+}
+
+.pin-dialog__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}

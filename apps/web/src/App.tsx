@@ -10,6 +10,7 @@ import { DiscoverScreen, SearchScreen } from './screens/Discover';
 import { HistoryScreen, ListsScreen } from './screens/Library';
 import { AddonsScreen, SettingsScreen } from './screens/Addons';
 import { ProfilesScreen } from './screens/Profiles';
+import { PersonScreen } from './screens/Person';
 
 const TABS: Array<{ route: Route; label: string }> = [
   { route: { name: 'home' }, label: 'Inicio' },
@@ -105,6 +106,7 @@ export function App() {
             {route.name === 'addons' ? <AddonsScreen /> : null}
             {route.name === 'settings' ? <SettingsScreen /> : null}
             {route.name === 'profiles' ? <ProfilesScreen /> : null}
+            {route.name === 'person' ? <PersonScreen person={route.person} /> : null}
           </>
         ) : null}
       </main>

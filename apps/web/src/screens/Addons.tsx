@@ -155,6 +155,23 @@ export function SettingsScreen() {
   return (
     <div className="screen settings">
       <section className="panel">
+        <h2>Metadata integrada</h2>
+        <p className="panel__hint">
+          Permite usar Master-HLS sin instalar ningún addon de metadatos (el «built-in metadata» de
+          WuPlay). Se agrega a los addons que tengas instalados, no los sustituye.
+        </p>
+        <label className="setting">
+          <span>Usar metadata integrada</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={settings.builtInMetadata}
+            onChange={(event) => void saveSettings({ builtInMetadata: event.target.checked })}
+          />
+        </label>
+      </section>
+
+      <section className="panel">
         <h2>Reproducción</h2>
         <label className="setting">
           <span>Autoplay del siguiente episodio</span>

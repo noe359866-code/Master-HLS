@@ -61,6 +61,28 @@ const MOVIES = [
     ],
   },
   {
+    id: 'tt0083658',
+    type: 'movie',
+    name: 'Blade Runner',
+    poster: 'https://images.metahub.space/poster/medium/tt0083658/img',
+    description: 'Un cazador de replicantes en el Los Angeles de 2019.',
+    releaseInfo: '1982',
+    imdbRating: '8.1',
+    genres: ['Sci-Fi', 'Thriller', 'Drama'],
+    runtime: '117 min',
+  },
+  {
+    id: 'tt1856101',
+    type: 'movie',
+    name: 'Blade Runner 2049',
+    poster: 'https://images.metahub.space/poster/medium/tt1856101/img',
+    description: 'Un nuevo replicante descubre un secreto enterrado.',
+    releaseInfo: '2017',
+    imdbRating: '8.0',
+    genres: ['Sci-Fi', 'Drama'],
+    runtime: '164 min',
+  },
+  {
     id: 'tt0903747',
     type: 'series',
     name: 'Breaking Bad',
@@ -178,7 +200,17 @@ const server = http.createServer((req, res) => {
       json(res, { meta: null });
       return;
     }
-    json(res, { meta: { ...meta, cast: ['Mark Hamill', 'Carrie Fisher'], director: ['George Lucas'] } });
+    // Reparto realista: cada titulo tiene el suyo (si no, la ficha de persona
+    // daria falsos positivos).
+    const cast = {
+      tt0111161: { cast: ['Mark Hamill', 'Carrie Fisher'], director: ['George Lucas'] },
+      tt0068646: { cast: ['Jake Gyllenhaal', 'Robert Downey Jr.'], director: ['David Fincher'] },
+      tt6751668: { cast: ['Jerónimo Barón', 'Clara Oviedo'], director: ['Laura Mora'] },
+      tt0903747: { cast: ['Bryan Cranston', 'Aaron Paul'], director: ['Vince Gilligan'] },
+      tt0083658: { cast: ['Harrison Ford', 'Rutger Hauer'], director: ['Ridley Scott'] },
+      tt1856101: { cast: ['Ryan Gosling', 'Harrison Ford'], director: ['Denis Villeneuve'] },
+    };
+    json(res, { meta: { ...meta, ...(cast[base] ?? { cast: [], director: [] }) } });
     return;
   }
 
