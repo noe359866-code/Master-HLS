@@ -1,0 +1,34 @@
+/* Vibe Flix — hoja principal. El diseño vive en ./styles/base.css y el
+   reproductor en ./styles/player.css (se mantiene aparte porque es un
+   bloque grande y autocontenido). */
+@import './styles/base.css';
+@import './styles/player.css';
+
+/* ------------------------------------------------------------- utilidades */
+
+.profiles {
+  align-items: center;
+  gap: 28px;
+}
+
+.lists__create,
+.history__actions,
+.discover__actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.devices {
+  gap: 18px;
+}
+
+.stream--locked {
+  opacity: 0.62;
+  border-style: dashed;
+}
+
+.stream--locked .stream__url {
+  color: var(--accent);
+}
