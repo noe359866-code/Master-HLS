@@ -140,6 +140,19 @@
       («prioriza la variante exacta…»): la prioridad de idioma ordena, no
       oculta — las alternativas del mismo idioma se conservan como fallback
       real. Suite completa en verde.
+- [x] **Revisión de WuPlay** ([docs/wuplay-review.md](wuplay-review.md),
+      releases cerrados: README + CHANGELOG) con sus estándares de subtítulos
+      y comodidad importados:
+  - [x] **Rangos de subtítulo** (v0.5.0/v0.6.5): desfase ±180 s (antes ±15),
+        tamaño mínimo 25 % y posición vertical hasta 95 %.
+  - [x] **Subtítulos forzados por defecto** (v0.4.2): detección `forced` en
+        pistas nativas y externas, se activan aunque los completos no.
+  - [x] **«¿Sigues viendo?»** (v0.6.5): `playback.stillWatchingAfter`
+        (default 3 episodios, 0 = nunca) congela el autoplay hasta confirmar.
+  - [x] **Orden de pistas por idioma preferido → interfaz → alfabético**
+        (v0.8.0): `sortSubtitleTracks` en player-core.
+  - [x] **Exportar datos** (v0.6.5 / Privacy & Data): `GET /api/export` con
+        secretos marcados + panel «Datos y privacidad» en Ajustes.
 
 ## Siguiente
 
@@ -155,6 +168,13 @@
 - [ ] **Tomas de notas y listas por episodio**.
 - [ ] **Semáforo de concurrencia** en el fan-out de addons.
 - [ ] **Firmas `stremioAddonsConfig`** para addons oficiales verificados.
+- [ ] **Random Episode** (WuPlay v0.5.4) en series: botón aleatorio en la
+      ficha, decidiendo si abre el player directo o un candidato en Detail.
+- [ ] **Fallback de streams con temporizador de error** (WuPlay v0.6.4): qué
+      hacer cuando la fuente falla a mitad (rendirse, saltar al siguiente
+      stream, avisar). Requiere diseño.
+- [ ] **Borrado selectivo de datos** (WuPlay Privacy & Data): limpiar
+      historial por título/caché desde el panel de privacidad.
 
 ## Decisiones abiertas
 

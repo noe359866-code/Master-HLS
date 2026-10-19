@@ -507,6 +507,25 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
+        <label className="setting">
+          <span>{t('SETTINGS_STILL_WATCHING')}</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.stillWatchingAfter ?? 3}
+            onChange={(event) =>
+              void saveSettings({
+                playback: { ...settings.playback, stillWatchingAfter: Number(event.target.value) },
+              })
+            }
+          >
+            {[0, 2, 3, 4, 5, 8].map((episodes) => (
+              <option key={episodes} value={episodes}>
+                {episodes === 0 ? t('OFF') : `${episodes} ▶`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="panel__hint">{t('SETTINGS_STILL_WATCHING_HELP')}</p>
         {!essential ? (
           <>
         <label className="setting">
@@ -704,7 +723,7 @@ export function SettingsScreen() {
           <input
             type="range"
             min={0}
-            max={30}
+            max={95}
             step={1}
             data-focusable="true"
             value={settings.subtitles?.verticalPosition ?? 8}
@@ -762,7 +781,7 @@ export function SettingsScreen() {
               void saveSettings({ subtitles: { ...settings.subtitles, delayMs: Number(event.target.value) } })
             }
           >
-            {[-2000, -1000, -500, -250, 0, 250, 500, 1000, 2000].map((ms) => (
+            {[-180000, -60000, -30000, -10000, -5000, -2000, -1000, -500, -250, 0, 250, 500, 1000, 2000, 5000, 10000, 30000, 60000, 180000].map((ms) => (
               <option key={ms} value={ms}>
                 {formatDelay(ms)}
               </option>
@@ -1257,6 +1276,23 @@ export function SettingsScreen() {
         </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'devices' })}>
           Vincular dispositivos
+        </Button>
+      </section>
+
+      <section className="settings-panel">
+        <h2>{t('SETTINGS_PRIVACY')}</h2>
+        <p className="panel__hint">{t('SETTINGS_EXPORT_DATA_HELP')}</p>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            // Descarga directa: el servidor responde con `content-disposition`.
+            const anchor = document.createElement('a');
+            anchor.href = '/api/export';
+            anchor.download = 'vibeflix-export.json';
+            anchor.click();
+          }}
+        >
+          {t('SETTINGS_EXPORT_DATA')}
         </Button>
       </section>
     </div>

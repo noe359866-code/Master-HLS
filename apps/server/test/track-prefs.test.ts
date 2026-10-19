@@ -41,7 +41,7 @@ describe('sanitizeTrackPreferencePatch', () => {
       speed: 100,
       updatedAt: 1,
     });
-    assert.deepEqual(patch, { delayMs: 15_000, speed: 4 });
+    assert.deepEqual(patch, { delayMs: 180_000, speed: 4 });
     assert.deepEqual(sanitizeTrackPreferencePatch({ delayMs: Number.NaN }), {});
   });
 });

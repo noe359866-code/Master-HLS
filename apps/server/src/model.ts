@@ -266,6 +266,11 @@ export interface AppSettings {
     speed: number;
     /** Guardar el progreso cada N segundos (0 = solo al pausar/salir). */
     progressIntervalSeconds: number;
+    /**
+     * «¿Sigues viendo?» tras N episodios avanzados en automático (WuPlay
+     * v0.6.5, por defecto 3). 0 = nunca preguntar.
+     */
+    stillWatchingAfter: number;
   };
   /**
    * Apariencia y comportamiento de los subtitulos.
@@ -386,6 +391,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     thumbnails: true,
     speed: 1,
     progressIntervalSeconds: 15,
+    stillWatchingAfter: 3,
   },
   subtitles: {
     enabled: true,
@@ -435,6 +441,15 @@ export function normalizeData(data: AppData): AppData {
     playback: {
       ...DEFAULT_SETTINGS.playback,
       ...(settings.playback ?? {}),
+      // «¿Sigues viendo?»: entero 0-20 (0 = nunca). Cualquier otro valor cae
+      // al por defecto (3 episodios, como WuPlay v0.6.5).
+      stillWatchingAfter: (() => {
+        const raw = (settings.playback as { stillWatchingAfter?: unknown } | undefined)?.stillWatchingAfter;
+        const value = Number(raw);
+        return Number.isFinite(value) && Number.isInteger(value) && value >= 0 && value <= 20
+          ? value
+          : DEFAULT_SETTINGS.playback.stillWatchingAfter;
+      })(),
     },
     subtitles: {
       ...DEFAULT_SETTINGS.subtitles,

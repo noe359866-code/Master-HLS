@@ -55,8 +55,8 @@ export function sanitizeTrackPreferencePatch(input: unknown): TrackPreferencePat
     patch.subtitleLanguage = (raw.subtitleLanguage ?? '').slice(0, 32);
   }
   if ('delayMs' in raw && typeof raw.delayMs === 'number' && Number.isFinite(raw.delayMs)) {
-    // Mismo rango que el reproductor (±15 s).
-    patch.delayMs = Math.round(clamp(raw.delayMs, -15_000, 15_000));
+    // Mismo rango que el reproductor (±180 s, como WuPlay v0.5.0).
+    patch.delayMs = Math.round(clamp(raw.delayMs, -180_000, 180_000));
   }
   if ('speed' in raw && typeof raw.speed === 'number' && Number.isFinite(raw.speed)) {
     patch.speed = clamp(raw.speed, 0.25, 4);

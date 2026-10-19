@@ -12,6 +12,7 @@ import { saveTrackPreference, sanitizeTrackPreferencePatch } from '../library/tr
 import { maskSecret, restoreSecret } from '../http/security.js';
 import {
   DEFAULT_PROFILE,
+  DEFAULT_SETTINGS,
   type AppData,
   type AppSettings,
   type Profile,
@@ -645,17 +646,36 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { settings: publicSettings(getData().settings) });
   });
 
+  router.get('/api/export', ({ res }) => {
+    // Copia de datos del usuario (WuPlay: «Privacy & Data» de la configuración
+    // web). Los secretos (PIN, claves de API) salen como marcadores, nunca en
+    // claro: el fichero puede compartirse para soporte sin filtrar credenciales.
+    const data = getData();
+    const day = new Date().toISOString().slice(0, 10);
+    res.setHeader('content-disposition', `attachment; filename="vibeflix-export-${day}.json"`);
+    sendJson(res, 200, {
+      app: 'vibe-flix',
+      exportedAt: new Date().toISOString(),
+      ...data,
+      // `publicProfile` sustituye el PIN por un marcador; `publicSettings`
+      // hace lo propio con las claves de API (debrid, OpenSubtitles...).
+      profiles: data.profiles.map(publicProfile),
+      settings: publicSettings(data.settings),
+    });
+  });
+
   router.put('/api/settings', async ({ res, body: rawBody }) => {
     const body = (rawBody ?? {}) as Record<string, unknown>;
     await save((data) => {
       // Los objetos anidados (debrid, device) se fusionan en vez de sustituirse.
-      const { debrid, device, opensubtitles, skipIntro, filters, scrapers, ...rest } = body as {
+      const { debrid, device, opensubtitles, skipIntro, filters, scrapers, playback, ...rest } = body as {
         debrid?: Partial<AppSettings['debrid']>;
         device?: Partial<AppSettings['device']>;
         opensubtitles?: Partial<AppSettings['opensubtitles']>;
         skipIntro?: Partial<AppSettings['skipIntro']>;
         filters?: Partial<AppSettings['filters']>;
         scrapers?: Partial<AppSettings['scrapers']>;
+        playback?: Partial<AppSettings['playback']>;
       } & Record<string, unknown>;
       // `uiMode` solo admite los dos modos documentados (NuvioTV: Essential /
       // Advanced); cualquier otro valor se ignora y conserva el anterior.
@@ -663,6 +683,19 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         delete rest.uiMode;
       }
       Object.assign(data.settings, rest);
+      if (playback) {
+        const next = { ...playback };
+        // «¿Sigues viendo?»: entero 0-20 (0 = nunca); fuera de rango cae al
+        // por defecto (3 episodios, WuPlay v0.6.5), igual que al cargar.
+        if ('stillWatchingAfter' in next) {
+          const value = Number(next.stillWatchingAfter);
+          next.stillWatchingAfter =
+            Number.isInteger(value) && value >= 0 && value <= 20
+              ? value
+              : DEFAULT_SETTINGS.playback.stillWatchingAfter;
+        }
+        data.settings.playback = { ...data.settings.playback, ...next };
+      }
       if (debrid) {
         const next = { ...debrid };
         if ('apiKey' in next) {

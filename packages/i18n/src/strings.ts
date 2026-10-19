@@ -200,6 +200,15 @@ export const EN = {
   PARENTAL_BLOCKED: 'Blocked by parental control',
   PARENTAL_PIN_HINT: 'Enter the profile PIN to play this title.',
   PARENTAL_UNLOCK: 'Unlock',
+  SUBTITLES_FORCED: 'Forced',
+  PLAYER_STILL_WATCHING: 'Are you still watching?',
+  SETTINGS_STILL_WATCHING: 'Are you still watching?',
+  SETTINGS_STILL_WATCHING_HELP:
+    'Ask before continuing the next episode after this many auto-advanced episodes.',
+  SETTINGS_PRIVACY: 'Privacy & data',
+  SETTINGS_EXPORT_DATA: 'Download my data',
+  SETTINGS_EXPORT_DATA_HELP:
+    'Full copy of your profiles, lists, history and settings. PINs and API keys are replaced with markers.',
 
   // -------------------------------------------------------------- Vibe Flix
   VIBE_STREAM_SOURCE: 'Source',
@@ -396,6 +405,15 @@ export const ES: Record<TranslationKey, string> = {
   PARENTAL_BLOCKED: 'Bloqueado por el control parental',
   PARENTAL_PIN_HINT: 'Escribe el PIN del perfil para reproducir este título.',
   PARENTAL_UNLOCK: 'Desbloquear',
+  SUBTITLES_FORCED: 'Forzados',
+  PLAYER_STILL_WATCHING: '¿Sigues viendo?',
+  SETTINGS_STILL_WATCHING: '¿Sigues viendo?',
+  SETTINGS_STILL_WATCHING_HELP:
+    'Pregunta antes de continuar con el siguiente episodio tras esta cantidad de episodios automáticos.',
+  SETTINGS_PRIVACY: 'Datos y privacidad',
+  SETTINGS_EXPORT_DATA: 'Descargar copia de mis datos',
+  SETTINGS_EXPORT_DATA_HELP:
+    'Copia completa de perfiles, listas, historial y ajustes. Los PIN y las claves de API se sustituyen por marcadores.',
 
   VIBE_STREAM_SOURCE: 'Fuente',
   VIBE_HLS_SELECTION: 'Selección del servidor',

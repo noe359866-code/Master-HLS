@@ -81,6 +81,11 @@ instalable como addon en las tres apps existentes.
 | **Recordar pistas/desfase por episodio** | ✅ | ✅ | ✅ (`/api/track-prefs`, por videoId) |
 | Subtítulos solo para audio extranjero | ✅ | ✅ | ✅ (`onlyForForeignAudio`) |
 | Subtítulos SDH limpios / opacidad / colores | ✅ | ✅ | ✅ (Clean SDH + estilo completo) |
+| Subtítulo offset amplio | ✅ (±180 s, v0.5.0) | ✅ | ✅ (±180 s, en reproductor y track-prefs) |
+| Tamaño de subtítulo mínimo / posición vertical | ✅ (25 %, 95 %, v0.6.5) | ✅ | ✅ (25-250 %, 0-95 %) |
+| **Subtítulos forzados por defecto** | ✅ (v0.4.2) | ✅ | ✅ (detección `forced` en pistas y externos) |
+| **Orden de pistas: idioma preferido → interfaz → alfa** | ✅ (v0.8.0) | ✅ | ✅ (`sortSubtitleTracks`) |
+| **«¿Sigues viendo?» tras N episodios** | ✅ (v0.6.5, default 3) | ❌ | ✅ (`playback.stillWatchingAfter`, 0 = nunca) |
 | **Reproducción automática (siguiente episodio)** | ✅ | ✅ | ✅ (tarjeta con cuenta atrás y cancelación) |
 | Continuar donde lo dejaste | ✅ | ✅ | ✅ |
 | Preview thumbnails en scrubbing | ✅ | ❌ | ❌ **no aplica (web)** |
@@ -98,6 +103,7 @@ instalable como addon en las tres apps existentes.
 | Historial y progreso | ✅ | ✅ | ✅ |
 | **Sincronización multi-dispositivo** | ✅ | ✅ | ✅ (código de vinculación, sin cuenta) |
 | Configurador web | ✅ (profile key) | ❌ | ✅ (API + panel web) |
+| **Exportar datos (Privacy & Data)** | ✅ (v0.6.5 + tab web) | ❌ | ✅ (`GET /api/export`, secretos marcados) |
 | Privacidad / sin telemetría | ✅ | ❌ (Sentry) | ✅ |
 
 ### 2.5 Descubrimiento: teclado, buscador, géneros, décadas y personalización
@@ -145,7 +151,7 @@ in web configurator"):
 | Custom screens / hubs | ✅ | ✅ | ❌ **pendiente** |
 | P2P / torrent / usenet | ❌ | ✅ | ❌ (decisión de diseño: solo HTTP) |
 | Compartir en comunidad | ✅ | ❌ | ❌ **pendiente** |
-| Multi-idioma de interfaz | ✅ | ✅ | ⚠️ solo español |
+| Multi-idioma de interfaz | ✅ | ✅ | ✅ (EN/ES con i18n) |
 | **PWA instalable (sin APK)** | ❌ | ❌ | ✅ (manifest + service worker) |
 
 ---

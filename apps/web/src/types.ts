@@ -241,6 +241,8 @@ export interface AppSettings {
     thumbnails: boolean;
     speed: number;
     progressIntervalSeconds: number;
+    /** «¿Sigues viendo?» tras N episodios automáticos (0 = nunca). */
+    stillWatchingAfter: number;
   };
   /** Apariencia y comportamiento de los subtitulos. */
   subtitles: {

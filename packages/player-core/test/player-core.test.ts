@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseHlsImagePlaylist, parseSpritePlaylist, thumbnailAt, thumbnailCss, thumbnailBox, resolveSpriteUrl } from '../src/thumbnails.js';
+import { sortSubtitleTracks } from '../src/labels.js';
 import { backdropFor, bestImage, isTmdbImage, pickWidth, posterFor, resizeTmdbImage, TMDB_POSTER_WIDTHS } from '../src/images.js';
 import { detectCapabilities, displayCeiling, estimateBandwidthMbps, isLowEndDevice, supportedCodecs } from '../src/capabilities.js';
 import { bufferAhead, bufferBehind, bufferHealth, describeStats, droppedRatio } from '../src/stats.js';
@@ -208,11 +209,34 @@ describe('estadisticas', () => {
 });
 
 describe('estilo de subtitulos y modo de video', () => {
+  it('ordena las pistas: idioma preferido, interfaz, alfabetico', () => {
+    const tracks = [
+      { lang: 'pt', label: 'Portugues' },
+      { lang: 'es', label: 'Espanol SDH' },
+      { lang: 'en', label: 'Ingles' },
+      { lang: 'fr', label: 'Frances' },
+      { lang: 'es', label: 'Espanol' },
+    ];
+    const sorted = sortSubtitleTracks(tracks, 'es', 'en');
+    assert.deepEqual(
+      sorted.map((track) => track.label),
+      ['Espanol', 'Espanol SDH', 'Ingles', 'Frances', 'Portugues'],
+    );
+    // Sin preferencias: orden alfabetico estable.
+    const alpha = sortSubtitleTracks(tracks, undefined, undefined);
+    assert.deepEqual(
+      alpha.map((track) => track.label),
+      ['Espanol', 'Espanol SDH', 'Frances', 'Ingles', 'Portugues'],
+    );
+  });
+
   it('completa y limita un estilo parcial', () => {
     const style = normalizeSubtitleStyle({ size: 99, opacity: -1, verticalPosition: 200 });
     assert.equal(style.size, 2.5);
     assert.equal(style.opacity, 0.2);
-    assert.equal(style.verticalPosition, 40);
+    // WuPlay v0.6.5: la posición vertical llega al 95 % y el tamaño al 25 %.
+    assert.equal(style.verticalPosition, 95);
+    assert.equal(normalizeSubtitleStyle({ size: 0.01 }).size, 0.25);
     assert.equal(normalizeSubtitleStyle(null).size, DEFAULT_SUBTITLE_STYLE.size);
     // El color guardado como identificador se resuelve al valor CSS.
     assert.equal(normalizeSubtitleStyle({ color: 'green' }).color, '#9dff9d');

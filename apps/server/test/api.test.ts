@@ -486,4 +486,65 @@ describe('servidor Vibe Flix', () => {
       body: JSON.stringify({ debrid: { provider: '', apiKey: '' } }),
     });
   });
+
+  it('exporta los datos sin secretos y valida «¿sigues viendo?»', async () => {
+    // WuPlay (configuración web → Privacy & Data): descarga de la copia de
+    // datos; los PIN y claves salen marcados, nunca en claro.
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        debrid: { provider: 'realdebrid', apiKey: 'SECRET-KEY' },
+        playback: { stillWatchingAfter: 7 },
+      }),
+    });
+
+    const response = await fetch(`${base}/api/export`);
+    assert.equal(response.status, 200);
+    assert.match(
+      response.headers.get('content-disposition') ?? '',
+      /attachment; filename="vibeflix-export-\d{4}-\d{2}-\d{2}\.json"/,
+    );
+    const body = (await response.json()) as {
+      app: string;
+      profiles: Array<{ pin?: string }>;
+      settings: { debrid: { apiKey?: string }; playback: { stillWatchingAfter: number } };
+    };
+    assert.equal(body.app, 'vibe-flix');
+    assert.equal(body.settings.playback.stillWatchingAfter, 7);
+    // Ni la clave de debrid ni los PIN de perfil viajan en claro.
+    assert.notEqual(body.settings.debrid.apiKey, 'SECRET-KEY');
+    assert.ok(body.settings.debrid.apiKey === '••••' || body.settings.debrid.apiKey === undefined);
+    for (const profile of body.profiles) {
+      assert.notEqual(profile.pin, '1234');
+    }
+
+    // Fuera de 0-20 el valor de «¿sigues viendo?» cae al por defecto (3).
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ playback: { stillWatchingAfter: 99 } }),
+    });
+    const settings = (await (await fetch(`${base}/api/settings`)).json()) as {
+      settings: { playback: { stillWatchingAfter: number } };
+    };
+    assert.equal(settings.settings.playback.stillWatchingAfter, 3);
+
+    // 0 = nunca preguntar, que sí se respeta.
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ playback: { stillWatchingAfter: 0 } }),
+    });
+    const off = (await (await fetch(`${base}/api/settings`)).json()) as {
+      settings: { playback: { stillWatchingAfter: number } };
+    };
+    assert.equal(off.settings.playback.stillWatchingAfter, 0);
+
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ debrid: { provider: '', apiKey: '' } }),
+    });
+  });
 });
