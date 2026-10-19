@@ -109,6 +109,20 @@ function publicSettings(settings: AppSettings): AppSettings {
   };
 }
 
+/** Enmascara credenciales en la configuración de addons al exportar datos. */
+export function sanitizeExportAddons(addons: InstalledAddonRecord[]): InstalledAddonRecord[] {
+  return addons.map((addon) => {
+    if (!addon.config) return { ...addon };
+    const config: Record<string, string> = {};
+    for (const [key, value] of Object.entries(addon.config)) {
+      config[key] = /api.?key|token|secret|password|authorization|credential|private.?key/i.test(key)
+        ? maskSecret(value)
+        : value;
+    }
+    return { ...addon, config };
+  });
+}
+
 export function registerLibraryRoutes(router: Router, options: LibraryRouteOptions): void {
   const { getData, save, onSettingsChanged, onProfileChanged } = options;
 
@@ -602,9 +616,18 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
   // sirve para el siguiente, así que cada vídeo guarda lo suyo.
 
   router.get('/api/track-prefs/:videoId', ({ res, params, query }) => {
-    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const data = getData();
+    const profileId = query.get('profileId') ?? data.activeProfileId;
     const videoId = params['videoId'] ?? '';
-    const pref = getData().trackPrefs[profileId]?.[videoId] ?? null;
+    if (!data.profiles.some((profile) => profile.id === profileId)) {
+      sendJson(res, 404, { error: 'Perfil no encontrado' });
+      return;
+    }
+    if (!videoId || videoId.length > 128) {
+      sendJson(res, 400, { error: 'videoId no válido' });
+      return;
+    }
+    const pref = data.trackPrefs[profileId]?.[videoId] ?? null;
     sendJson(res, 200, { pref });
   });
 
@@ -615,25 +638,39 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       return;
     }
     const body = (rawBody ?? {}) as Record<string, unknown> & { profileId?: string };
-    const profileId = body.profileId ?? query.get('profileId') ?? getData().activeProfileId;
+    const data = getData();
+    const profileId = body.profileId ?? query.get('profileId') ?? data.activeProfileId;
+    if (typeof profileId !== 'string' || !data.profiles.some((profile) => profile.id === profileId)) {
+      sendJson(res, 404, { error: 'Perfil no encontrado' });
+      return;
+    }
     const patch = sanitizeTrackPreferencePatch(body);
     if (!Object.keys(patch).length) {
       sendJson(res, 400, { error: 'Preferencia de pista sin campos válidos' });
       return;
     }
     let saved: ReturnType<typeof saveTrackPreference> = null;
-    await save((data) => {
-      data.trackPrefs ??= {};
-      saved = saveTrackPreference(data.trackPrefs, profileId, videoId, patch);
+    await save((mutable) => {
+      mutable.trackPrefs ??= {};
+      saved = saveTrackPreference(mutable.trackPrefs, profileId, videoId, patch);
     });
     sendJson(res, 200, { pref: saved });
   });
 
   router.delete('/api/track-prefs/:videoId', async ({ res, params, query }) => {
-    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const data = getData();
+    const profileId = query.get('profileId') ?? data.activeProfileId;
     const videoId = params['videoId'] ?? '';
-    await save((data) => {
-      delete data.trackPrefs[profileId]?.[videoId];
+    if (!data.profiles.some((profile) => profile.id === profileId)) {
+      sendJson(res, 404, { error: 'Perfil no encontrado' });
+      return;
+    }
+    if (!videoId || videoId.length > 128) {
+      sendJson(res, 400, { error: 'videoId no válido' });
+      return;
+    }
+    await save((mutable) => {
+      delete mutable.trackPrefs[profileId]?.[videoId];
     });
     sendJson(res, 200, { deleted: true });
   });
@@ -657,6 +694,8 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       app: 'vibe-flix',
       exportedAt: new Date().toISOString(),
       ...data,
+      // Configuraciones de addons también pueden contener tokens o claves.
+      addons: sanitizeExportAddons(data.addons),
       // `publicProfile` sustituye el PIN por un marcador; `publicSettings`
       // hace lo propio con las claves de API (debrid, OpenSubtitles...).
       profiles: data.profiles.map(publicProfile),

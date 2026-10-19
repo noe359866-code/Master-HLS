@@ -43,6 +43,10 @@ const PROTECTED_API_PREFIXES = [
   '/api/progress',
   '/api/ratings',
   '/api/recommended',
+  // El export contiene historial completo y configuraciones de addons.
+  '/api/export',
+  // Las preferencias están separadas por perfil y pueden revelar hábitos.
+  '/api/track-prefs',
   // Los scrapers pueden iniciar descargas y su GET incluye configuración.
   '/api/scrapers',
 ];
