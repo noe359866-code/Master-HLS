@@ -92,19 +92,36 @@ export class ScraperRegistry {
       candidates.map(({ provider }) => this.runProvider(provider, request, context)),
     );
 
-    let best = -1;
-    const sources: ScrapedSource[] = [];
+    // No descartes las fuentes de menor prioridad cuando una fuente preferida
+    // responde: puede fallar al abrirse, expirar su token o no ser compatible
+    // con el dispositivo. Stremio necesita alternativas reales para fallback.
+    // La preferencia de idioma/categoría se usa para ordenar, no para ocultar.
+    const ranked: Array<{ source: ScrapedSource; rank: number; order: number }> = [];
     settled.forEach((result, index) => {
       if (!result.sources.length) return;
       const candidate = candidates[index]!;
       const rank = candidate.language * 10 + candidate.kind;
-      if (rank > best) {
-        best = rank;
-        sources.length = 0;
+      for (const source of result.sources) {
+        ranked.push({ source, rank, order: index });
       }
-      if (rank === best) sources.push(...result.sources);
     });
-    return mergeSources(sources);
+
+    // mergeSources deduplica URLs y ordena por calidad. Aplicamos después la
+    // prioridad de perfil como criterio principal y mantenemos calidad dentro
+    // de cada nivel. Así las alternativas siguen presentes tras las preferidas.
+    const merged = mergeSources(ranked.map(({ source }) => source));
+    const priority = new Map<string, { rank: number; order: number }>();
+    for (const entry of ranked) {
+      const current = priority.get(entry.source.url);
+      if (!current || entry.rank > current.rank) {
+        priority.set(entry.source.url, { rank: entry.rank, order: entry.order });
+      }
+    }
+    return merged.sort((a, b) => {
+      const pa = priority.get(a.url) ?? { rank: 0, order: 0 };
+      const pb = priority.get(b.url) ?? { rank: 0, order: 0 };
+      return pb.rank - pa.rank || pa.order - pb.order;
+    });
   }
 
   /** Consulta un proveedor con timeout y captura de errores. */
