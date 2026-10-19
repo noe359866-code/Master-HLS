@@ -27,6 +27,8 @@ export interface DeviceRouteOptions {
   save: (mutate: (data: AppData) => void) => Promise<void>;
   /** Token de la peticion en curso (cabecera `X-Vibe-Flix-Token`). */
   getToken?: (ctx: RouteContext) => string | undefined;
+  /** Indica al cliente que el servidor exige `ADMIN_TOKEN`. */
+  adminRequired?: boolean;
 }
 
 const CODE_TTL_MS = 10 * 60_000;
@@ -50,6 +52,7 @@ function touch(device: PairedDevice): void {
 
 export function registerDeviceRoutes(router: Router, options: DeviceRouteOptions): void {
   const { getData, save, getToken } = options;
+  const adminRequired = Boolean(options.adminRequired);
 
   const tokenOf = (ctx: RouteContext): string | undefined => {
     const explicit = getToken?.(ctx);
@@ -197,6 +200,7 @@ export function registerDeviceRoutes(router: Router, options: DeviceRouteOptions
     const current = findDevice(tokenOf(ctx));
     sendJson(ctx.res, 200, {
       pairingRequired: list.length > 0,
+      adminRequired,
       authenticated: list.length === 0 || Boolean(current),
       device: current ? { id: current.id, name: current.name } : null,
     });

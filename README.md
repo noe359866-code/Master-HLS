@@ -57,21 +57,40 @@ Para probarlo **sin Internet** (addon de demostración con catálogo, metadatos,
 streams HLS y subtítulos reales):
 
 ```bash
+ALLOW_PRIVATE_HOSTS=1 npm start        # el addon de demo vive en 127.0.0.1
 node scripts/demo-addon.mjs 8182       # addon Stremio de demo en :8182
 curl -X POST http://localhost:8181/api/addons \
   -H 'content-type: application/json' \
   -d '{"manifestUrl":"http://127.0.0.1:8182/manifest.json"}'
 ```
 
+`ALLOW_PRIVATE_HOSTS=1` solo es necesario porque el addon de demo escucha en
+loopback; sin esa variable el guardia SSRF rechaza manifests y fuentes que
+apuntan a la red local.
+
 Y abre <http://localhost:8181>.
+
+### Variables de entorno
+
+| Variable | Por defecto | Uso |
+| --- | --- | --- |
+| `PORT` / `HOST` | `8181` / `0.0.0.0` | Escucha del servidor |
+| `PUBLIC_URL` | `http://localhost:${PORT}` | URL con la que se publican el manifest y los enlaces del proxy HLS |
+| `DATA_DIR` | `./data` | JSON de perfiles, ajustes, addons e historial (se escribe `0600`) |
+| `ADMIN_TOKEN` | vacío | Exige token en scrapers, mutaciones de configuración y emisión de vínculos |
+| `ALLOW_PRIVATE_HOSTS` | `0` | `1` permite scrapers/addons/HLS en la LAN; **no** lo uses expuesto a Internet |
+| `DEFAULT_ADDONS` | vacío | Manifests a instalar en el primer arranque (separados por comas) |
+| `FANOUT_TIMEOUT_MS` | `10000` | Tiempo máximo del fan-out a addons |
+| `BUILTIN_METADATA_URL` | Cinemeta | Origen de la metadata integrada |
 
 ### Desarrollo
 
 ```bash
 npm run dev          # servidor con recarga (tsx watch) en :8181
-npm run dev -w @vibe-flix/web   # cliente Vite en :5173 (proxy al servidor)
+npm run dev -w @vibeflix/web   # cliente Vite en :5173 (proxy al servidor)
 npm test             # suites de addon-engine, HLS, skip-intro, scrapers y servidor
-npm run typecheck    # TypeScript estricto en modo estricto
+npm run typecheck    # TypeScript estricto (paquetes, servidor y scripts)
+npm run verify:scrapers -- --help  # verificación en vivo de proveedores
 ```
 
 ---
@@ -106,6 +125,7 @@ tocar el cliente.
 | `GET`/`POST` | `/api/debrid` · `/api/debrid/test` | Estado y comprobación del proveedor de debrid |
 | `GET`/`PUT` | `/api/scrapers` | Estado y adaptadores realmente implementados/activos; `liveVerified: false` no implica disponibilidad |
 | `GET` | `/api/scrapers/upstream` | Inventario de referencia por idioma: VOD registrado, IPTV y archivos no registrados; **no** fuentes instaladas |
+| `GET` | `/api/scrapers/coverage` | Cobertura real: 9/51 puertos VOD, 42 pendientes, parciales y verificados en vivo (0) |
 | `POST` | `/api/scrapers/test` | Prueba avanzada de un proveedor activo (`providerId`, título, tipo, ID TMDb, temporada/episodio) |
 | `GET`/`POST`/`DELETE` | `/api/devices` · `/api/pairing` · `/api/pairing/claim` | Vinculación de dispositivos (biblioteca compartida) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
@@ -211,6 +231,13 @@ embeds y ejecución en paralelo) pero implementado desde cero en TypeScript.
   y `GET /api/scrapers/upstream`. **El inventario no activa esos proveedores**:
   solo los nueve puertos y Archive están en `DEFAULT_PROVIDERS`; IPTV no
   se confunde con capítulos. **42 VOD registrados aún no están portados.**
+  `GET /api/scrapers/coverage` publica ese mismo recuento calculado desde el
+  código, marca `zaluknij` como port parcial y expone la lista de pendientes.
+  Para una comprobación real (no simulada) ejecuta
+  `npm run verify:scrapers -- --title "…" --year 2024 --language es-419`:
+  consulta los sitios, extrae las fuentes y comprueba que respondan un
+  playlist HLS o un flujo de vídeo. Requiere salida a Internet y derechos
+  sobre el contenido.
 - Caché de resultados por título **e idioma del perfil** (5 min), invalidada
   al cambiar el proveedor o editar/cambiar el perfil. Listas, historial,
   progreso y preferencia persisten en `DATA_DIR/vibe-flix.json` (por defecto
@@ -278,8 +305,37 @@ servidor, así que compartirla entre la TV y el móvil no necesita cuentas:
 3. Ambos quedan vinculados y comparten la biblioteca.
 
 Desde ese momento el servidor exige un token (`X-Vibe-Flix-Token`) en las
-rutas de biblioteca. Si no hay ningún dispositivo vinculado, la app sigue
-funcionando en «modo local», sin autenticación.
+rutas de biblioteca y en `/api/scrapers*`. Si no hay ningún dispositivo
+vinculado, la app sigue funcionando en «modo local», sin autenticación. Las
+mutaciones de `/api/addons`, `/api/settings`, `/api/debrid`, `/api/catalogs` y
+`/api/sidebar` también exigen el token del dispositivo (las lecturas siguen abiertas para que el shell Android
+TV cargue ajustes y addons; las claves se devuelven enmascaradas).
+
+---
+
+## Seguridad
+
+- **PIN de perfil.** `POST /api/profiles/:id/activate` exige el PIN. Para
+  cambiarlo o quitarlo, `PUT /api/profiles/:id` exige `currentPin`; también lo
+  exige para editar un perfil protegido que no está activo. Cinco intentos
+  fallidos bloquean el perfil 60 s (`429` con `retryAfterSeconds`). En la web
+  el PIN se define al crear el perfil y se cambia o quita en *Editar perfil*.
+  `DELETE` pide `pin`/`currentPin` en el cuerpo o `X-Vibe-Flix-Pin`. La API
+  nunca devuelve el hash, y `currentPin` no se persiste.
+- **Token de administración.** Define `ADMIN_TOKEN` para exigir
+  `Authorization: Bearer …` o `X-Vibe-Flix-Admin-Token` en `/api/scrapers*`,
+  las mutaciones de `/api/addons`, `/api/settings` y `/api/debrid`, y
+  `POST /api/pairing`. La pantalla de Ajustes permite guardarlo en el
+  navegador. Es la forma recomendada de exponer el servidor fuera de la LAN.
+- **SSRF.** Los scrapers (incluido `POST /api/scrapers/test` y las fuentes
+  propias), los manifests y recursos de addons, `/hls/proxy`, `/hls/master`,
+  `/hls/select` y la descarga de subtítulos resuelven DNS y bloquean loopback,
+  redes privadas, CGNAT, link-local, multicast y rangos reservados **en cada
+  redirección**, antes de conectar. `ALLOW_PRIVATE_HOSTS=1` desactiva el bloqueo para una LAN de
+  confianza (por ejemplo, un addon HLS local) y no debe usarse expuesto a
+  Internet.
+- **Claves.** `GET /api/settings` devuelve `••••` en `debrid.apiKey` y
+  `opensubtitles.apiKey`; al reenviar ese marcador se conserva el valor real.
 
 ---
 
@@ -297,11 +353,12 @@ cd android
   en un dispositivo real, a la IP LAN del servidor.
 - La pantalla inicial de perfiles guarda nombre e idioma en el servidor antes
   de entrar; desde Inicio se puede reabrir para cambiar de perfil/idioma.
-- Este repositorio no trae `android/gradlew`; se necesita una instalación de
-  Gradle/Android SDK para compilar la APK. Esa compilación **no se ha podido
-  verificar** aquí.
-- Antes de compilar hay que exportar el artefacto `hilt.compiler` en el catálogo
-  de versiones (ver `android/gradle/libs.versions.toml`).
+- El wrapper de Gradle **8.14.3** está incluido (`android/gradlew`,
+  `android/gradle/wrapper/`), y el catálogo declara `hilt-compiler`. Solo
+  hace falta JDK 17 y Android SDK 36.
+- Esta compilación **no se ha podido ejecutar** en el entorno de revisión por
+  falta de JDK/Android SDK, no por el wrapper. `./gradlew :app:assembleDebug`
+  resuelve las dependencias desde Google Maven/Maven Central.
 
 ### Reproductor Media3 (HLS optimizado)
 
@@ -564,6 +621,14 @@ búsqueda clásico:
 - [x] **Scrapers nativos**: addon de streams del servidor con proveedores en
       paralelo, resolutor de embeds, desempaquetador de JavaScript y
       proveedores extensibles por configuración (patrón StreamFlix Reborn)
+- [x] **Seguridad**: PIN con `currentPin` y límite de intentos, `ADMIN_TOKEN`,
+      guardia SSRF en scrapers/addons/HLS/subtítulos y claves enmascaradas
+- [x] **Cobertura transparente**: `GET /api/scrapers/coverage` (9/51 portados,
+      42 pendientes, Zaluknij parcial) y `npm run verify:scrapers` para probar
+      los proveedores reales
+- [x] **Wrapper de Gradle 8.14.3** incluido; el workflow de CI compila la APK
+      (no verificable en este entorno sin JDK/Android SDK)
+- [ ] Portar los 42 adaptadores VOD pendientes y verificar reproducción real
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [ ] Watch parties y Chromecast
 

@@ -334,6 +334,25 @@ export interface ScraperProviderInfo {
   types: string[];
   verification: 'mock-tested' | 'not-tested';
   liveVerified: boolean;
+  coverage: 'full' | 'partial';
+  limitations: string[];
+}
+
+/** Cobertura real de los adaptadores frente al inventario de StreamFlix. */
+export interface ScraperCoverage {
+  upstreamVod: number;
+  ported: number;
+  pending: number;
+  partial: string[];
+  mockTested: number;
+  liveVerified: number;
+  extraProviders: string[];
+  pendingProviders: Array<{
+    file: string;
+    languages: string[];
+    media: string[];
+    upstreamUrl: string;
+  }>;
 }
 
 /** Estado de los scrapers nativos en el servidor. */
@@ -343,6 +362,7 @@ export interface ScraperStatus {
   available: ScraperProviderInfo[];
   configs: ProviderConfig[];
   selected: string[];
+  coverage?: ScraperCoverage;
   upstreamInventory?: string;
 }
 

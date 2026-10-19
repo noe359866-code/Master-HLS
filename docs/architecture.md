@@ -243,7 +243,11 @@ contenido de terceros. Consulta [el inventario](streamflix-reborn-inventory.md).
 - `apps/server/src/routes/devices.ts`: códigos de vinculación de 6 caracteres
   con caducidad de 10 minutos; el token viaja en `X-Vibe-Flix-Token` y, en
   cuanto existe un dispositivo vinculado, el servidor lo exige en las rutas de
-  biblioteca (`app.ts`).
+  biblioteca, en `/api/scrapers*` y en las mutaciones de configuración
+  (`/api/addons`, `/api/settings`, `/api/debrid`, `/api/catalogs`,
+  `/api/sidebar`). Las lecturas de ajustes y
+  addons quedan abiertas (con claves enmascaradas) para el shell Android TV
+  (`app.ts`).
 
 ### 5.3 Omitir intro y OpenSubtitles (web)
 
@@ -286,7 +290,9 @@ contenido de terceros. Consulta [el inventario](streamflix-reborn-inventory.md).
   idioma y PIN si procede antes de entrar; desde Home se puede cambiar de
   perfil e idioma. El cambio se persiste mediante la API, y la preferencia
   local de audio en `SettingsStore` se sincroniza con el idioma elegido.
-  **Compilación Android pendiente**: este entorno no tiene Gradle/`gradlew`.
+  **Compilación Android pendiente de verificación**: el wrapper de Gradle
+  8.14.3 sí está incluido (`android/gradlew`), pero este entorno no tiene JDK
+  ni Android SDK para ejecutarlo. El workflow de CI compila la APK.
 
 ### 6.1 Reproductor Media3 (`android/app/src/main/java/com/vibeflix/tv/data/player/`)
 
@@ -391,6 +397,30 @@ El shell Android TV replica el comportamiento de la web:
 - **`HomeScreen`** muestra solo las secciones visibles según
   `settings.sidebar`, de modo que la personalización del menú es la misma en la
   TV y en la web.
+
+## 6.5 PIN, autenticación y SSRF
+
+- **PIN**: `library/profile-pin.ts` guarda `scrypt$sal$hash` y compara en
+  tiempo constante. `PUT /api/profiles/:id` exige `currentPin` para cambiar o
+  quitar el PIN y para editar un perfil protegido que no está activo; `DELETE`
+  acepta `pin`/`currentPin` (cuerpo) o `X-Vibe-Flix-Pin`. `currentPin` nunca se
+  persiste y los campos editables pasan por una lista blanca.
+- **`ADMIN_TOKEN`** (`http/security.ts`): compara en tiempo constante y exige
+  `Authorization: Bearer` o `X-Vibe-Flix-Admin-Token` en `/api/scrapers*`, las
+  mutaciones de addons/ajustes/debrid y `POST /api/pairing`. El token de
+  administrador también satisface la protección por dispositivo, de modo que
+  un cliente de API no encadena dos credenciales.
+- **SSRF** (`packages/scrapers/src/ssrf.ts`): valida esquema, credenciales,
+  literales y **todas** las direcciones DNS; sigue las redirecciones con
+  `redirect: 'manual'` y repite la validación en cada salto. Se aplica al
+  contexto de scrapers, a la validación de proveedores por configuración, al
+  proxy HLS y a la descarga de subtítulos. `ALLOW_PRIVATE_HOSTS=1` es la única
+  vía para permitir destinos privados (LAN de confianza). Limitación conocida:
+  entre la resolución DNS y la conexión hay una ventana de rebinding; para una
+  exposición pública conviene añadir egreso restringido/firewall en el host.
+- **Secretos**: `GET /api/settings` enmascara `debrid.apiKey` y
+  `opensubtitles.apiKey` con `••••`; `restoreSecret` conserva el valor real si
+  el cliente reenvía el marcador.
 
 ## 7. Endurecimiento pendiente
 

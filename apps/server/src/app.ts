@@ -13,6 +13,8 @@ import {
   NATIVE_SCRAPERS_ID,
   NativeScrapersAddon,
   ScraperRegistry,
+  createGuardedFetch,
+  type HostLookup,
   type ProviderConfig,
 } from '@vibeflix/scrapers';
 
@@ -21,6 +23,7 @@ import { JsonStore } from './store.js';
 import { emptyData, normalizeData, DEFAULT_PROFILE, type AppData } from './model.js';
 import { hashProfilePin, isHashedPin } from './library/profile-pin.js';
 import { Router, readJsonBody, sendJson, type RouteContext } from './http/router.js';
+import { hasValidAdminToken, requiresAdminToken } from './http/security.js';
 import { registerStremioRoutes } from './routes/stremio.js';
 import { registerAddonRoutes } from './routes/addons.js';
 import { registerLibraryRoutes } from './routes/library.js';
@@ -40,6 +43,17 @@ const PROTECTED_API_PREFIXES = [
   '/api/progress',
   '/api/ratings',
   '/api/recommended',
+  // Los scrapers pueden iniciar descargas y su GET incluye configuración.
+  '/api/scrapers',
+];
+
+/**
+ * Configuración: solo se protegen las mutaciones. El shell Android TV lee
+ * `/api/addons` y `/api/settings` sin token de dispositivo y no debe romperse
+ * al vincular la web; las lecturas devuelven claves enmascaradas.
+ */
+const PROTECTED_MUTATION_PREFIXES = [
+  '/api/addons', '/api/settings', '/api/debrid', '/api/catalogs', '/api/sidebar',
 ];
 
 export interface App {
@@ -71,6 +85,8 @@ export interface CreateAppOptions extends Partial<ServerConfig> {
   fetchImpl?: typeof fetch;
   /** Factoría del servicio de OpenSubtitles (tests). */
   createOpenSubtitles?: (apiKey: string) => OpenSubtitlesService;
+  /** Resolutor DNS inyectable para el guardia SSRF (tests). */
+  dnsLookup?: HostLookup;
 }
 
 /**
@@ -102,6 +118,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     registry: registryOverride,
     fetchImpl,
     createOpenSubtitles,
+    dnsLookup,
     ...configOverrides
   } = overrides;
   const config = { ...loadConfig(), ...configOverrides };
@@ -109,10 +126,17 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   // rebranding: si existe el antiguo, se migra para no perder la configuracion.
   const store = new JsonStore<AppData>(path.join(config.dataDir, 'vibe-flix.json'), emptyData());
   const getData = () => store.get();
+  // Todos los manifests y recursos de addons pasan por el guardia SSRF. Un
+  // addon (o una redirección) no puede llevar al servidor a su propia LAN.
+  const addonFetch = createGuardedFetch({
+    fetchImpl,
+    lookup: dnsLookup,
+    allowPrivate: config.allowPrivateHosts,
+  });
   const registry =
     registryOverride ??
     new AddonRegistry({
-      http: new HttpClient({ timeoutMs: 12_000, retries: 1 }),
+      http: new HttpClient({ timeoutMs: 12_000, retries: 1, fetchImpl: addonFetch }),
       fanoutTimeoutMs: config.fanoutTimeoutMs,
     });
 
@@ -128,7 +152,11 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   const scrapers = new ScraperRegistry({ timeoutMs: config.fanoutTimeoutMs });
   const nativeScrapers = new NativeScrapersAddon({
     registry: scrapers,
-    context: createScrapeContext({ fetchImpl }),
+    context: createScrapeContext({
+      fetchImpl,
+      lookup: dnsLookup,
+      allowPrivateHosts: config.allowPrivateHosts,
+    }),
     version: APP_VERSION,
     language: () => {
       const data = getData();
@@ -159,7 +187,13 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   };
 
   registerStremioRoutes(router, { registry, getData, appVersion: APP_VERSION, debrid });
-  registerAddonRoutes(router, { registry, getData, save });
+  registerAddonRoutes(router, {
+    registry,
+    getData,
+    save,
+    lookup: dnsLookup,
+    allowPrivateHosts: config.allowPrivateHosts,
+  });
   registerLibraryRoutes(router, {
     getData,
     save,
@@ -177,10 +211,20 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     getData,
     save,
     fetchImpl,
+    dnsLookup,
+    allowPrivateHosts: config.allowPrivateHosts,
     onSettingsChanged: (data) => app.applyScrapers(data),
   });
-  registerHlsRoutes(router, {});
-  registerDeviceRoutes(router, { getData, save });
+  registerHlsRoutes(router, {
+    fetchImpl,
+    lookup: dnsLookup,
+    allowPrivateHosts: config.allowPrivateHosts,
+  });
+  registerDeviceRoutes(router, {
+    getData,
+    save,
+    adminRequired: Boolean(config.adminToken),
+  });
   registerSubtitleRoutes(router, {
     registry,
     getData,
@@ -188,6 +232,8 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     publicUrl: () => config.publicUrl,
     fetchImpl,
     createOpenSubtitles,
+    lookup: dnsLookup,
+    allowPrivateHosts: config.allowPrivateHosts,
   });
 
   router.get('/api/health', ({ res }) => {
@@ -334,9 +380,31 @@ export function createApp(overrides: CreateAppOptions = {}): App {
         sendJson(ctx.res, 404, { error: 'No encontrado' });
         return;
       }
+      const method = ctx.req.method ?? 'GET';
+      const adminAuthorized = Boolean(config.adminToken) &&
+        hasValidAdminToken(ctx.req.headers, config.adminToken);
+
+      // Token de administración: obligatorio para las rutas que pueden
+      // provocar descargas del servidor o cambiar su configuración.
+      if (config.adminToken && requiresAdminToken(method, ctx.url.pathname) && !adminAuthorized) {
+        sendJson(ctx.res, 401, {
+          error: 'Se requiere el token de administración',
+          adminRequired: true,
+        });
+        return;
+      }
+
       // Sincronizacion multi-dispositivo: si hay dispositivos vinculados, la
-      // biblioteca exige un token valido (`X-Vibe-Flix-Token`).
-      if (PROTECTED_API_PREFIXES.some((prefix) => ctx.url.pathname.startsWith(prefix))) {
+      // biblioteca y la configuración exigen un token valido
+      // (`X-Vibe-Flix-Token`). El token de administrador también sirve y
+      // evita tener que encadenar dos credenciales en clientes de API.
+      const isRead = method === 'GET' || method === 'HEAD';
+      const requiresDevice = PROTECTED_API_PREFIXES.some(
+        (prefix) => ctx.url.pathname.startsWith(prefix),
+      ) || (!isRead && PROTECTED_MUTATION_PREFIXES.some(
+        (prefix) => ctx.url.pathname.startsWith(prefix),
+      )) || (ctx.url.pathname === '/api/pairing' && method === 'POST');
+      if (requiresDevice && !adminAuthorized) {
         const list = getData().devices ?? [];
         if (list.length) {
           const header = ctx.req.headers['x-vibe-flix-token'];

@@ -3,6 +3,8 @@
  */
 
 import type { AddonRegistry } from '@vibeflix/addon-engine';
+import { assertPublicHttpUrl, type HostLookup } from '@vibeflix/scrapers';
+
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData, InstalledAddonRecord } from '../model.js';
@@ -11,6 +13,10 @@ export interface AddonRouteOptions {
   registry: AddonRegistry;
   getData: () => AppData;
   save: (mutate: (data: AppData) => void) => Promise<void>;
+  /** Resolutor DNS inyectable (tests). */
+  lookup?: HostLookup;
+  /** Solo LAN de confianza: permite addons en direcciones privadas. */
+  allowPrivateHosts?: boolean;
 }
 
 export function registerAddonRoutes(router: Router, options: AddonRouteOptions): void {
@@ -33,6 +39,17 @@ export function registerAddonRoutes(router: Router, options: AddonRouteOptions):
     };
     if (!body.manifestUrl) {
       sendJson(res, 400, { error: 'Falta manifestUrl' });
+      return;
+    }
+    try {
+      // El servidor descarga el manifest: no puede ser un salto a su LAN.
+      // Un addon local (demo, NAS) requiere ALLOW_PRIVATE_HOSTS=1.
+      await assertPublicHttpUrl(body.manifestUrl, {
+        lookup: options.lookup,
+        allowPrivate: options.allowPrivateHosts,
+      });
+    } catch (error) {
+      sendJson(res, 400, { error: `manifestUrl no permitida: ${(error as Error).message}` });
       return;
     }
     try {

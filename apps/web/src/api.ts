@@ -23,22 +23,49 @@ import type {
   Watchlist,
   WatchlistItem,
 } from './types';
-import { getDeviceToken, setDeviceToken } from './session';
+import { getAdminToken, getDeviceToken, setDeviceToken } from './session';
+
+/** Error HTTP con el mensaje del servidor y la marca `requiresPin`. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly requiresPin: boolean;
+  readonly adminRequired: boolean;
+
+  constructor(status: number, message: string, payload?: Record<string, unknown>) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.requiresPin = payload?.['requiresPin'] === true;
+    this.adminRequired = payload?.['adminRequired'] === true;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getDeviceToken();
+  const adminToken = getAdminToken();
   const response = await fetch(path, {
     ...init,
     headers: {
       'content-type': 'application/json',
       // Token del dispositivo (biblioteca compartida entre dispositivos).
       ...(token ? { 'x-vibe-flix-token': token } : {}),
+      // Token de administración (scrapers, ajustes y emisión de vínculos).
+      ...(adminToken ? { 'x-vibe-flix-admin-token': adminToken } : {}),
       ...(init?.headers ?? {}),
     },
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`${response.status} ${response.statusText}: ${text.slice(0, 200)}`);
+    let payload: Record<string, unknown> | undefined;
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      payload = undefined;
+    }
+    const message = typeof payload?.['error'] === 'string'
+      ? payload['error']
+      : `${response.status} ${response.statusText}: ${text.slice(0, 200)}`;
+    throw new ApiError(response.status, message, payload);
   }
   return (await response.json()) as T;
 }
@@ -128,7 +155,9 @@ export const api = {
     return request('/api/profiles');
   },
 
-  async createProfile(profile: Partial<Profile>): Promise<Profile> {
+  async createProfile(
+    profile: Partial<Profile> & { currentPin?: string },
+  ): Promise<Profile> {
     const body = await request<{ profile: Profile }>('/api/profiles', {
       method: 'POST',
       body: JSON.stringify(profile),
@@ -136,7 +165,10 @@ export const api = {
     return body.profile;
   },
 
-  async updateProfile(id: string, patch: Partial<Profile>): Promise<Profile> {
+  async updateProfile(
+    id: string,
+    patch: Partial<Profile> & { currentPin?: string },
+  ): Promise<Profile> {
     const body = await request<{ profile: Profile }>(`/api/profiles/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(patch),
@@ -144,8 +176,12 @@ export const api = {
     return body.profile;
   },
 
-  async deleteProfile(id: string): Promise<void> {
-    await request(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  /** Borrar un perfil protegido exige su PIN (cuerpo o cabecera). */
+  async deleteProfile(id: string, pin?: string): Promise<void> {
+    await request(`/api/profiles/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      ...(pin ? { body: JSON.stringify({ pin }) } : {}),
+    });
   },
 
   async activateProfile(id: string, pin?: string): Promise<string> {
@@ -257,6 +293,7 @@ export const api = {
   /** Estado de vinculacion del dispositivo. */
   async session(): Promise<{
     pairingRequired: boolean;
+    adminRequired: boolean;
     authenticated: boolean;
     device: { id: string; name: string } | null;
   }> {

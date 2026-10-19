@@ -22,6 +22,7 @@ import {
   type SkipSegment,
 } from '@vibeflix/skip-intro';
 import type { AddonRegistry } from '@vibeflix/addon-engine';
+import { createGuardedFetch, type HostLookup } from '@vibeflix/scrapers';
 
 import type { Router } from '../http/router.js';
 import { sendJson, sendText } from '../http/router.js';
@@ -39,6 +40,10 @@ export interface SubtitleRouteOptions {
   createOpenSubtitles?: (apiKey: string) => OpenSubtitlesService;
   /** `fetch` inyectable para descargar subtitulos (tests). */
   fetchImpl?: typeof fetch;
+  /** Resolutor DNS inyectable para el guardia SSRF (tests). */
+  lookup?: HostLookup;
+  /** Solo LAN de confianza: permite subtitulos en IP privadas. */
+  allowPrivateHosts?: boolean;
 }
 
 interface SubtitleCandidate {
@@ -55,7 +60,12 @@ export function registerSubtitleRoutes(
   options: SubtitleRouteOptions,
 ): void {
   const { registry, getData, cacheDir, publicUrl } = options;
-  const fetchImpl = options.fetchImpl ?? fetch;
+  // La URL del subtitulo la elige el addon: se valida antes de descargarla.
+  const fetchImpl = createGuardedFetch({
+    fetchImpl: options.fetchImpl,
+    lookup: options.lookup,
+    allowPrivate: options.allowPrivateHosts,
+  });
 
   const serviceFor = (apiKey: string) =>
     options.createOpenSubtitles

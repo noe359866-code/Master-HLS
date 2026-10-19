@@ -7,6 +7,7 @@ import { normalizeLanguage } from '@vibeflix/scrapers';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import { hashProfilePin, PIN_PLACEHOLDER, publicProfile, verifyProfilePin } from '../library/profile-pin.js';
+import { maskSecret, restoreSecret } from '../http/security.js';
 import {
   DEFAULT_PROFILE,
   type AppData,
@@ -27,6 +28,36 @@ export interface LibraryRouteOptions {
 }
 
 const MAX_HISTORY = 200;
+
+/** Límite de intentos de PIN por perfil (en memoria; se reinicia al arrancar). */
+const PIN_MAX_FAILURES = 5;
+const PIN_LOCK_MS = 60_000;
+const pinFailures = new Map<string, { failures: number; blockedUntil: number }>();
+
+function pinLockRemaining(profileId: string): number {
+  const entry = pinFailures.get(profileId);
+  if (!entry?.blockedUntil) return 0;
+  const remaining = entry.blockedUntil - Date.now();
+  if (remaining <= 0) {
+    pinFailures.delete(profileId);
+    return 0;
+  }
+  return Math.ceil(remaining / 1000);
+}
+
+function recordPinFailure(profileId: string): void {
+  const entry = pinFailures.get(profileId) ?? { failures: 0, blockedUntil: 0 };
+  entry.failures += 1;
+  if (entry.failures >= PIN_MAX_FAILURES) {
+    entry.failures = 0;
+    entry.blockedUntil = Date.now() + PIN_LOCK_MS;
+  }
+  pinFailures.set(profileId, entry);
+}
+
+function clearPinFailures(profileId: string): void {
+  pinFailures.delete(profileId);
+}
 
 /** Valida el nombre y el idioma antes de persistir el perfil. */
 function profileInput(body: Record<string, unknown>): {
@@ -51,12 +82,28 @@ function profileInput(body: Record<string, unknown>): {
       (typeof body['pin'] !== 'string' || body['pin'].length > 128)) {
     return { error: 'PIN del perfil no válido' };
   }
+  if ('currentPin' in body && body['currentPin'] !== undefined && body['currentPin'] !== null &&
+      (typeof body['currentPin'] !== 'string' || body['currentPin'].length > 128)) {
+    return { error: 'PIN actual no válido' };
+  }
   return { name, contentLanguage };
 }
 
 function storedPin(input: unknown, current?: string): string | undefined {
   if (input === PIN_PLACEHOLDER) return current;
   return typeof input === 'string' && input ? hashProfilePin(input) : undefined;
+}
+
+/** Ajustes aptos para el cliente: las claves solo se representan con un marcador. */
+function publicSettings(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    debrid: { ...settings.debrid, apiKey: maskSecret(settings.debrid.apiKey) },
+    opensubtitles: {
+      ...settings.opensubtitles,
+      apiKey: maskSecret(settings.opensubtitles.apiKey),
+    },
+  };
 }
 
 export function registerLibraryRoutes(router: Router, options: LibraryRouteOptions): void {
@@ -87,10 +134,18 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       sendJson(res, 400, { error: input.error ?? 'PIN del perfil no válido' });
       return;
     }
+    const stringField = (key: 'avatar' | 'color', fallback: string) => {
+      const value = body[key];
+      return typeof value === 'string' && value && value.length <= 32 ? value : fallback;
+    };
     const profile: Profile = {
       ...DEFAULT_PROFILE,
-      ...body,
       name: input.name ?? DEFAULT_PROFILE.name,
+      avatar: stringField('avatar', DEFAULT_PROFILE.avatar),
+      color: stringField('color', DEFAULT_PROFILE.color),
+      autoplay: typeof body.autoplay === 'boolean' ? body.autoplay : DEFAULT_PROFILE.autoplay,
+      autoplayFirstStream: typeof body.autoplayFirstStream === 'boolean'
+        ? body.autoplayFirstStream : DEFAULT_PROFILE.autoplayFirstStream,
       pin: storedPin(body.pin),
       ...(input.contentLanguage ? {
         contentLanguage: input.contentLanguage,
@@ -110,7 +165,8 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
   router.put('/api/profiles/:id', async ({ res, body: rawBody, params }) => {
     const id = params['id'] ?? '';
     const body = (rawBody ?? {}) as Record<string, unknown>;
-    const current = getData().profiles.find((entry) => entry.id === id);
+    const data = getData();
+    const current = data.profiles.find((entry) => entry.id === id);
     if (!current) {
       sendJson(res, 404, { error: 'Perfil no encontrado' });
       return;
@@ -120,27 +176,106 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       sendJson(res, 400, { error: input.error });
       return;
     }
-    const pin = 'pin' in body ? storedPin(body['pin'], current.pin) : undefined;
+
+    const pinProvided = 'pin' in body;
+    const changingPin = pinProvided && body['pin'] !== PIN_PLACEHOLDER;
+    const isActive = data.activeProfileId === id;
+    // Un PIN no se puede quitar ni cambiar sin conocerlo. Además, un perfil
+    // protegido que no está activo no se puede editar sin desbloquearlo: así
+    // tampoco se puede preparar el terreno cambiando el nombre y luego entrar.
+    if (current.pin && (changingPin || !isActive)) {
+      const wait = pinLockRemaining(id);
+      if (wait) {
+        sendJson(res, 429, {
+          error: `Demasiados intentos de PIN. Espera ${wait} s.`,
+          retryAfterSeconds: wait,
+          requiresPin: true,
+        });
+        return;
+      }
+      const given = typeof body['currentPin'] === 'string' ? body['currentPin'] : '';
+      if (!given) {
+        sendJson(res, 401, { error: 'PIN actual requerido', requiresPin: true });
+        return;
+      }
+      if (!verifyProfilePin(current.pin, given)) {
+        recordPinFailure(id);
+        sendJson(res, 403, { error: 'PIN actual incorrecto', requiresPin: true });
+        return;
+      }
+      clearPinFailures(id);
+    }
+
+    // Lista blanca de campos: ni `currentPin` ni claves arbitrarias llegan al
+    // fichero de datos.
+    const patch: Record<string, unknown> = {};
+    if (input.name) patch['name'] = input.name;
+    for (const key of ['avatar', 'color'] as const) {
+      if (key in body) {
+        const value = body[key];
+        if (typeof value !== 'string' || !value || value.length > 32) {
+          sendJson(res, 400, { error: `El campo ${key} no es válido` });
+          return;
+        }
+        patch[key] = value;
+      }
+    }
+    for (const key of ['autoplay', 'autoplayFirstStream'] as const) {
+      if (key in body) {
+        if (typeof body[key] !== 'boolean') {
+          sendJson(res, 400, { error: `El campo ${key} debe ser booleano` });
+          return;
+        }
+        patch[key] = body[key];
+      }
+    }
+    if (input.contentLanguage) {
+      patch['contentLanguage'] = input.contentLanguage;
+      patch['audioLanguage'] = input.contentLanguage.split('-')[0];
+      patch['subtitleLanguage'] = input.contentLanguage.split('-')[0];
+    }
+    if (pinProvided) {
+      patch['pin'] = storedPin(body['pin'], current.pin);
+    }
+
     await save((data) => {
-      const profile = data.profiles.find((entry) => entry.id === id)!;
-      Object.assign(profile, body, {
-        id: profile.id,
-        createdAt: profile.createdAt,
-        ...('pin' in body ? { pin } : {}),
-        ...(input.name ? { name: input.name } : {}),
-        ...(input.contentLanguage ? {
-          contentLanguage: input.contentLanguage,
-          audioLanguage: input.contentLanguage.split('-')[0],
-          subtitleLanguage: input.contentLanguage.split('-')[0],
-        } : {}),
-      });
+      const profile = data.profiles.find((entry) => entry.id === id);
+      if (!profile) return;
+      Object.assign(profile, patch, { id: profile.id, createdAt: profile.createdAt });
     });
     if (getData().activeProfileId === id) onProfileChanged?.();
     sendJson(res, 200, { profile: publicProfile(getData().profiles.find((entry) => entry.id === id)!) });
   });
 
-  router.delete('/api/profiles/:id', async ({ res, params }) => {
+  router.delete('/api/profiles/:id', async ({ res, req, body: rawBody, params }) => {
     const id = params['id'] ?? '';
+    const profile = getData().profiles.find((entry) => entry.id === id);
+    if (profile?.pin) {
+      const wait = pinLockRemaining(id);
+      if (wait) {
+        sendJson(res, 429, {
+          error: `Demasiados intentos de PIN. Espera ${wait} s.`,
+          retryAfterSeconds: wait,
+          requiresPin: true,
+        });
+        return;
+      }
+      const body = (rawBody ?? {}) as { pin?: unknown; currentPin?: unknown };
+      const header = req.headers['x-vibe-flix-pin'];
+      const given = typeof body.currentPin === 'string' ? body.currentPin
+        : typeof body.pin === 'string' ? body.pin
+          : Array.isArray(header) ? header[0] : header;
+      if (!given) {
+        sendJson(res, 401, { error: 'PIN requerido para borrar el perfil', requiresPin: true });
+        return;
+      }
+      if (!verifyProfilePin(profile.pin, given)) {
+        recordPinFailure(id);
+        sendJson(res, 403, { error: 'PIN incorrecto', requiresPin: true });
+        return;
+      }
+      clearPinFailures(id);
+    }
     await save((data) => {
       data.profiles = data.profiles.filter((profile) => profile.id !== id);
       delete data.watchlists[id];
@@ -164,15 +299,26 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     }
     // Perfil protegido por PIN (WuPlay: "Profile Set PIN").
     if (profile.pin) {
+      const wait = pinLockRemaining(id);
+      if (wait) {
+        sendJson(res, 429, {
+          error: `Demasiados intentos de PIN. Espera ${wait} s.`,
+          retryAfterSeconds: wait,
+          requiresPin: true,
+        });
+        return;
+      }
       if (body.pin === undefined || body.pin === '') {
         sendJson(res, 401, { error: 'PIN requerido', requiresPin: true });
         return;
       }
       if (typeof body.pin !== 'string' || body.pin.length > 128 ||
           !verifyProfilePin(profile.pin, body.pin)) {
+        recordPinFailure(id);
         sendJson(res, 403, { error: 'PIN incorrecto', requiresPin: true });
         return;
       }
+      clearPinFailures(id);
     }
     await save((data) => {
       if (data.profiles.some((entry) => entry.id === id)) data.activeProfileId = id;
@@ -440,7 +586,9 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
   // --------------------------------------------------------------- ajustes
 
   router.get('/api/settings', ({ res }) => {
-    sendJson(res, 200, { settings: getData().settings });
+    // Las claves nunca vuelven al cliente: solo el marcador que indica que
+    // existen. Al guardar, el marcador se sustituye por el valor real.
+    sendJson(res, 200, { settings: publicSettings(getData().settings) });
   });
 
   router.put('/api/settings', async ({ res, body: rawBody }) => {
@@ -456,10 +604,20 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         scrapers?: Partial<AppSettings['scrapers']>;
       } & Record<string, unknown>;
       Object.assign(data.settings, rest);
-      if (debrid) data.settings.debrid = { ...data.settings.debrid, ...debrid };
+      if (debrid) {
+        const next = { ...debrid };
+        if ('apiKey' in next) {
+          next.apiKey = restoreSecret(next.apiKey, data.settings.debrid.apiKey);
+        }
+        data.settings.debrid = { ...data.settings.debrid, ...next };
+      }
       if (device) data.settings.device = { ...data.settings.device, ...device };
       if (opensubtitles) {
-        data.settings.opensubtitles = { ...data.settings.opensubtitles, ...opensubtitles };
+        const next = { ...opensubtitles };
+        if ('apiKey' in next) {
+          next.apiKey = restoreSecret(next.apiKey, data.settings.opensubtitles.apiKey);
+        }
+        data.settings.opensubtitles = { ...data.settings.opensubtitles, ...next };
       }
       if (skipIntro) data.settings.skipIntro = { ...data.settings.skipIntro, ...skipIntro };
       if (filters) data.settings.filters = { ...data.settings.filters, ...filters };
@@ -468,6 +626,8 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     // La metadata integrada vive en el registro de addons y el debrid en el
     // servicio de resolucion: hay que aplicar los cambios.
     onSettingsChanged?.(getData());
-    sendJson(res, 200, { settings: getData().settings });
+    // La respuesta tampoco revela las claves: reenviar el marcador las
+    // conserva, así que un PUT puede responder solo con `••••`.
+    sendJson(res, 200, { settings: publicSettings(getData().settings) });
   });
 }

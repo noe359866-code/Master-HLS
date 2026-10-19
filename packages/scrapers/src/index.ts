@@ -16,6 +16,7 @@
 import { HttpClient } from '@vibeflix/addon-engine';
 
 import { DEFAULT_USER_AGENT } from './embed.js';
+import { createGuardedFetch, type HostLookup } from './ssrf.js';
 import { archiveProvider } from './providers/archive.js';
 import { cineHaxProvider } from './providers/cinehax.js';
 import { fanpelisProvider } from './providers/fanpelis.js';
@@ -32,6 +33,7 @@ import type { ProviderConfig, ScrapeContext, ScrapeProvider } from './types.js';
 export * from './types.js';
 export * from './language.js';
 export * from './embed.js';
+export * from './ssrf.js';
 export * from './normalize.js';
 export * from './addon.js';
 export { createConfigProvider, fillTemplate } from './providers/config.js';
@@ -67,6 +69,10 @@ export function createScrapeContext(options: {
   http?: HttpClient;
   fetchImpl?: typeof fetch;
   userAgent?: string;
+  /** Resolutor DNS inyectable (tests); por defecto el del sistema. */
+  lookup?: HostLookup;
+  /** Solo para LAN de confianza: permite proveedores en IP privadas. */
+  allowPrivateHosts?: boolean;
 } = {}): ScrapeContext {
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
   const http =
@@ -75,7 +81,13 @@ export function createScrapeContext(options: {
       timeoutMs: 12_000,
       retries: 1,
       userAgent,
-      fetchImpl: options.fetchImpl,
+      // Todo lo que descargan los scrapers pasa por el guardia SSRF, también
+      // cuando el `fetch` está inyectado en pruebas.
+      fetchImpl: createGuardedFetch({
+        fetchImpl: options.fetchImpl,
+        lookup: options.lookup,
+        allowPrivate: options.allowPrivateHosts,
+      }),
     });
 
   return {

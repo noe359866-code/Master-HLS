@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import { AddonRegistry, HttpClient } from '@vibeflix/addon-engine';
 
 import { createApp, type App } from '../src/app.js';
+import { publicLookup } from './test-dns.js';
 
 const MANIFEST = {
   id: 'com.test.meta',
@@ -92,7 +93,7 @@ describe('generos, decadas, historial y personalizacion', () => {
       http: new HttpClient({ fetchImpl: addonFetch, retries: 0 }),
       fanoutTimeoutMs: 3000,
     });
-    app = createApp({ dataDir, registry, publicUrl: 'http://localhost:0', fetchImpl: addonFetch });
+    app = createApp({ dataDir, registry, publicUrl: 'http://localhost:0', fetchImpl: addonFetch, dnsLookup: publicLookup });
     await app.bootstrap();
     await registry.install('https://meta.tld/manifest.json');
 

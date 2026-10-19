@@ -4,6 +4,7 @@ import { useApp } from '../store';
 import { PageHeader } from '../components/PageHeader';
 import { NAV_ITEMS, DEFAULT_NAV_ORDER } from '../navigation-items';
 import { canInstall, isInstalled, onInstallChange, promptInstall } from '../pwa';
+import { getAdminToken, setAdminToken } from '../session';
 import { api } from '../api';
 import { Button, EmptyState, ErrorState, Loader } from '../components/ui';
 import type { AppSettings, Genre, ProviderConfig, ScraperStatus } from '../types';
@@ -167,6 +168,12 @@ export function SettingsScreen() {
   const [scraperConfigs, setScraperConfigs] = useState('');
   const [scraperMessage, setScraperMessage] = useState<string | null>(null);
   const [scraperError, setScraperError] = useState<string | null>(null);
+  const [adminRequired, setAdminRequired] = useState(false);
+  const [adminTokenInput, setAdminTokenInput] = useState(getAdminToken() ?? '');
+  const [debridKey, setDebridKey] = useState('');
+  const [openSubtitlesKey, setOpenSubtitlesKey] = useState('');
+  const [openSubtitlesMessage, setOpenSubtitlesMessage] = useState<string | null>(null);
+  const [openSubtitlesError, setOpenSubtitlesError] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -175,6 +182,14 @@ export function SettingsScreen() {
     };
     sync();
     return onInstallChange(sync);
+  }, []);
+
+  // El servidor puede exigir ADMIN_TOKEN para la configuración.
+  useEffect(() => {
+    void api
+      .session()
+      .then((result) => setAdminRequired(result.adminRequired))
+      .catch(() => setAdminRequired(false));
   }, []);
 
   // Generos para los filtros de contenido.
@@ -329,6 +344,34 @@ export function SettingsScreen() {
   return (
     <div className="screen settings">
       <PageHeader title="Ajustes" hint="Preferencias del servidor: valen para todos tus dispositivos." />
+      {adminRequired ? (
+        <section className="panel">
+          <h2>Token de administración</h2>
+          <p className="panel__hint">
+            Este servidor exige un token para cambiar la configuración, probar fuentes y emitir
+            vínculos de dispositivos. Pégalo aquí: se guarda solo en este navegador y se envía en
+            cada petición como <code>X-Vibe-Flix-Admin-Token</code>.
+          </p>
+          <div className="addons__install">
+            <input
+              className="addons__input"
+              type="password"
+              autoComplete="off"
+              value={adminTokenInput}
+              placeholder="ADMIN_TOKEN del servidor"
+              onChange={(event) => setAdminTokenInput(event.target.value)}
+            />
+            <Button
+              onClick={() => {
+                setAdminToken(adminTokenInput.trim() || undefined);
+                window.location.reload();
+              }}
+            >
+              Guardar token
+            </Button>
+          </div>
+        </section>
+      ) : null}
       <section className="panel">
         <h2>Metadata integrada</h2>
         <p className="panel__hint">
@@ -423,6 +466,16 @@ export function SettingsScreen() {
           reproducción real ni se garantiza disponibilidad para todos los idiomas o títulos. Los
           canales IPTV del proyecto de referencia no se confunden con episodios.
         </p>
+        {scraperStatus?.coverage ? (
+          <p className="panel__hint">
+            Cobertura upstream: <strong>{scraperStatus.coverage.ported}/{scraperStatus.coverage.upstreamVod}</strong>{' '}
+            adaptadores VOD portados; {scraperStatus.coverage.pending} pendientes
+            {scraperStatus.coverage.partial.length
+              ? ` · parcial: ${scraperStatus.coverage.partial.join(', ')}`
+              : ''}
+            {' '}· {scraperStatus.coverage.liveVerified} verificados en vivo.
+          </p>
+        ) : null}
         <label className="setting">
           <span>Buscar fuentes automáticamente</span>
           <input
@@ -443,8 +496,10 @@ export function SettingsScreen() {
             const active = selected.length === 0 || selected.includes(provider.id);
             return (
               <label className="setting" key={provider.id}>
-                <span>{provider.name}{provider.region ? ` · ${provider.region}` : ''} ·
+                <span title={(provider.limitations ?? []).join(' ')}>
+                  {provider.name}{provider.region ? ` · ${provider.region}` : ''} ·
                   {provider.verification === 'mock-tested' ? ' adaptador probado con mocks' : ' sin pruebas'}
+                  {provider.coverage === 'partial' ? ' · port parcial' : ''}
                 </span>
                 <input
                   type="checkbox"
@@ -529,14 +584,40 @@ export function SettingsScreen() {
           <input
             type="password"
             data-focusable="true"
-            value={settings.debrid.apiKey}
-            placeholder="Clave del proveedor"
-            onChange={(event) =>
-              void saveSettings({ debrid: { ...settings.debrid, apiKey: event.target.value } })
-            }
+            autoComplete="off"
+            value={debridKey}
+            placeholder={settings.debrid.apiKey ? 'Clave guardada (escribe otra para cambiarla)' : 'Clave del proveedor'}
+            onChange={(event) => setDebridKey(event.target.value)}
           />
         </label>
         <div className="addons__install">
+          <Button
+            variant="ghost"
+            disabled={!debridKey.trim()}
+            onClick={() => {
+              if (!debridKey.trim()) return;
+              void saveSettings({ debrid: { ...settings.debrid, apiKey: debridKey } })
+                .then(() => {
+                  setDebridKey('');
+                  setDebridMessage('Clave guardada');
+                })
+                .catch((cause: Error) => setDebridError(cause.message));
+            }}
+          >
+            Guardar clave
+          </Button>
+          {settings.debrid.apiKey ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                void saveSettings({ debrid: { ...settings.debrid, apiKey: '' } })
+                  .then(() => setDebridMessage('Clave borrada'))
+                  .catch((cause: Error) => setDebridError(cause.message));
+              }}
+            >
+              Borrar clave
+            </Button>
+          ) : null}
           <Button variant="ghost" onClick={() => void testDebrid()}>
             Probar conexión
           </Button>
@@ -557,17 +638,44 @@ export function SettingsScreen() {
           <input
             type="password"
             data-focusable="true"
-            value={settings.opensubtitles?.apiKey ?? ''}
-            placeholder="Clave de OpenSubtitles"
-            onChange={(event) =>
-              void saveSettings({
-                opensubtitles: {
-                  apiKey: event.target.value,
-                },
-              })
-            }
+            autoComplete="off"
+            value={openSubtitlesKey}
+            placeholder={settings.opensubtitles?.apiKey ? 'Clave guardada (escribe otra para cambiarla)' : 'Clave de OpenSubtitles'}
+            onChange={(event) => setOpenSubtitlesKey(event.target.value)}
           />
         </label>
+        <div className="addons__install">
+          <Button
+            variant="ghost"
+            disabled={!openSubtitlesKey.trim()}
+            onClick={() => {
+              if (!openSubtitlesKey.trim()) return;
+              void saveSettings({ opensubtitles: { apiKey: openSubtitlesKey } })
+                .then(() => {
+                  setOpenSubtitlesKey('');
+                  setOpenSubtitlesMessage('Clave guardada');
+                  setOpenSubtitlesError(null);
+                })
+                .catch((cause: Error) => setOpenSubtitlesError(cause.message));
+            }}
+          >
+            Guardar clave
+          </Button>
+          {settings.opensubtitles?.apiKey ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                void saveSettings({ opensubtitles: { apiKey: '' } })
+                  .then(() => setOpenSubtitlesMessage('Clave borrada'))
+                  .catch((cause: Error) => setOpenSubtitlesError(cause.message));
+              }}
+            >
+              Borrar clave
+            </Button>
+          ) : null}
+        </div>
+        {openSubtitlesMessage ? <p className="panel__ok">{openSubtitlesMessage}</p> : null}
+        {openSubtitlesError ? <ErrorState message={openSubtitlesError} /> : null}
       </section>
 
       <section className="panel">

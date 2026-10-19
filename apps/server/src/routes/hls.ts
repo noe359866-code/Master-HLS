@@ -15,6 +15,11 @@
  */
 
 import {
+  BlockedDestinationError,
+  createGuardedFetch,
+  type HostLookup,
+} from '@vibeflix/scrapers';
+import {
   isMasterPlaylist,
   parsePlaylist,
   rewritePlaylist,
@@ -30,6 +35,12 @@ export interface HlsRouteOptions {
   /** Cabeceras por defecto que se anaden a las peticiones salientes. */
   defaultHeaders?: Record<string, string>;
   timeoutMs?: number;
+  /** `fetch` inyectable (tests). */
+  fetchImpl?: typeof fetch;
+  /** Resolutor DNS inyectable para el guardia SSRF (tests). */
+  lookup?: HostLookup;
+  /** Solo LAN de confianza: permite HLS servido desde IP privadas. */
+  allowPrivateHosts?: boolean;
 }
 
 function decodeHeaders(raw: string | null): Record<string, string> {
@@ -54,12 +65,19 @@ function encodeHeaders(headers: Record<string, string>): string {
 export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {}): void {
   const timeoutMs = options.timeoutMs ?? 15_000;
   const defaultHeaders = options.defaultHeaders ?? {};
+  // El proxy acepta cualquier URL del query: sin este guardia sería un SSRF
+  // directo contra la red interna del servidor.
+  const guardedFetch = createGuardedFetch({
+    fetchImpl: options.fetchImpl,
+    lookup: options.lookup,
+    allowPrivate: options.allowPrivateHosts,
+  });
 
   const fetchRemote = async (url: string, headers: Record<string, string>) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(url, {
+      return await guardedFetch(url, {
         signal: controller.signal,
         redirect: 'follow',
         headers: {
@@ -123,6 +141,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
       });
       res.end(rewritten);
     } catch (error) {
+      if (error instanceof BlockedDestinationError) {
+        sendText(res, 400, error.message);
+        return;
+      }
       sendText(res, 502, `Fallo del proxy: ${(error as Error).message}`);
     }
   });
@@ -173,7 +195,9 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         url: target,
       });
     } catch (error) {
-      sendJson(res, 502, { error: (error as Error).message });
+      sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
+        error: (error as Error).message,
+      });
     }
   });
 
@@ -202,7 +226,9 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         reason: selection?.reason,
       });
     } catch (error) {
-      sendJson(res, 502, { error: (error as Error).message });
+      sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
+        error: (error as Error).message,
+      });
     }
   });
 }

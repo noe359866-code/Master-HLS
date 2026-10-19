@@ -1306,6 +1306,24 @@ img {
   border-radius: var(--radius-sm);
 }
 
+.profile-preferences__pin .panel__hint {
+  margin: 0;
+  font-weight: 500;
+}
+
+.profile-preferences__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.profile-preferences__checkbox input {
+  width: auto;
+  padding: 0;
+}
+
 .profile-preferences__languages {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

@@ -112,8 +112,9 @@
   - [x] Onboarding/edición de nombre e idioma en web y pantalla de perfiles
         Android TV, persistidos en el JSON del servidor como las listas
   - [x] PIN de perfiles protegido con hash/sal y redacción en la API
-  - [ ] Verificar compilación Android TV con Gradle/SDK: no hay `gradlew` ni
-        `gradle` en este entorno
+  - [ ] Verificar compilación Android TV en un entorno con JDK 17 y Android
+        SDK 36: el wrapper (`android/gradlew`, Gradle 8.14.3) ya está en el
+        repositorio; el CI `.github/workflows/android.yml` la compila
   - [ ] Probar hosts, pistas de audio y reproducción end-to-end **en vivo**
         con autorización: los tests actuales solo simulan respuestas HTTP
   - [ ] Portar los **42** archivos VOD registrados que faltan y completar
