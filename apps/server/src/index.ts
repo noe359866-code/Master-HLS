@@ -29,6 +29,7 @@ const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.webmanifest': 'application/manifest+json',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
   '.map': 'application/json; charset=utf-8',
@@ -49,10 +50,12 @@ async function serveStatic(
     if (stat.isDirectory()) return false;
     const extension = path.extname(target).toLowerCase();
     const content = await fs.readFile(target);
+    // El service worker y el manifest deben revalidarse siempre.
+    const noCache = extension === '.html' || relative === 'sw.js' || relative.endsWith('.webmanifest');
     res.writeHead(200, {
       'content-type': MIME_TYPES[extension] ?? 'application/octet-stream',
       'content-length': content.length,
-      'cache-control': extension === '.html' ? 'no-cache' : 'public, max-age=3600',
+      'cache-control': noCache ? 'no-cache' : 'public, max-age=3600',
     });
     res.end(content);
     return true;
@@ -92,7 +95,7 @@ async function main(): Promise<void> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
     res.setHeader('access-control-allow-origin', '*');
-    res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-allow-headers', 'content-type, x-master-hls-token');
     res.setHeader('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {

@@ -182,6 +182,11 @@ export interface AppSettings {
   itemsPerRow: number;
   showAddonPrefix: boolean;
   preferredStreamAddons: string[];
+  /** Debrid nativo: el servidor resuelve los enlaces premium. */
+  debrid: {
+    provider: 'realdebrid' | 'alldebrid' | 'torbox' | 'premiumize' | '';
+    apiKey: string;
+  };
   device: {
     maxHeight: number;
     maxFrameRate: number;
@@ -189,6 +194,27 @@ export interface AppSettings {
     supportsDolbyVision: boolean;
     preferredCodecs: string[];
   };
+}
+
+/** Valoracion de un titulo ("Me gusta" / "No para mi"). */
+export interface Rating {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string;
+  rating: 'like' | 'dislike';
+  genres?: string[];
+  updatedAt: number;
+}
+
+/** Estado del servicio de debrid en el servidor. */
+export interface DebridStatus {
+  enabled: boolean;
+  provider: 'realdebrid' | 'alldebrid' | 'torbox' | 'premiumize' | null;
+  name: string | null;
+  tag: string | null;
+  hosters: string[];
+  lastError?: string;
 }
 
 export interface MasterInfo {

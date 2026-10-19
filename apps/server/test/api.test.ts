@@ -40,7 +40,12 @@ function createFetch(): typeof fetch {
     }
     if (url.startsWith('https://meta.tld/catalog/movie/top')) {
       return new Response(
-        JSON.stringify({ metas: [{ id: 'tt1', name: 'Pelicula Uno', type: 'movie' }] }),
+        JSON.stringify({
+          metas: [
+            { id: 'tt1', name: 'Pelicula Uno', type: 'movie', genres: ['Accion'] },
+            { id: 'tt2', name: 'Pelicula Dos', type: 'movie', genres: ['Accion'] },
+          ],
+        }),
         { status: 200 },
       );
     }
@@ -270,11 +275,177 @@ describe('servidor Master-HLS', () => {
     });
   });
 
+  it('guarda las valoraciones del perfil', async () => {
+    const response = await fetch(`${base}/api/ratings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'tt1',
+        type: 'movie',
+        name: 'Pelicula Uno',
+        rating: 'like',
+        genres: ['Accion'],
+      }),
+    });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { ratings: Array<{ id: string; rating: string }> };
+    assert.equal(body.ratings[0]?.id, 'tt1');
+    assert.equal(body.ratings[0]?.rating, 'like');
+
+    const listed = (await (await fetch(`${base}/api/ratings`)).json()) as {
+      ratings: Array<{ id: string }>;
+    };
+    assert.equal(listed.ratings.length, 1);
+  });
+
+  it('recomienda titulos segun las valoraciones', async () => {
+    const response = await fetch(`${base}/api/recommended`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { titles: Array<{ id: string }> };
+    // tt1 esta valued, asi que no se recomienda; tt2 comparte genero.
+    assert.deepEqual(
+      body.titles.map((title) => title.id),
+      ['tt2'],
+    );
+  });
+
+  it('quita la valoracion cuando se envia vacia', async () => {
+    await fetch(`${base}/api/ratings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'tt1', type: 'movie', name: 'Pelicula Uno', rating: 'like' }),
+    });
+    const response = await fetch(`${base}/api/ratings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'tt1', type: 'movie', name: 'Pelicula Uno', rating: '' }),
+    });
+    const body = (await response.json()) as { ratings: unknown[] };
+    assert.equal(body.ratings.length, 0);
+  });
+
+  it('vincula dispositivos con un codigo y protege la biblioteca', async () => {
+    // 1) El primer dispositivo pide un codigo de vinculacion.
+    const pairing = await fetch(`${base}/api/pairing`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'TV del salon' }),
+    });
+    assert.equal(pairing.status, 200);
+    const created = (await pairing.json()) as { code: string; token: string };
+    assert.match(created.code, /^[A-Z0-9]{6}$/);
+    assert.ok(created.token.length > 10);
+
+    // 2) A partir de ahi la biblioteca exige token.
+    const sinToken = await fetch(`${base}/api/lists`);
+    assert.equal(sinToken.status, 401);
+
+    const conToken = await fetch(`${base}/api/lists`, {
+      headers: { 'x-master-hls-token': created.token },
+    });
+    assert.equal(conToken.status, 200);
+
+    // 3) Otro dispositivo canjea el codigo.
+    const claim = await fetch(`${base}/api/pairing/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: created.code, name: 'Movil' }),
+    });
+    assert.equal(claim.status, 200);
+    const claimed = (await claim.json()) as { token: string };
+    const list = await fetch(`${base}/api/lists`, {
+      headers: { 'x-master-hls-token': claimed.token },
+    });
+    assert.equal(list.status, 200);
+
+    const devices = (await (await fetch(`${base}/api/devices`)).json()) as {
+      devices: Array<{ name: string }>;
+    };
+    assert.equal(devices.devices.length, 2);
+
+    // 4) Un codigo caducado o inexistente no sirve.
+    const invalido = await fetch(`${base}/api/pairing/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: 'ZZZZZZ', name: 'Invitado' }),
+    });
+    assert.equal(invalido.status, 404);
+
+    // 5) Se desvinculan para no arrastrar el estado a otros tests.
+    const listed = (await (await fetch(`${base}/api/devices`)).json()) as {
+      devices: Array<{ id: string; name: string }>;
+    };
+    const movil = listed.devices.find((entry) => entry.name === 'Movil');
+    const tv = listed.devices.find((entry) => entry.name === 'TV del salon');
+    if (movil) {
+      await fetch(`${base}/api/devices/${movil.id}`, {
+        method: 'DELETE',
+        headers: { 'x-master-hls-token': claimed.token },
+      });
+    }
+    if (tv) {
+      await fetch(`${base}/api/devices/${tv.id}`, {
+        method: 'DELETE',
+        headers: { 'x-master-hls-token': created.token },
+      });
+    }
+    const abierto = await fetch(`${base}/api/lists`);
+    assert.equal(abierto.status, 200);
+  });
+
   it('expone el estado de salud', async () => {
     const response = await fetch(`${base}/api/health`);
     const body = (await response.json()) as { ok: boolean; addons: number };
     assert.equal(body.ok, true);
     // 2 addons instalados + el addon de metadata integrada.
     assert.equal(body.addons, 3);
+  });
+
+  it('configura el proveedor de debrid desde los ajustes', async () => {
+    const update = await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ debrid: { provider: 'realdebrid', apiKey: 'TEST-KEY' } }),
+    });
+    assert.equal(update.status, 200);
+    const settings = (await update.json()) as { settings: { debrid: { provider: string } } };
+    assert.equal(settings.settings.debrid.provider, 'realdebrid');
+
+    const status = (await (await fetch(`${base}/api/debrid`)).json()) as {
+      debrid: { enabled: boolean; provider: string | null; tag: string | null };
+    };
+    assert.equal(status.debrid.enabled, true);
+    assert.equal(status.debrid.provider, 'realdebrid');
+    assert.equal(status.debrid.tag, 'RD');
+
+    // Se desactiva para no arrastrar el cambio a otros tests.
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ debrid: { provider: '', apiKey: '' } }),
+    });
+    const off = (await (await fetch(`${base}/api/debrid`)).json()) as {
+      debrid: { enabled: boolean };
+    };
+    assert.equal(off.debrid.enabled, false);
+  });
+
+  it('informa al verificar las credenciales de debrid', async () => {
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ debrid: { provider: 'realdebrid', apiKey: 'TEST-KEY' } }),
+    });
+    const response = await fetch(`${base}/api/debrid/test`, { method: 'POST' });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { ok: boolean; message: string };
+    assert.equal(typeof body.ok, 'boolean');
+    assert.ok(body.message.length > 0);
+
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ debrid: { provider: '', apiKey: '' } }),
+    });
   });
 });

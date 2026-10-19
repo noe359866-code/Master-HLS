@@ -93,11 +93,15 @@ export function streamDedupeKey(stream: {
   url?: string;
   externalUrl?: string;
   ytId?: string;
+  infoHash?: string;
+  fileIdx?: number;
   name?: string;
   title?: string;
 }): string {
   if (stream.url) return `url:${stream.url}`;
   if (stream.externalUrl) return `ext:${stream.externalUrl}`;
   if (stream.ytId) return `yt:${stream.ytId}`;
+  // Torrents: el mismo hash con distinto archivo son streams distintos.
+  if (stream.infoHash) return `hash:${stream.infoHash}:${stream.fileIdx ?? ''}`;
   return `name:${stream.name ?? stream.title ?? ''}`;
 }

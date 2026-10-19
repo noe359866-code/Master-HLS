@@ -34,28 +34,41 @@
 - [x] **PIN de perfil** aplicado en servidor y cliente
 - [x] **Trailers** en la ficha de detalle
 - [x] `extra` de catálogo en estilo de ruta (estándar real de Stremio)
+- [x] **Debrid nativo en el servidor** (Real-Debrid, AllDebrid, TorBox,
+      Premiumize): resuelve magnet y hosters premium, cachea el enlace y
+      degrada con elegancia si el proveedor falla
+- [x] **PWA instalable** (manifest + service worker + iconos): la web TV se
+      instala como app en Android TV sin depender del APK
+- [x] **Sincronización multi-dispositivo** por código de vinculación (sin
+      cuenta), con token por dispositivo
+- [x] **Valoraciones** («Me gusta» / «No para mí») y **recomendaciones
+      personalizadas** por género
+- [x] **Catálogos predefinidos** en la metadata integrada (Populares, Mejor
+      valorados, Estrenos)
+- [x] Streams de torrent (`infoHash` sin URL) ya no se descartan
 
 ## Siguiente
 
-- [ ] **Sincronización multi-dispositivo** — la biblioteca ya está en el
-      servidor; falta autenticación ligera (token por dispositivo) y push.
-- [ ] **Debrid nativo** — RealDebrid / AllDebrid / TorBox / Premiumize con
-      resolución de enlaces y caché en el motor de streams.
 - [ ] **Plugins estilo Nuvio** — repositorios de plugins y CloudStream.
+- [ ] **Más proveedores de debrid** (Offcloud, debrid.link) y descarga en
+      segundo plano con aviso de "listo" en la UI.
+- [ ] **Notificaciones push** sobre el código de vinculación (por ejemplo,
+      avisar al móvil cuando la TV empieza algo).
 - [ ] **Watch parties** — sala sincronizada (Nuvio) sobre el servidor.
-- [ ] **Chromecast / AirPlay** desde el cliente web.
+- [ ] **Chromecast / AirPlay** desde el cliente web (Remote Playback API).
 - [ ] **Tomas de notas y listas por episodio**.
-- [ ] **PWA instalable** (manifest + service worker) para usarlo como app en
-      la TV sin pasar por el APK.
 - [ ] **Semáforo de concurrencia** en el fan-out de addons.
 - [ ] **Firmas `stremioAddonsConfig`** para addons oficiales verificados.
 
 ## Decisiones abiertas
 
-- ¿Dónde vive la metadata por defecto? Hoy se delega en los addons del
-  servidor; una metadata integrada (Cinemeta embebido) reduciría la dependencia
-  de red del primer arranque.
-- ¿Sincronización cifrada en el cliente o en el servidor? Privacidad (WuPlay)
-  sugiere cliente-cifrado;/usabilidad sugiere servidor.
-- ¿Plugin de debrid en el cliente Android o en el servidor? El servidor
-  centralizado permite cachear enlaces para todos los dispositivos.
+- ¿Dónde vive la metadata por defecto? **Resuelto**: metadata integrada
+  (Cinemeta embebido) activable/desactivable desde Ajustes, junto a los
+  addons del usuario.
+- ¿Sincronización cifrada en el cliente o en el servidor? **Resuelto por
+  ahora**: el servidor es la fuente de verdad y el acceso se protege con un
+  token por dispositivo (código de vinculación). La alternativa (cifrado en
+  cliente) sigue siendo más privada, pero exige más complejidad en el cliente.
+- ¿Plugin de debrid en el cliente Android o en el servidor? **Resuelto**: en
+  el servidor, para que el enlace se cachee y lo usen todos los dispositivos
+  (web, APK y el propio addon Stremio).

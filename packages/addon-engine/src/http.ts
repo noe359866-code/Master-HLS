@@ -59,6 +59,50 @@ export class HttpClient {
   }
 
   async get(url: string, options: HttpRequestOptions = {}): Promise<Response> {
+    return this.request('GET', url, undefined, options);
+  }
+
+  /** POST con cuerpo `application/x-www-form-urlencoded` (RealDebrid, TorBox). */
+  async postForm<T>(url: string, form: Record<string, string>, options: HttpRequestOptions = {}): Promise<T> {
+    const body = new URLSearchParams(form).toString();
+    const response = await this.request('POST', url, body, {
+      ...options,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', ...(options.headers ?? {}) },
+    });
+    const text = await response.text();
+    if (!text.trim()) {
+      throw new AddonError('unknown', `Respuesta vacia de ${url}`);
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (cause) {
+      throw new AddonError('unknown', `JSON invalido de ${url}: ${(cause as Error).message}`, { cause });
+    }
+  }
+
+  /** POST con cuerpo JSON (TorBox transfer, AllDebrid). */
+  async postJson<T>(url: string, payload: unknown, options: HttpRequestOptions = {}): Promise<T> {
+    const response = await this.request('POST', url, JSON.stringify(payload), {
+      ...options,
+      headers: { 'content-type': 'application/json', ...(options.headers ?? {}) },
+    });
+    const text = await response.text();
+    if (!text.trim()) {
+      throw new AddonError('unknown', `Respuesta vacia de ${url}`);
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (cause) {
+      throw new AddonError('unknown', `JSON invalido de ${url}: ${(cause as Error).message}`, { cause });
+    }
+  }
+
+  private async request(
+    method: 'GET' | 'POST',
+    url: string,
+    body: string | undefined,
+    options: HttpRequestOptions,
+  ): Promise<Response> {
     const retries = options.retries ?? this.retries;
     const timeoutMs = options.timeoutMs ?? this.timeoutMs;
     let lastError: unknown;
@@ -71,7 +115,7 @@ export class HttpClient {
 
       try {
         const response = await this.fetchImpl(url, {
-          method: 'GET',
+          method,
           redirect: 'follow',
           signal: controller.signal,
           headers: {
@@ -80,6 +124,7 @@ export class HttpClient {
             ...this.headers,
             ...options.headers,
           },
+          ...(body === undefined ? {} : { body }),
         });
 
         if (!response.ok) {

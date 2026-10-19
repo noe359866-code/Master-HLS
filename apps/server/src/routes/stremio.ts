@@ -15,7 +15,12 @@
  *   GET /subtitles/{type}/{id}.json
  */
 
-import { findPersonFilmography, findSimilarTitles, type AddonRegistry } from '@master-hls/addon-engine';
+import {
+  findPersonFilmography,
+  findSimilarTitles,
+  type AddonRegistry,
+  type DebridService,
+} from '@master-hls/addon-engine';
 import type { Router, RouteContext } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
@@ -24,6 +29,8 @@ export interface StremioRouteOptions {
   registry: AddonRegistry;
   getData: () => AppData;
   appVersion: string;
+  /** Servicio de debrid (opcional: si no hay proveedor, no se resuelve nada). */
+  debrid?: DebridService;
 }
 
 /** Quita el sufijo `.json` de un segmento de ruta. */
@@ -54,7 +61,7 @@ function parseExtra(raw?: string): Record<string, string> {
 }
 
 export function registerStremioRoutes(router: Router, options: StremioRouteOptions): void {
-  const { registry, getData, appVersion } = options;
+  const { registry, getData, appVersion, debrid } = options;
 
   router.get('/manifest.json', ({ res }) => {
     const data = getData();
@@ -84,7 +91,7 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       description:
         'Agregador de addons Stremio con nucleo HLS master: catalogo, metadata, streams y subtitulos de todos tus addons en uno.',
       logo: `${publicBase()}/logo.png`,
-      background: `${publicBase()}/background.jpg`,
+      background: `${publicBase()}/background.png`,
       types: [...types],
       idPrefixes: [...idPrefixes],
       resources: ['catalog', 'meta', 'stream', 'subtitles'],
@@ -133,7 +140,28 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     const type = stripJson(params['type'] ?? '');
     const id = stripJson(params['id'] ?? '');
     const result = await registry.streams({ type, id });
-    sendJson(res, 200, { streams: result.value.streams });
+    // Debrid nativo: los enlaces premium se resuelven en el servidor y se
+    // cachean, de modo que Stremio, WuPlay, NuvioTV y el cliente web reciben
+    // el mismo enlace directo (ver docs/comparison.md).
+    const streams = debrid?.enabled
+      ? await debrid.resolveStreams(result.value.streams)
+      : result.value.streams;
+    sendJson(res, 200, { streams });
+  });
+
+  /** Estado del debrid configurado. */
+  router.get('/api/debrid', ({ res }) => {
+    sendJson(res, 200, { debrid: debrid?.status() ?? { enabled: false } });
+  });
+
+  /** Comprueba las credenciales del proveedor de debrid. */
+  router.post('/api/debrid/test', async ({ res }) => {
+    if (!debrid) {
+      sendJson(res, 400, { ok: false, message: 'Debrid no disponible' });
+      return;
+    }
+    const result = await debrid.verify();
+    sendJson(res, 200, result);
   });
 
   router.get('/subtitles/:type/:id', async ({ res, params }) => {
@@ -172,6 +200,63 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       type: query.get('type') ?? undefined,
     });
     sendJson(res, 200, { name: result.name, titles: result.titles, sources: result.sources });
+  });
+
+  /**
+   * Recomendaciones personalizadas (WuPlay: "Recommended by Wuplay").
+   *
+   * Se calculan con los generos de los titulos valorados como "Me gusta":
+   * se recorren los catalogos del registro y se puntua cada meta por generos
+   * compartidos, descartando lo que ya se ha valorado.
+   */
+  router.get('/api/recommended', async ({ res, query }) => {
+    const data = getData();
+    const profileId = query.get('profileId') ?? data.activeProfileId;
+    const ratings = data.ratings?.[profileId] ?? [];
+    const likes = ratings.filter((entry) => entry.rating === 'like');
+    if (!likes.length) {
+      sendJson(res, 200, { titles: [] });
+      return;
+    }
+
+    const weights = new Map<string, number>();
+    for (const entry of likes) {
+      for (const genre of entry.genres ?? []) {
+        weights.set(genre.toLowerCase(), (weights.get(genre.toLowerCase()) ?? 0) + 1);
+      }
+    }
+    if (!weights.size) {
+      sendJson(res, 200, { titles: [] });
+      return;
+    }
+
+    const excluded = new Set(ratings.map((entry) => entry.id));
+    const catalogs = registry
+      .catalogs()
+      .filter((catalog) => catalog.type === 'movie' || catalog.type === 'series');
+
+    const scored = new Map<string, { meta: (typeof catalogs)[number] extends never ? never : any; score: number }>();
+    for (const catalog of catalogs) {
+      const result = await registry.catalog({ type: catalog.type, id: catalog.id });
+      for (const meta of result.value.metas) {
+        if (excluded.has(meta.id)) continue;
+        const genres = (meta.genres ?? []).map((genre) => genre.toLowerCase());
+        let score = 0;
+        for (const genre of genres) score += weights.get(genre) ?? 0;
+        if (!score) continue;
+        const rating = Number(meta.imdbRating ?? 0);
+        const existing = scored.get(meta.id);
+        if (!existing || score > existing.score) {
+          scored.set(meta.id, { meta, score: score + rating / 100 });
+        }
+      }
+    }
+
+    const titles = [...scored.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20)
+      .map((entry) => entry.meta);
+    sendJson(res, 200, { titles });
   });
 
   /**

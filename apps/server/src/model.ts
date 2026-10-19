@@ -7,7 +7,7 @@
  *  - Nuvio: colecciones/listas, "continuar viendo", repeticiones, atajos.
  */
 
-import type { MetaPreview } from '@master-hls/addon-engine';
+import type { DebridProviderId, MetaPreview } from '@master-hls/addon-engine';
 
 export interface InstalledAddonRecord {
   id: string;
@@ -84,6 +84,36 @@ export interface ProgressEntry {
   episode?: number;
 }
 
+/** Valoracion de un titulo ("Me gusta" / "No para mi"). */
+export interface RatingEntry {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string;
+  rating: 'like' | 'dislike';
+  /** Generos del titulo: se usan para las recomendaciones. */
+  genres?: string[];
+  updatedAt: number;
+}
+
+/** Dispositivo vinculado a la biblioteca compartida. */
+export interface PairedDevice {
+  id: string;
+  name: string;
+  /** Token que el cliente envia en `X-Master-Hls-Token`. */
+  token: string;
+  createdAt: number;
+  lastSeenAt: number;
+}
+
+/** Codigo temporal para vincular otro dispositivo. */
+export interface PairingCode {
+  code: string;
+  deviceName: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
 export interface CatalogPreference {
   /** Clave `type:id` del catalogo. */
   key: string;
@@ -111,6 +141,17 @@ export interface AppSettings {
   showAddonPrefix: boolean;
   /** Addons de streams por defecto para los que no中选择. */
   preferredStreamAddons: string[];
+  /**
+   * Debrid nativo (NuvioTV lo trae integrado; WuPlay lo delega en los addons).
+   * El servidor resuelve los enlaces una vez y los cachea para todos los
+   * dispositivos, manteniendo la decision de diseno "solo HTTP".
+   */
+  debrid: {
+    /** Proveedor elegido ('' = desactivado). */
+    provider: DebridProviderId | '';
+    /** API key del proveedor. */
+    apiKey: string;
+  };
   /** Capacidades declaradas del dispositivo (afectan a la seleccion HLS). */
   device: {
     maxHeight: number;
@@ -132,6 +173,12 @@ export interface AppData {
   history: Record<string, HistoryEntry[]>;
   /** Progreso por id de perfil. */
   progress: Record<string, ProgressEntry[]>;
+  /** Valoraciones por id de perfil. */
+  ratings: Record<string, RatingEntry[]>;
+  /** Dispositivos vinculados (sincronizacion multi-dispositivo sin cuenta). */
+  devices: PairedDevice[];
+  /** Codigos de vinculacion pendientes de canjear. */
+  pairings: PairingCode[];
   /** Preferencia de orden/visibilidad de catalogos. */
   catalogPreferences: CatalogPreference[];
   settings: AppSettings;
@@ -146,6 +193,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   itemsPerRow: 8,
   showAddonPrefix: true,
   preferredStreamAddons: [],
+  debrid: { provider: '', apiKey: '' },
   device: {
     maxHeight: 1080,
     maxFrameRate: 60,
@@ -176,6 +224,10 @@ export function normalizeData(data: AppData): AppData {
   data.settings = {
     ...DEFAULT_SETTINGS,
     ...settings,
+    debrid: {
+      ...DEFAULT_SETTINGS.debrid,
+      ...(settings.debrid ?? {}),
+    },
     device: {
       ...DEFAULT_SETTINGS.device,
       ...(settings.device ?? {}),
@@ -186,6 +238,9 @@ export function normalizeData(data: AppData): AppData {
   data.watchlists ??= {};
   data.history ??= {};
   data.progress ??= {};
+  data.ratings ??= {};
+  data.devices ??= [];
+  data.pairings ??= [];
   data.catalogPreferences ??= [];
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
@@ -200,6 +255,9 @@ export function emptyData(): AppData {
     watchlists: {},
     history: {},
     progress: {},
+    ratings: {},
+    devices: [],
+    pairings: [],
     catalogPreferences: [],
     settings: { ...DEFAULT_SETTINGS },
   };

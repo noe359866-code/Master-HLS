@@ -68,7 +68,7 @@ Y abre <http://localhost:8181>.
 ```bash
 npm run dev          # servidor con recarga (tsx watch) en :8181
 npm run dev -w @master-hls/web   # cliente Vite en :5173 (proxy al servidor)
-npm test             # 92 tests (addon-engine, hls-master, server)
+npm test             # 119 tests (addon-engine, hls-master, server)
 npm run typecheck    # TypeScript estricto en modo estricto
 ```
 
@@ -99,6 +99,10 @@ tocar el cliente.
 | `GET` | `/api/search?q=` | Búsqueda global en todos los catálogos con `search` |
 | `GET` | `/api/person?name=` | Ficha de persona con su filmografía (cast & crew) |
 | `GET` | `/api/similar?id=&type=` | Títulos similares (por género compartido) |
+| `GET` | `/api/recommended` | Recomendaciones según las valoraciones del perfil |
+| `GET`/`POST` | `/api/ratings` | Valoraciones «Me gusta» / «No para mí» |
+| `GET`/`POST` | `/api/debrid` · `/api/debrid/test` | Estado y comprobación del proveedor de debrid |
+| `GET`/`POST`/`DELETE` | `/api/devices` · `/api/pairing` · `/api/pairing/claim` | Vinculación de dispositivos (biblioteca compartida) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles |
 | `GET` | `/hls/master?url=` | Analiza un master playlist y devuelve variantes + selección |
@@ -125,6 +129,58 @@ soporta.
 - **Proxy** que reproduce las cabeceras `Referer`/`User-Agent`/`Cookie` que
   exigen muchos CDN y **reescribe** el playlist para que segmentos, claves
   AES e init segments pasen también por el proxy.
+
+---
+
+## Debrid nativo
+
+NuvioTV integra debrid (RealDebrid, Premiumize, TorBox); WuPlay lo delega en
+los addons. Master-HLS lo resuelve **en el servidor**, una sola vez, y cachea el
+enlace: el cliente web, el shell Android TV y el propio addon Stremio (es
+decir, también WuPlay y NuvioTV) reciben el mismo enlace directo.
+
+- Proveedores: **Real-Debrid**, **AllDebrid**, **TorBox** y **Premiumize**.
+- Resuelve magnet (`infoHash`) y enlaces de hoster premium (`externalUrl`),
+  eligiendo siempre el archivo de vídeo más grande del release.
+- Cache TTL de 2 h (los enlaces caducan) y concurrencia limitada: no se
+  satura la API del proveedor.
+- Si la resolución falla, **el stream original se conserva** y el error queda
+  visible en `GET /api/debrid` (`lastError`).
+- Se activa en *Ajustes → Debrid nativo* (proveedor + API key) y se puede
+  comprobar la conexión con «Probar conexión».
+- Se mantiene la decisión de diseño *solo HTTP*: un enlace resuelto por debrid
+  es HTTP, así que el proxy HLS sigue funcionando sin casos especiales.
+
+---
+
+## PWA instalable
+
+El cliente web es una **PWA**: se instala como una app en Android TV, Fire TV
+o cualquier navegador con «Instalar aplicación» (sin APK, sin tienda) y sigue
+funcionando con la red intermitente.
+
+- `manifest.webmanifest` con iconos propios (192, 512 y *maskable*), modo
+  `standalone` y orientación horizontal.
+- Service worker (`sw.js`): shell en caché, *stale-while-revalidate* para
+  catálogos y metadatos, y red directa para streams, subtítulos y proxy HLS
+  (nunca se cachean).
+- Botón «Instalar app» en *Ajustes*, con aviso cuando el navegador no expone
+  `beforeinstallprompt`.
+
+---
+
+## Sincronización multi-dispositivo
+
+La biblioteca (favoritos, historial, progreso y valoraciones) vive en el
+servidor, así que compartirla entre la TV y el móvil no necesita cuentas:
+
+1. En el dispositivo A, *Ajustes → Vincular dispositivos → Generar código*.
+2. En el dispositivo B, se introduce el código de 6 caracteres.
+3. Ambos quedan vinculados y comparten la biblioteca.
+
+Desde ese momento el servidor exige un token (`X-Master-Hls-Token`) en las
+rutas de biblioteca. Si no hay ningún dispositivo vinculado, la app sigue
+funcionando en «modo local», sin autenticación.
 
 ---
 
@@ -178,8 +234,11 @@ cd android
 - [x] PIN de perfil aplicado (servidor + cliente)
 - [x] Trailers en la ficha de detalle
 - [x] Shell Android TV (Kotlin, Compose for TV, Media3)
-- [ ] Sincronización multi-dispositivo (servidor ↔ TV ↔ móvil)
-- [ ] Integración de debrid nativa (RealDebrid/AllDebrid/TorBox)
+- [x] Debrid nativo en el servidor (Real-Debrid, AllDebrid, TorBox, Premiumize)
+- [x] PWA instalable (manifest + service worker) para usar la web TV como app
+- [x] Sincronización multi-dispositivo por código de vinculación
+- [x] Valoraciones («Me gusta» / «No para mí») y recomendaciones personalizadas
+- [x] Catálogos predefinidos (Populares, Mejor valorados, Estrenos)
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [ ] Watch parties y Chromecast
 

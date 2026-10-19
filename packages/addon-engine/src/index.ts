@@ -9,3 +9,4 @@ export * from './builtin.js';
 export * from './registry.js';
 export * from './streamQuality.js';
 export * from './discover.js';
+export * from './debrid/index.js';

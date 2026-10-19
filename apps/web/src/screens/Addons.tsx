@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useApp } from '../store';
+import { canInstall, isInstalled, onInstallChange, promptInstall } from '../pwa';
+import { api } from '../api';
 import { Button, EmptyState, ErrorState, Loader } from '../components/ui';
+import type { AppSettings } from '../types';
 
 /** Gestor de addons: instalar, actualizar y quitar. */
 export function AddonsScreen() {
@@ -149,8 +152,42 @@ export function AddonsScreen() {
 
 export function SettingsScreen() {
   const { settings, saveSettings, navigate } = useApp();
+  const [debridMessage, setDebridMessage] = useState<string | null>(null);
+  const [debridError, setDebridError] = useState<string | null>(null);
+  const [installable, setInstallable] = useState(false);
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    const sync = () => {
+      setInstallable(canInstall());
+      setInstalled(isInstalled());
+    };
+    sync();
+    return onInstallChange(sync);
+  }, []);
 
   if (!settings) return <Loader />;
+
+  const install = async () => {
+    await promptInstall();
+    setInstallable(canInstall());
+    setInstalled(isInstalled());
+  };
+
+  const testDebrid = async () => {
+    setDebridMessage(null);
+    setDebridError(null);
+    try {
+      const result = await api.testDebrid();
+      if (result.ok) {
+        setDebridMessage(result.message);
+      } else {
+        setDebridError(result.message);
+      }
+    } catch (cause) {
+      setDebridError((cause as Error).message);
+    }
+  };
 
   return (
     <div className="screen settings">
@@ -245,12 +282,86 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
+        <h2>Debrid nativo</h2>
+        <p className="panel__hint">
+          El servidor descarga en tu nombre los enlaces premium y los cachea, así que el cliente
+          web, el shell Android TV y el addon Stremio reciben el mismo enlace directo. Sin
+          debrid solo funcionan los streams HTTP.
+        </p>
+        <label className="setting">
+          <span>Proveedor</span>
+          <select
+            data-focusable="true"
+            value={settings.debrid.provider}
+            onChange={(event) =>
+              void saveSettings({
+                debrid: {
+                  ...settings.debrid,
+                  provider: event.target.value as AppSettings['debrid']['provider'],
+                },
+              })
+            }
+          >
+            <option value="">Desactivado</option>
+            <option value="realdebrid">Real-Debrid</option>
+            <option value="alldebrid">AllDebrid</option>
+            <option value="torbox">TorBox</option>
+            <option value="premiumize">Premiumize</option>
+          </select>
+        </label>
+        <label className="setting">
+          <span>API key</span>
+          <input
+            type="password"
+            data-focusable="true"
+            value={settings.debrid.apiKey}
+            placeholder="Clave del proveedor"
+            onChange={(event) =>
+              void saveSettings({ debrid: { ...settings.debrid, apiKey: event.target.value } })
+            }
+          />
+        </label>
+        <div className="addons__install">
+          <Button variant="ghost" onClick={() => void testDebrid()}>
+            Probar conexión
+          </Button>
+        </div>
+        {debridMessage ? <p className="panel__ok">{debridMessage}</p> : null}
+        {debridError ? <ErrorState message={debridError} /> : null}
+      </section>
+
+      <section className="panel">
+        <h2>Instalar en la TV</h2>
+        <p className="panel__hint">
+          Master-HLS es una PWA: se instala como una app (ventana propia, sin barra del navegador)
+          y sigue funcionando con la red intermitente gracias al service worker.
+        </p>
+        <div className="addons__install">
+          {installed ? (
+            <p className="panel__ok">La app ya está instalada en este dispositivo.</p>
+          ) : null}
+          {!installed && installable ? (
+            <Button onClick={() => void install()}>Instalar app</Button>
+          ) : null}
+          {!installed && !canInstall ? (
+            <p className="panel__hint">
+              Usa el menú del navegador («Instalar aplicación») o «Añadir a la pantalla de inicio»
+              en Android TV.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>Cuenta</h2>
         <Button variant="ghost" onClick={() => navigate({ name: 'profiles' })}>
           Cambiar de perfil
         </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'addons' })}>
           Gestionar addons
+        </Button>
+        <Button variant="ghost" onClick={() => navigate({ name: 'devices' })}>
+          Vincular dispositivos
         </Button>
       </section>
     </div>

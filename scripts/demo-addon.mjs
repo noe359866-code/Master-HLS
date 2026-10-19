@@ -246,6 +246,20 @@ const server = http.createServer((req, res) => {
           title: `${meta.name} 480p`,
           url: `http://127.0.0.1:${port}/hls/480p/index.m3u8`,
         },
+        {
+          // Enlace "premium": es el caso que resuelve el debrid nativo del
+          // servidor (hoster o torrent) cuando hay un proveedor configurado.
+          name: 'Demo 1080p premium (debrid)',
+          title: `${meta.name} 1080p premium`,
+          externalUrl: 'https://rapidgator.net/file/demo-master-hls-1080p',
+          behaviorHints: { bingeGroup: 'demo-debrid' },
+        },
+        {
+          name: 'Demo torrent (debrid)',
+          title: `${meta.name} 1080p torrent`,
+          infoHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f9011223344',
+          behaviorHints: { bingeGroup: 'demo-debrid' },
+        },
       ],
     });
     return;

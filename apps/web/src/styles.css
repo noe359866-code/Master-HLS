@@ -988,3 +988,42 @@ button {
   color: var(--danger);
   font-size: 13px;
 }
+
+/* --------------------------------------------------------- dispositivos */
+
+.devices {
+  gap: 18px;
+}
+
+.pairing-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 18px 0;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(91, 140, 255, 0.18), rgba(155, 92, 255, 0.18));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.pairing-code__value {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 12px;
+  color: var(--text);
+}
+
+.pairing-code__hint {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.stream--locked {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+.stream--locked .stream__url {
+  color: var(--accent);
+}

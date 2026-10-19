@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
+import { api } from './api';
 import { useSpatialNavigation } from './navigation';
 import { useApp, type Route } from './store';
 import { ErrorState, Loader } from './components/ui';
@@ -11,6 +12,7 @@ import { HistoryScreen, ListsScreen } from './screens/Library';
 import { AddonsScreen, SettingsScreen } from './screens/Addons';
 import { ProfilesScreen } from './screens/Profiles';
 import { PersonScreen } from './screens/Person';
+import { DevicesScreen } from './screens/Devices';
 
 const TABS: Array<{ route: Route; label: string }> = [
   { route: { name: 'home' }, label: 'Inicio' },
@@ -22,10 +24,29 @@ const TABS: Array<{ route: Route; label: string }> = [
   { route: { name: 'settings' }, label: 'Ajustes' },
 ];
 
+interface SessionState {
+  pairingRequired: boolean;
+  authenticated: boolean;
+}
+
 export function App() {
   const { route, navigate, loading, error, activeProfile, refreshAll } = useApp();
+  const [session, setSession] = useState<SessionState | null>(null);
 
   useSpatialNavigation();
+
+  // Sincronizacion multi-dispositivo: si el servidor exige un dispositivo
+  // vinculado, se muestra la pantalla de vinculacion.
+  const checkSession = () => {
+    void api
+      .session()
+      .then((result) => setSession({ pairingRequired: result.pairingRequired, authenticated: result.authenticated }))
+      .catch(() => undefined);
+  };
+
+  useEffect(() => {
+    checkSession();
+  }, []);
 
   // Atajos de teclado (Utiles en escritorio, en TV llega el boton "menu").
   useEffect(() => {
@@ -43,6 +64,22 @@ export function App() {
   }, [navigate]);
 
   const isPlayer = route.name === 'player';
+  const needsPairing = Boolean(session?.pairingRequired) && !session?.authenticated;
+
+  if (needsPairing) {
+    return (
+      <div className="app">
+        <main className="content">
+          <DevicesScreen
+            onLinked={() => {
+              setSession({ pairingRequired: true, authenticated: true });
+              void refreshAll();
+            }}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={`app ${isPlayer ? 'app--player' : ''}`}>
@@ -105,6 +142,7 @@ export function App() {
             {route.name === 'history' ? <HistoryScreen /> : null}
             {route.name === 'addons' ? <AddonsScreen /> : null}
             {route.name === 'settings' ? <SettingsScreen /> : null}
+            {route.name === 'devices' ? <DevicesScreen /> : null}
             {route.name === 'profiles' ? <ProfilesScreen /> : null}
             {route.name === 'person' ? <PersonScreen person={route.person} /> : null}
           </>

@@ -5,7 +5,7 @@
  */
 
 import path from 'node:path';
-import { AddonRegistry, HttpClient } from '@master-hls/addon-engine';
+import { AddonRegistry, DebridService, HttpClient } from '@master-hls/addon-engine';
 
 import { loadConfig, type ServerConfig } from './config.js';
 import { JsonStore } from './store.js';
@@ -15,18 +15,32 @@ import { registerStremioRoutes } from './routes/stremio.js';
 import { registerAddonRoutes } from './routes/addons.js';
 import { registerLibraryRoutes } from './routes/library.js';
 import { registerHlsRoutes } from './routes/hls.js';
+import { registerDeviceRoutes } from './routes/devices.js';
 
 export const APP_VERSION = '1.0.0';
+
+/** Rutas de biblioteca protegidas cuando hay dispositivos vinculados. */
+const PROTECTED_API_PREFIXES = [
+  '/api/lists',
+  '/api/history',
+  '/api/progress',
+  '/api/ratings',
+  '/api/recommended',
+];
 
 export interface App {
   config: ServerConfig;
   store: JsonStore<AppData>;
   registry: AddonRegistry;
+  /** Servicio de debrid (resolucion de enlaces premium en el servidor). */
+  debrid: DebridService;
   router: Router;
   /** Reinstala los addons guardados (al arrancar). */
   bootstrap: () => Promise<void>;
   /** Activa/desactiva la metadata integrada segun los ajustes. */
   applyBuiltinMetadata: (data: AppData) => void;
+  /** Activa/desactiva el proveedor de debrid segun los ajustes. */
+  applyDebrid: (data: AppData) => void;
   handle: (ctx: RouteContext) => Promise<void>;
 }
 
@@ -46,6 +60,10 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       fanoutTimeoutMs: config.fanoutTimeoutMs,
     });
 
+  const debrid = new DebridService(null, {
+    http: new HttpClient({ timeoutMs: 15_000, retries: 1 }),
+  });
+
   const router = new Router();
   const getData = () => store.get();
   const save = async (mutate: (data: AppData) => void) => {
@@ -53,14 +71,18 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     await store.flush();
   };
 
-  registerStremioRoutes(router, { registry, getData, appVersion: APP_VERSION });
+  registerStremioRoutes(router, { registry, getData, appVersion: APP_VERSION, debrid });
   registerAddonRoutes(router, { registry, getData, save });
   registerLibraryRoutes(router, {
     getData,
     save,
-    onSettingsChanged: (data) => app.applyBuiltinMetadata(data),
+    onSettingsChanged: (data) => {
+      app.applyBuiltinMetadata(data);
+      app.applyDebrid(data);
+    },
   });
   registerHlsRoutes(router, {});
+  registerDeviceRoutes(router, { getData, save });
 
   router.get('/api/health', ({ res }) => {
     sendJson(res, 200, {
@@ -75,6 +97,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     config,
     store,
     registry,
+    debrid,
     router,
     /** Activa o desactiva el addon de metadata integrada segun los ajustes. */
     applyBuiltinMetadata(data: AppData) {
@@ -86,6 +109,21 @@ export function createApp(overrides: CreateAppOptions = {}): App {
         registry.disableBuiltinMetadata();
       }
     },
+    /** Configura el proveedor de debrid segun los ajustes. */
+    applyDebrid(data: AppData) {
+      const provider = data.settings.debrid?.provider ?? '';
+      const apiKey = data.settings.debrid?.apiKey ?? '';
+      if (!provider || !apiKey) {
+        debrid.setProvider(null);
+        return;
+      }
+      try {
+        debrid.setProvider(provider, apiKey);
+      } catch (error) {
+        console.warn('[debrid] proveedor no valido:', (error as Error).message);
+        debrid.setProvider(null);
+      }
+    },
     async bootstrap() {
       // El store mantiene el mismo objeto en memoria: `normalizeData` completa
       // los campos que falten (ajustes nuevos) y se persisten.
@@ -95,6 +133,9 @@ export function createApp(overrides: CreateAppOptions = {}): App {
 
       // Metadata integrada: la app es utilizable sin instalar addons.
       this.applyBuiltinMetadata(data);
+
+      // Debrid nativo: resolucion de enlaces premium en el servidor.
+      this.applyDebrid(data);
 
       // Garantiza al menos un perfil (WuPlay arranca pidiendo un perfil).
       if (!data.profiles.length) {
@@ -140,6 +181,21 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       if (!matched) {
         sendJson(ctx.res, 404, { error: 'No encontrado' });
         return;
+      }
+      // Sincronizacion multi-dispositivo: si hay dispositivos vinculados, la
+      // biblioteca exige un token valido (`X-Master-Hls-Token`).
+      if (PROTECTED_API_PREFIXES.some((prefix) => ctx.url.pathname.startsWith(prefix))) {
+        const list = getData().devices ?? [];
+        if (list.length) {
+          const header = ctx.req.headers['x-master-hls-token'];
+          const token = Array.isArray(header) ? header[0] : header;
+          const device = list.find((entry) => entry.token === token);
+          if (!device) {
+            sendJson(ctx.res, 401, { error: 'Dispositivo no vinculado' });
+            return;
+          }
+          device.lastSeenAt = Date.now();
+        }
       }
       ctx.params = matched.params;
       if (ctx.req.method && ctx.req.method !== 'GET' && ctx.req.method !== 'HEAD') {

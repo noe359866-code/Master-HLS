@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
-import type { Meta, Stream, Video } from '../types';
+import type { Meta, Rating, Stream, Video } from '../types';
 import { Button, ErrorState, Loader, Modal, Poster, useBackdrop } from '../components/ui';
 
 export function DetailScreen({ id, type }: { id: string; type: string }) {
@@ -14,6 +14,7 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
   const [season, setSeason] = useState<number | null>(null);
   const [episode, setEpisode] = useState<Video | null>(null);
   const [similar, setSimilar] = useState<Meta[]>([]);
+  const [rating, setRating] = useState<Rating | null>(null);
   const [trailerOpen, setTrailerOpen] = useState(false);
   const autoplayed = useRef(false);
 
@@ -64,6 +65,40 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
       cancelled = true;
     };
   }, [id, type]);
+
+  // Valoracion del titulo (WuPlay: "Me gusta" / "No para mi").
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const ratings = await api.ratings();
+        if (!cancelled) setRating(ratings.find((entry) => entry.id === id) ?? null);
+      } catch {
+        if (!cancelled) setRating(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const vote = async (value: 'like' | 'dislike') => {
+    if (!meta) return;
+    const next = rating?.rating === value ? '' : value;
+    try {
+      const ratings = await api.rate({
+        id,
+        type,
+        name: meta.name ?? id,
+        poster: meta.poster,
+        rating: next,
+        genres: meta.genres,
+      });
+      setRating(ratings.find((entry) => entry.id === id) ?? null);
+    } catch {
+      // Si falla la valoracion se ignora: no interrumpe la navegacion.
+    }
+  };
 
   const videos = useMemo(() => meta?.videos ?? [], [meta]);
   const seasons = useMemo(
@@ -168,6 +203,20 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                   ▶ Trailer
                 </Button>
               ) : null}
+              <Button
+                variant="ghost"
+                onClick={() => void vote('like')}
+                aria-pressed={rating?.rating === 'like'}
+              >
+                {rating?.rating === 'like' ? '👍 Me gusta' : '👍'}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => void vote('dislike')}
+                aria-pressed={rating?.rating === 'dislike'}
+              >
+                {rating?.rating === 'dislike' ? '👎 No para mí' : '👎'}
+              </Button>
             </div>
           </div>
         </header>
@@ -217,17 +266,21 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
             <div className="stream-list">
               {streams.map((stream, index) => {
                 const url = stream.url ?? stream.externalUrl;
+                const needsDebrid = !url && Boolean(stream.infoHash);
                 return (
                   <button
                     key={`${stream.name ?? 'stream'}-${index}`}
                     type="button"
                     data-focusable="true"
-                    className="stream"
-                    onClick={() => play(stream, episode ?? undefined)}
+                    className={`stream ${needsDebrid ? 'stream--locked' : ''}`}
+                    onClick={() => (needsDebrid ? undefined : play(stream, episode ?? undefined))}
                   >
                     <span className="stream__name">{stream.name ?? stream.title ?? 'Stream'}</span>
                     {stream.description ? (
                       <span className="stream__description">{stream.description}</span>
+                    ) : null}
+                    {needsDebrid ? (
+                      <span className="stream__url">Necesita debrid (torrent)</span>
                     ) : null}
                     {url ? <span className="stream__url">{url}</span> : null}
                   </button>

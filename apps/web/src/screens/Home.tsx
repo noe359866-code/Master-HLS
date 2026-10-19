@@ -16,6 +16,7 @@ interface CatalogState {
 export function HomeScreen() {
   const { manifest, progress, history, navigate, settings } = useApp();
   const [rows, setRows] = useState<CatalogState[]>([]);
+  const [recommended, setRecommended] = useState<Meta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +67,22 @@ export function HomeScreen() {
       cancelled = true;
     };
   }, [catalogs]);
+
+  // Recomendaciones personalizadas (se muestran si hay valoraciones "Me gusta").
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const titles = await api.recommended();
+        if (!cancelled) setRecommended(titles);
+      } catch {
+        if (!cancelled) setRecommended([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const continueWatching = useMemo(
     () =>
@@ -126,6 +143,14 @@ export function HomeScreen() {
               meta={{ id: entry.id, type: entry.type, name: entry.name, poster: entry.poster }}
               onSelect={openDetail}
             />
+          ))}
+        </Row>
+      ) : null}
+
+      {recommended.length ? (
+        <Row title="Recomendado para ti">
+          {recommended.map((meta) => (
+            <Poster key={meta.id} meta={meta} onSelect={openDetail} />
           ))}
         </Row>
       ) : null}

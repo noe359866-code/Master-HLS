@@ -72,6 +72,15 @@ describe('normalizeStreamResponse', () => {
     });
     assert.equal(streams.length, 2);
   });
+
+  it('acepta torrents (infoHash), que resuelve el debrid', () => {
+    const { streams } = normalizeStreamResponse({
+      streams: [{ name: 'torrent', infoHash: 'a1b2c3', fileIdx: 2 }],
+    });
+    assert.equal(streams.length, 1);
+    assert.equal(streams[0]?.infoHash, 'a1b2c3');
+    assert.equal(streams[0]?.fileIdx, 2);
+  });
 });
 
 describe('normalizeCatalogResponse', () => {

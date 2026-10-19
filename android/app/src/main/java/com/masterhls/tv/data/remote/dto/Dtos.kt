@@ -169,3 +169,48 @@ data class PersonResponseDto(
 data class SimilarResponseDto(
     @Json(name = "titles") val titles: List<MetaDto> = emptyList(),
 )
+
+/** Estado del proveedor de debrid configurado en el servidor. */
+data class DebridStatusDto(
+    @Json(name = "debrid") val debrid: DebridInfoDto? = null,
+)
+
+data class DebridInfoDto(
+    @Json(name = "enabled") val enabled: Boolean = false,
+    @Json(name = "provider") val provider: String? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "tag") val tag: String? = null,
+    @Json(name = "hosters") val hosters: List<String> = emptyList(),
+    @Json(name = "lastError") val lastError: String? = null,
+)
+
+data class DebridTestDto(
+    @Json(name = "ok") val ok: Boolean = false,
+    @Json(name = "message") val message: String = "",
+)
+
+/** Valoracion de un titulo ("Me gusta" / "No para mi"). */
+data class RatingDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "type") val type: String = "movie",
+    @Json(name = "name") val name: String = "",
+    @Json(name = "rating") val rating: String = "like",
+    @Json(name = "genres") val genres: List<String> = emptyList(),
+)
+
+data class RatingsResponseDto(
+    @Json(name = "ratings") val ratings: List<RatingDto> = emptyList(),
+)
+
+/** Dispositivos vinculados (sincronizacion multi-dispositivo). */
+data class DeviceDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "name") val name: String = "",
+    @Json(name = "current") val current: Boolean = false,
+    @Json(name = "lastSeenAt") val lastSeenAt: Long = 0,
+)
+
+data class DevicesResponseDto(
+    @Json(name = "pairingRequired") val pairingRequired: Boolean = false,
+    @Json(name = "devices") val devices: List<DeviceDto> = emptyList(),
+)

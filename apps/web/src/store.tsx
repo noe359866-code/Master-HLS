@@ -31,6 +31,7 @@ export type Route =
   | { name: 'history' }
   | { name: 'addons' }
   | { name: 'settings' }
+  | { name: 'devices' }
   | { name: 'profiles' };
 
 interface AppState {

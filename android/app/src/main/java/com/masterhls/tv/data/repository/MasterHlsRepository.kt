@@ -3,9 +3,13 @@ package com.masterhls.tv.data.repository
 import com.masterhls.tv.data.remote.MasterHlsApi
 import com.masterhls.tv.data.remote.dto.CatalogDto
 import com.masterhls.tv.data.remote.dto.CatalogResponseDto
+import com.masterhls.tv.data.remote.dto.DebridInfoDto
+import com.masterhls.tv.data.remote.dto.DebridTestDto
+import com.masterhls.tv.data.remote.dto.DeviceDto
 import com.masterhls.tv.data.remote.dto.InstalledAddonDto
 import com.masterhls.tv.data.remote.dto.MasterInfoDto
 import com.masterhls.tv.data.remote.dto.MetaDto
+import com.masterhls.tv.data.remote.dto.RatingDto
 import com.masterhls.tv.data.remote.dto.StreamDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -65,6 +69,39 @@ class MasterHlsRepository @Inject constructor(
 
     suspend fun similar(id: String, type: String): List<MetaDto> =
         withContext(Dispatchers.IO) { api.similar(id, type).titles }
+
+    suspend fun debridStatus(): DebridInfoDto =
+        withContext(Dispatchers.IO) { api.debridStatus().debrid ?: DebridInfoDto() }
+
+    suspend fun testDebrid(): DebridTestDto =
+        withContext(Dispatchers.IO) { api.testDebrid() }
+
+    suspend fun ratings(): List<RatingDto> =
+        withContext(Dispatchers.IO) { api.ratings().ratings }
+
+    suspend fun rate(
+        id: String,
+        type: String,
+        name: String,
+        rating: String,
+        genres: List<String> = emptyList(),
+    ): List<RatingDto> = withContext(Dispatchers.IO) {
+        api.saveRating(
+            mapOf(
+                "id" to id,
+                "type" to type,
+                "name" to name,
+                "rating" to rating,
+                "genres" to genres,
+            )
+        ).ratings
+    }
+
+    suspend fun recommended(): List<MetaDto> =
+        withContext(Dispatchers.IO) { api.recommended().titles }
+
+    suspend fun devices(): List<DeviceDto> =
+        withContext(Dispatchers.IO) { api.devices().devices }
 
     suspend fun masterInfo(url: String, maxHeight: Int?, audioLanguage: String?): MasterInfoDto =
         withContext(Dispatchers.IO) {

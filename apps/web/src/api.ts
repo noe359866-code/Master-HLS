@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   Catalog,
+  DebridStatus,
   HistoryEntry,
   InstalledAddon,
   Manifest,
@@ -8,17 +9,22 @@ import type {
   Meta,
   ProgressEntry,
   Profile,
+  Rating,
   Stream,
   Subtitle,
   Watchlist,
   WatchlistItem,
 } from './types';
+import { getDeviceToken, setDeviceToken } from './session';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getDeviceToken();
   const response = await fetch(path, {
     ...init,
     headers: {
       'content-type': 'application/json',
+      // Token del dispositivo (biblioteca compartida entre dispositivos).
+      ...(token ? { 'x-master-hls-token': token } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -228,6 +234,96 @@ export const api = {
       body: JSON.stringify(patch),
     });
     return body.settings;
+  },
+
+  // ------------------------------------------------------------- dispositivos
+
+  /** Estado de vinculacion del dispositivo. */
+  async session(): Promise<{
+    pairingRequired: boolean;
+    authenticated: boolean;
+    device: { id: string; name: string } | null;
+  }> {
+    return request('/api/session');
+  },
+
+  /** Dispositivos vinculados al servidor. */
+  async devices(): Promise<{
+    pairingRequired: boolean;
+    device: { id: string; name: string; createdAt: number } | null;
+    devices: Array<{
+      id: string;
+      name: string;
+      createdAt: number;
+      lastSeenAt: number;
+      current: boolean;
+    }>;
+  }> {
+    return request('/api/devices');
+  },
+
+  /** Crea un codigo de vinculacion y vincula este dispositivo. */
+  async createPairing(name: string): Promise<{ code: string; expiresAt: number; token: string }> {
+    const body = await request<{ code: string; expiresAt: number; token: string }>('/api/pairing', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    setDeviceToken(body.token);
+    return body;
+  },
+
+  /** Canjea un codigo de vinculacion por el token de este dispositivo. */
+  async claimPairing(code: string, name: string): Promise<{ token: string }> {
+    const body = await request<{ token: string }>('/api/pairing/claim', {
+      method: 'POST',
+      body: JSON.stringify({ code, name }),
+    });
+    setDeviceToken(body.token);
+    return body;
+  },
+
+  /** Desvincula un dispositivo. */
+  async unlinkDevice(id: string): Promise<void> {
+    await request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  /** Valoraciones del perfil activo. */
+  async ratings(): Promise<Rating[]> {
+    const body = await request<{ ratings: Rating[] }>('/api/ratings');
+    return body.ratings;
+  },
+
+  /** Guarda (o quita con `rating: ''`) la valoracion de un titulo. */
+  async rate(entry: {
+    id: string;
+    type: string;
+    name: string;
+    poster?: string;
+    rating: 'like' | 'dislike' | '';
+    genres?: string[];
+  }): Promise<Rating[]> {
+    const body = await request<{ ratings: Rating[] }>('/api/ratings', {
+      method: 'POST',
+      body: JSON.stringify(entry),
+    });
+    return body.ratings;
+  },
+
+  /** Recomendaciones personalizadas segun las valoraciones. */
+  async recommended(): Promise<Meta[]> {
+    const body = await request<{ titles: Meta[] }>('/api/recommended');
+    return body.titles;
+  },
+
+  /** Estado del proveedor de debrid configurado en el servidor. */
+  async debridStatus(): Promise<DebridStatus> {
+    const body = await request<{ debrid: DebridStatus }>('/api/debrid');
+    return body.debrid;
+  },
+
+  /** Comprueba las credenciales del proveedor de debrid. */
+  async testDebrid(): Promise<{ ok: boolean; message: string }> {
+    return request<{ ok: boolean; message: string }>('/api/debrid/test', { method: 'POST' });
   },
 
   // --------------------------------------------------------------------- HLS

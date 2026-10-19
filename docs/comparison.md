@@ -54,12 +54,12 @@ instalable como addon en las tres apps existentes.
 | Catálogos de terceros | ✅ | ✅ | ✅ |
 | Ordenar/ocultar catálogos | ✅ | ✅ | ✅ |
 | Búsqueda global | ✅ | ✅ | ✅ (`/api/search`) |
-| Catálogos predefinidos (Trending, Upcoming) | ✅ | ✅ | ❌ **pendiente** |
+| Catálogos predefinidos (Trending, Upcoming) | ✅ | ✅ | ✅ (Populares, Mejor valorados, Estrenos) |
 | **Cast & crew con ficha de persona** | ✅ (filmografía completa) | ✅ | ✅ (`/api/person`) |
 | **Títulos similares** | ✅ (motor propio) | ✅ (Trakt related) | ✅ (`/api/similar`, exige género compartido) |
 | Trailers | ✅ | ✅ (YouTube) | ✅ (modal con YouTube) |
-| Valoraciones (Me gusta / No para mí) | ✅ | parcial | ❌ **pendiente** |
-| Recomendaciones personalizadas | ✅ ("Recommended by Wuplay") | ❌ | ❌ **pendiente** |
+| Valoraciones (Me gusta / No para mí) | ✅ | parcial | ✅ (`/api/ratings`) |
+| Recomendaciones personalizadas | ✅ ("Recommended by Wuplay") | ❌ | ✅ (`/api/recommended`) |
 | Trakt / MDBList / Simkl | ✅ | ✅ | ❌ **pendiente** |
 | Control parental | ❌ | ✅ | ❌ **pendiente** |
 | Skip intro / Skip credits | ❌ | ✅ | ❌ **pendiente** |
@@ -91,7 +91,7 @@ instalable como addon en las tres apps existentes.
 | Ajustes por perfil (idiomas, autoplay) | ✅ | ✅ | ✅ |
 | Watchlists | ✅ | ✅ (colecciones) | ✅ |
 | Historial y progreso | ✅ | ✅ | ✅ |
-| **Sincronización multi-dispositivo** | ✅ | ✅ | ❌ **pendiente** (roadmap) |
+| **Sincronización multi-dispositivo** | ✅ | ✅ | ✅ (código de vinculación, sin cuenta) |
 | Configurador web | ✅ (profile key) | ❌ | ✅ (API + panel web) |
 | Privacidad / sin telemetría | ✅ | ❌ (Sentry) | ✅ |
 
@@ -102,12 +102,13 @@ instalable como addon en las tres apps existentes.
 | Plugins / repos de scrapers | ❌ | ✅ | ❌ **pendiente** |
 | Watch parties | ❌ | ✅ | ❌ **pendiente** |
 | Chromecast | ❌ | ✅ | ❌ **pendiente** |
-| Debrid nativo | ⚠️ (solo HTTP) | ✅ (RD, Premiumize, TorBox) | ❌ **pendiente** |
+| Debrid nativo | ⚠️ (solo HTTP) | ✅ (RD, Premiumize, TorBox) | ✅ (RD, AllDebrid, TorBox, Premiumize) |
 | Modo esencial / avanzado | ❌ | ✅ | ⚠️ solo "avanzado" |
 | Custom screens / hubs | ✅ | ✅ | ❌ **pendiente** |
 | P2P / torrent / usenet | ❌ | ✅ | ❌ (decisión de diseño: solo HTTP) |
 | Compartir en comunidad | ✅ | ❌ | ❌ **pendiente** |
 | Multi-idioma de interfaz | ✅ | ✅ | ⚠️ solo español |
+| **PWA instalable (sin APK)** | ❌ | ❌ | ✅ (manifest + service worker) |
 
 ---
 
@@ -135,7 +136,20 @@ instalable como addon en las tres apps existentes.
 
 ---
 
-## 4. Pendientes priorizados
+## 4. Qué aporta la Fase 3 (cierre de gaps)
+
+| Gap | Cómo se ha cerrado | Dónde |
+| --- | --- | --- |
+| Debrid nativo | Cuatro proveedores (Real-Debrid, AllDebrid, TorBox, Premiumize) resuelven magnet y hosters premium **en el servidor**, con caché de 2 h, concurrencia limitada y degradación elegante (si falla, el stream original se conserva) | `packages/addon-engine/src/debrid/` |
+| PWA instalable | `manifest.webmanifest` + service worker (shell cacheado, catálogos *stale-while-revalidate*, streams nunca cacheados) e iconos generados sin dependencias | `apps/web/public/`, `apps/web/src/pwa.ts` |
+| Sincronización multi-dispositivo | Código de vinculación de 6 caracteres; el servidor exige `X-Master-Hls-Token` en las rutas de biblioteca en cuanto hay un dispositivo vinculado, y sigue en modo local si no hay ninguno | `apps/server/src/routes/devices.ts` |
+| Valoraciones y recomendaciones | «Me gusta» / «No para mí» por título y fila *Recomendado para ti* calculada por género compartido con lo valorado | `/api/ratings`, `/api/recommended` |
+| Catálogos predefinidos | *Populares*, *Mejor valorados* y *Estrenos* calculados sobre el catálogo base del proveedor de metadata | `packages/addon-engine/src/builtin.ts` |
+| Torrents sin enlace directo | Los streams que solo traen `infoHash` (los típicos de debrid) ya no se descartan en la normalización | `packages/addon-engine/src/normalize.ts` |
+
+---
+
+## 5. Pendientes priorizados
 
 ### Alta (impacto directo en el usuario)
 
@@ -148,13 +162,13 @@ instalable como addon en las tres apps existentes.
 
 ### Media
 
-- [ ] Sincronización multi-dispositivo (token por dispositivo, sin cuenta)
-- [ ] Debrid nativo (RealDebrid / AllDebrid / TorBox / Premiumize)
+- [x] Sincronización multi-dispositivo (token por dispositivo, sin cuenta)
+- [x] Debrid nativo (RealDebrid / AllDebrid / TorBox / Premiumize)
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
-- [ ] Catálogos predefinidos (Trending, Upcoming, por país)
-- [ ] Valoraciones y recomendaciones personalizadas
+- [x] Catálogos predefinidos (Populares, Mejor valorados, Estrenos)
+- [x] Valoraciones y recomendaciones personalizadas
 - [ ] Subtítulos: SDH limpio, opacidad, color, solo-audio-extranjero
-- [ ] PWA instalable (usar la web TV como app sin APK)
+- [x] PWA instalable (usar la web TV como app sin APK)
 
 ### Baja / específicas de plataforma
 

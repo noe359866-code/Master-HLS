@@ -150,11 +150,14 @@ export function normalizeMeta(input: unknown): MetaDetail | null {
 export function normalizeStream(input: unknown): Stream | null {
   if (!isRecord(input)) return null;
 
-  // Un stream sin ninguna URL utilizable no sirve para nada.
+  // Un stream sin ninguna URL utilizable no sirve para nada... salvo que sea
+  // un torrent: los addons de debrid los publican solo con `infoHash` y es el
+  // servidor quien lo resuelve a un enlace directo.
   const hasUrl = typeof input['url'] === 'string' && input['url'].length > 0;
   const hasExternal = typeof input['externalUrl'] === 'string' && input['externalUrl'].length > 0;
   const hasYtId = typeof input['ytId'] === 'string' && input['ytId'].length > 0;
-  if (!hasUrl && !hasExternal && !hasYtId) return null;
+  const hasInfoHash = typeof input['infoHash'] === 'string' && input['infoHash'].length > 0;
+  if (!hasUrl && !hasExternal && !hasYtId && !hasInfoHash) return null;
 
   const stream: Record<string, unknown> = { ...input };
   for (const key of ['name', 'title', 'description', 'url', 'ytId', 'infoHash', 'externalUrl']) {

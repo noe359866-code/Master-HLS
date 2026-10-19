@@ -5,7 +5,14 @@
 import { randomUUID } from 'node:crypto';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
-import { DEFAULT_PROFILE, type AppData, type ProgressEntry, type WatchlistItem } from '../model.js';
+import {
+  DEFAULT_PROFILE,
+  type AppData,
+  type AppSettings,
+  type ProgressEntry,
+  type RatingEntry,
+  type WatchlistItem,
+} from '../model.js';
 
 export interface LibraryRouteOptions {
   getData: () => AppData;
@@ -234,6 +241,55 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { history: [] });
   });
 
+  // ------------------------------------------------------------- valoracion
+
+  /** Valoraciones del perfil ("Me gusta" / "No para mi"). */
+  router.get('/api/ratings', ({ res, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    sendJson(res, 200, { ratings: getData().ratings?.[profileId] ?? [] });
+  });
+
+  /**
+   * Guarda (o quita) la valoracion de un titulo.
+   * Con `rating: ''` se elimina la valoracion.
+   */
+  router.post('/api/ratings', async ({ res, body: rawBody, query }) => {
+    const body = (rawBody ?? {}) as {
+      id?: string;
+      type?: string;
+      name?: string;
+      poster?: string;
+      rating?: 'like' | 'dislike' | '';
+      genres?: string[];
+    };
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const id = body.id ?? '';
+    if (!id) {
+      sendJson(res, 400, { error: 'Falta id' });
+      return;
+    }
+    await save((data) => {
+      const list = data.ratings[profileId] ?? (data.ratings[profileId] = []);
+      const index = list.findIndex((entry) => entry.id === id);
+      if (!body.rating) {
+        if (index >= 0) list.splice(index, 1);
+        return;
+      }
+      const entry: RatingEntry = {
+        id,
+        type: body.type ?? 'movie',
+        name: body.name ?? id,
+        poster: body.poster,
+        rating: body.rating,
+        genres: body.genres ?? (index >= 0 ? list[index]?.genres : undefined),
+        updatedAt: Date.now(),
+      };
+      if (index >= 0) list[index] = entry;
+      else list.push(entry);
+    });
+    sendJson(res, 200, { ratings: getData().ratings?.[profileId] ?? [] });
+  });
+
   // ----------------------------------------------------------------- progreso
 
   router.get('/api/progress', ({ res, query }) => {
@@ -291,9 +347,17 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
   router.put('/api/settings', async ({ res, body: rawBody }) => {
     const body = (rawBody ?? {}) as Record<string, unknown>;
     await save((data) => {
-      Object.assign(data.settings, body);
+      // Los objetos anidados (debrid, device) se fusionan en vez de sustituirse.
+      const { debrid, device, ...rest } = body as {
+        debrid?: Partial<AppSettings['debrid']>;
+        device?: Partial<AppSettings['device']>;
+      } & Record<string, unknown>;
+      Object.assign(data.settings, rest);
+      if (debrid) data.settings.debrid = { ...data.settings.debrid, ...debrid };
+      if (device) data.settings.device = { ...data.settings.device, ...device };
     });
-    // La metadata integrada vive en el registro de addons: hay que aplicarlo.
+    // La metadata integrada vive en el registro de addons y el debrid en el
+    // servicio de resolucion: hay que aplicar los cambios.
     onSettingsChanged?.(getData());
     sendJson(res, 200, { settings: getData().settings });
   });

@@ -67,14 +67,35 @@ export class BuiltinMetadataAddon implements AddonSource {
       {
         type: 'movie',
         id: 'top',
-        name: 'Películas destacadas',
+        name: 'Populares',
+        extraSupported: ['search', 'skip', 'genre'],
+        pageSize: 100,
+      },
+      {
+        type: 'movie',
+        id: 'bestRated',
+        name: 'Mejor valorados',
+        extraSupported: ['search', 'skip', 'genre'],
+        pageSize: 100,
+      },
+      {
+        type: 'movie',
+        id: 'recent',
+        name: 'Estrenos',
         extraSupported: ['search', 'skip', 'genre'],
         pageSize: 100,
       },
       {
         type: 'series',
         id: 'top',
-        name: 'Series destacadas',
+        name: 'Series populares',
+        extraSupported: ['search', 'skip', 'genre'],
+        pageSize: 100,
+      },
+      {
+        type: 'series',
+        id: 'bestRated',
+        name: 'Series mejor valoradas',
         extraSupported: ['search', 'skip', 'genre'],
         pageSize: 100,
       },
@@ -108,6 +129,26 @@ export class BuiltinMetadataAddon implements AddonSource {
     const key = `catalog:${request.type}:${request.id}:${JSON.stringify(request.extra ?? {})}`;
     const cached = this.cache.get(key) as CatalogResponse | undefined;
     if (cached) return cached;
+
+    const derived = derivedCatalog(request.type, request.id);
+    if (derived) {
+      // Catalogo predefinido: se calcula a partir del catalogo base del
+      // proveedor (por ejemplo "Mejor valorados" = "top" ordenado por nota).
+      const base = normalizeCatalogResponse(
+        await this.http.getJson<unknown>(
+          this.url('catalog', [request.type, derived.source], request.extra),
+        ),
+      );
+      const metas = derived.sort(base.metas);
+      const search = request.extra?.['search'];
+      const filtered = search
+        ? metas.filter((meta) => (meta.name ?? '').toLowerCase().includes(search.toLowerCase()))
+        : metas;
+      const response: CatalogResponse = { metas: filtered };
+      this.cache.set(key, response);
+      return response;
+    }
+
     const response = normalizeCatalogResponse(
       await this.http.getJson<unknown>(this.url('catalog', [request.type, request.id], request.extra)),
     );
@@ -138,4 +179,39 @@ export class BuiltinMetadataAddon implements AddonSource {
   invalidateResourceCache(): void {
     this.cache.clear();
   }
+}
+
+/**
+ * Catalogos predefinidos de la metadata integrada.
+ *
+ * WuPlay ofrece secciones "Trending"/"Upcoming" listas para usar; aqui se
+ * calculan a partir del catalogo base del proveedor para no depender de que
+ * exista un id concreto en el origen.
+ */
+interface DerivedCatalog {
+  /** Catalogo base del proveedor. */
+  source: string;
+  /** Ordena las metas. */
+  sort: (metas: CatalogResponse['metas']) => CatalogResponse['metas'];
+}
+
+function derivedCatalog(type: string, id: string): DerivedCatalog | null {
+  if (type === 'movie' && id === 'bestRated') {
+    return { source: 'top', sort: (metas) => [...metas].sort(byRating) };
+  }
+  if (type === 'movie' && id === 'recent') {
+    return { source: 'top', sort: (metas) => [...metas].sort(byReleased) };
+  }
+  if (type === 'series' && id === 'bestRated') {
+    return { source: 'top', sort: (metas) => [...metas].sort(byRating) };
+  }
+  return null;
+}
+
+function byRating(a: { imdbRating?: string }, b: { imdbRating?: string }): number {
+  return Number(b.imdbRating ?? 0) - Number(a.imdbRating ?? 0);
+}
+
+function byReleased(a: { released?: string }, b: { released?: string }): number {
+  return (b.released ?? '').localeCompare(a.released ?? '');
 }

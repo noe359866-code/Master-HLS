@@ -97,8 +97,11 @@ AppData {
   watchlists: Record<profileId, Watchlist[]>
   history:    Record<profileId, HistoryEntry[]>
   progress:   Record<profileId, ProgressEntry[]>
+  ratings:    Record<profileId, RatingEntry[]>  // «me gusta» / «no para mí»
+  devices:    PairedDevice[]              // dispositivos vinculados (token)
+  pairings:   PairingCode[]               // códigos de vinculación pendientes
   catalogPreferences: CatalogPreference[]  // order + hidden por `type:id`
-  settings: AppSettings                    // tema, device (maxHeight, hdr…)
+  settings: AppSettings                    // tema, device (maxHeight, hdr…), debrid
 }
 ```
 
@@ -115,6 +118,36 @@ sea `clone & run` sin compilación nativa.
   cambio manual de calidad; el panel "Info HLS" muestra las variantes reales
   que el servidor ha analizado.
 - **Estado**: un único `AppProvider` con los datos de la app y de la biblioteca.
+
+## 5.1 Debrid nativo (`packages/addon-engine/src/debrid/`)
+
+El servidor es el único que resuelve los enlaces premium, y lo hace una vez:
+
+```
+streams agregados  ->  candidatos (infoHash / externalUrl)
+                   ->  DebridService (cache TTL 2 h, concurrencia 3)
+                   ->  proveedor (RD | AllDebrid | TorBox | Premiumize)
+                   ->  stream con url directa + etiqueta [RD]
+```
+
+- `types.ts`: contrato `DebridProvider` y extracción del enlace
+  (`linkOf`) de cada stream.
+- `realdebrid.ts`, `alldebrid.ts`, `torbox.ts`, `premiumize.ts`: un proveedor
+  por fichero, cada uno con su flujo real (magnet instantáneo, subida y
+  espera, unrestrict…).
+- `service.ts`: caché, concurrencia, degradación elegante (si la resolución
+  falla se conserva el stream original) y etiquetado `[RD]`/`[AL]`/`[TB]`/`[PM]`.
+
+## 5.2 PWA y vinculación
+
+- `apps/web/public/sw.js`: service worker con tres estrategias (shell en caché,
+  catálogos *stale-while-revalidate*, streams siempre por red).
+- `apps/web/src/pwa.ts`: registro del service worker y captura del evento
+  `beforeinstallprompt` para el botón «Instalar app».
+- `apps/server/src/routes/devices.ts`: códigos de vinculación de 6 caracteres
+  con caducidad de 10 minutos; el token viaja en `X-Master-Hls-Token` y, en
+  cuanto existe un dispositivo vinculado, el servidor lo exige en las rutas de
+  biblioteca (`app.ts`).
 
 ## 6. Shell Android TV
 

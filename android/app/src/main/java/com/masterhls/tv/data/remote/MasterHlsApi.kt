@@ -1,11 +1,16 @@
 package com.masterhls.tv.data.remote
 
 import com.masterhls.tv.data.remote.dto.AddonsResponseDto
+import com.masterhls.tv.data.remote.dto.DebridStatusDto
+import com.masterhls.tv.data.remote.dto.DebridTestDto
+import com.masterhls.tv.data.remote.dto.DevicesResponseDto
 import com.masterhls.tv.data.remote.dto.CatalogResponseDto
 import com.masterhls.tv.data.remote.dto.ManifestDto
 import com.masterhls.tv.data.remote.dto.MasterInfoDto
 import com.masterhls.tv.data.remote.dto.MetaResponseDto
+import com.masterhls.tv.data.remote.dto.RatingsResponseDto
 import com.masterhls.tv.data.remote.dto.StreamResponseDto
+import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -64,6 +69,24 @@ interface MasterHlsApi {
         @Query("id") id: String,
         @Query("type") type: String = "movie",
     ): SimilarResponseDto
+
+    @GET("api/debrid")
+    suspend fun debridStatus(): DebridStatusDto
+
+    @POST("api/debrid/test")
+    suspend fun testDebrid(): DebridTestDto
+
+    @GET("api/ratings")
+    suspend fun ratings(): RatingsResponseDto
+
+    @POST("api/ratings")
+    suspend fun saveRating(@Body body: Map<String, Any>): RatingsResponseDto
+
+    @GET("api/recommended")
+    suspend fun recommended(): SimilarResponseDto
+
+    @GET("api/devices")
+    suspend fun devices(): DevicesResponseDto
 
     @GET("hls/master")
     suspend fun masterInfo(

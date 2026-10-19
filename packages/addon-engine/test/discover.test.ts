@@ -45,8 +45,38 @@ describe('metadata integrada (builtin)', () => {
     });
     assert.equal(addon.id, BUILTIN_METADATA_ID);
     assert.equal(addon.builtin, true);
-    assert.equal(addon.manifest.catalogs?.length, 2);
+    assert.equal(addon.manifest.catalogs?.length, 5);
     assert.equal(addon.manifest.catalogs?.[0]?.id, 'top');
+    // Catalogos predefinidos (WuPlay: Trending/Upcoming).
+    const ids = addon.manifest.catalogs?.map((catalog) => `${catalog.type}:${catalog.id}`);
+    assert.deepEqual(ids, [
+      'movie:top',
+      'movie:bestRated',
+      'movie:recent',
+      'series:top',
+      'series:bestRated',
+    ]);
+  });
+
+  it('calcula los catalogos predefinidos a partir del catalogo base', async () => {
+    const fetchImpl = fakeFetch({
+      'https://meta.tld/catalog/movie/top.json': {
+        metas: [
+          { id: 'tt1', name: 'A', type: 'movie', imdbRating: '7.1', released: '2020-01-01' },
+          { id: 'tt2', name: 'B', type: 'movie', imdbRating: '9.3', released: '2021-01-01' },
+        ],
+      },
+    });
+    const addon = new BuiltinMetadataAddon({
+      baseUrl: 'https://meta.tld',
+      http: new HttpClient({ fetchImpl }),
+    });
+
+    const best = await addon.catalog({ type: 'movie', id: 'bestRated' });
+    assert.equal(best.metas[0]?.id, 'tt2');
+
+    const recent = await addon.catalog({ type: 'movie', id: 'recent' });
+    assert.equal(recent.metas[0]?.id, 'tt2');
   });
 
   it('el registro puede activarlo y desactivarlo', () => {
@@ -54,7 +84,7 @@ describe('metadata integrada (builtin)', () => {
     assert.equal(registry.hasBuiltinMetadata, false);
     registry.enableBuiltinMetadata();
     assert.equal(registry.hasBuiltinMetadata, true);
-    assert.equal(registry.catalogs().length, 2);
+    assert.equal(registry.catalogs().length, 5);
     registry.disableBuiltinMetadata();
     assert.equal(registry.hasBuiltinMetadata, false);
     assert.equal(registry.catalogs().length, 0);
