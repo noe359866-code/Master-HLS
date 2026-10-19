@@ -82,7 +82,7 @@ class PayloadTooLargeError extends Error {
  * Lee cuerpos remotos con un techo explícito. response.arrayBuffer()/text()
  * sin límite permite que una URL de proxy consuma toda la memoria del proceso.
  */
-async function readLimitedBody(response: Response, limitBytes: number): Promise<Buffer> {
+async function readLimitedBody(response: Response, limitBytes: number, timeoutMs = 15_000): Promise<Buffer> {
   const declaredLength = Number(response.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > limitBytes) {
     await response.body?.cancel().catch(() => undefined);
@@ -95,23 +95,37 @@ async function readLimitedBody(response: Response, limitBytes: number): Promise<
   let total = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await Promise.race([
+          reader.read(),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Tiempo de espera agotado leyendo el recurso remoto')), timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (result.done) break;
+      total += result.value.byteLength;
       if (total > limitBytes) {
         await reader.cancel().catch(() => undefined);
         throw new PayloadTooLargeError(limitBytes);
       }
-      chunks.push(Buffer.from(value));
+      chunks.push(Buffer.from(result.value));
     }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
   } finally {
     reader.releaseLock();
   }
   return Buffer.concat(chunks, total);
 }
 
-async function readLimitedText(response: Response, limitBytes: number): Promise<string> {
-  return new TextDecoder('utf-8').decode(await readLimitedBody(response, limitBytes));
+async function readLimitedText(response: Response, limitBytes: number, timeoutMs = 15_000): Promise<string> {
+  return new TextDecoder('utf-8').decode(await readLimitedBody(response, limitBytes, timeoutMs));
 }
 
 export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {}): void {
@@ -170,7 +184,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
 
       if (!isPlaylist) {
         // Segmento (o cualquier recurso binario): se reenvia tal cual.
-        const buffer = await readLimitedBody(response, maxResourceBytes);
+        const buffer = await readLimitedBody(response, maxResourceBytes, timeoutMs);
         res.writeHead(200, {
           'content-type': contentType || 'application/octet-stream',
           'content-length': buffer.length,
@@ -181,7 +195,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         return;
       }
 
-      const text = await readLimitedText(response, maxPlaylistBytes);
+      const text = await readLimitedText(response, maxPlaylistBytes, timeoutMs);
       const rewritten = rewritePlaylist(text, target, (absolute) => {
         const proxied = new URL('/hls/proxy', publicBase());
         proxied.searchParams.set('url', absolute);
@@ -301,7 +315,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
           sendJson(res, 200, { thumbnails: [], imageStreams: master.imageStreams, url: target });
           return;
         }
-        playlistText = await readLimitedText(imageResponse, maxPlaylistBytes);
+        playlistText = await readLimitedText(imageResponse, maxPlaylistBytes, timeoutMs);
       }
 
       const thumbnails = parseHlsImagePlaylist(playlistText, {
