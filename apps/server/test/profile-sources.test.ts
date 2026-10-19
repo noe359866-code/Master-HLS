@@ -167,8 +167,12 @@ describe('perfiles y selección automática de fuentes', () => {
     assert.equal(es.body['streams'][0].url, 'https://cdn.test/es-419/movie-720.mp4');
     assert.equal(es.body['streams'][0].name, 'La película');
     assert.deepEqual(es.body['streams'].map((stream: any) => stream.title), ['La película', 'La película']);
-    assert.ok(es.body['streams'].every((stream: any) => !stream.description &&
-      !stream.behaviorHints?.filename && !stream.behaviorHints?.bingeGroup));
+    // La etiqueta publica viaja en `title` y en `description`; ni `filename`
+    // (nombre del servidor) ni el `bingeGroup` derivado filtran el proveedor.
+    assert.ok(es.body['streams'].every((stream: any) =>
+      stream.description === stream.title &&
+      !stream.behaviorHints?.filename &&
+      /^vibeflix-(720p|1080p|2160p|1440p|576p|540p|480p|360p|4k|best)$/.test(stream.behaviorHints?.bingeGroup ?? '')));
     assert.equal(es.body['streams'][1].behaviorHints.proxyHeaders.request.Referer, 'https://other.test/');
 
     const created = await send(base, '/api/profiles', 'POST', {
@@ -191,7 +195,12 @@ describe('perfiles y selección automática de fuentes', () => {
       assert.equal(reply.body['streams'][0]?.url, `https://cdn.test/es-419/${id}-2-4.mp4`);
       assert.equal(reply.body['streams'][0]?.name, `${title} · T2 E4`);
       assert.equal(reply.body['streams'][0]?.title, `${title} · T2 E4`);
-      assert.equal(reply.body['streams'][0]?.description, undefined);
+      assert.equal(reply.body['streams'][0]?.description, `${title} · T2 E4`);
+      // La URL del episodio no declara calidad, asi que el grupo derivado es
+      // el generico del addon: suficiente para encadenar el siguiente capitulo.
+      assert.equal(reply.body['streams'][0]?.behaviorHints?.bingeGroup, 'vibeflix-best');
+      assert.ok(!/secreto|proveedor|origen/i.test(JSON.stringify(reply.body['streams'])),
+        'ningun campo del stream filtra el proveedor');
       assert.ok(app.scrapers.get(category), 'la categoría del proveedor existe');
     }
   });

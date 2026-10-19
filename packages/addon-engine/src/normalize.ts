@@ -8,6 +8,7 @@
  */
 
 import type {
+  CacheDirective,
   CatalogResponse,
   MetaDetail,
   MetaPreview,
@@ -190,35 +191,92 @@ export function normalizeSubtitle(input: unknown): Subtitle | null {
   return subtitle as Subtitle;
 }
 
+/**
+ * Lee la directiva de cacheo que el addon incluye en la respuesta.
+ *
+ * Nombres del SDK de Stremio: `maxAge`, `staleRevalidate`, `staleError`
+ * (segundos). Se ignoran los valores absurdos (negativos o mayores de un ano,
+ * que el propio SDK advierte que son un error habitual).
+ */
+export function parseCacheDirective(input: unknown): CacheDirective | undefined {
+  if (!isRecord(input)) return undefined;
+  const oneYear = 365 * 24 * 60 * 60;
+  const read = (key: string): number | undefined => {
+    const value = input[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+    if (value < 0 || value > oneYear) return undefined;
+    return Math.round(value);
+  };
+  const maxAge = read('maxAge');
+  const staleRevalidate = read('staleRevalidate');
+  const staleError = read('staleError');
+  if (maxAge === undefined && staleRevalidate === undefined && staleError === undefined) return undefined;
+  return {
+    ...(maxAge !== undefined ? { maxAge } : {}),
+    ...(staleRevalidate !== undefined ? { staleRevalidate } : {}),
+    ...(staleError !== undefined ? { staleError } : {}),
+  };
+}
+
+/**
+ * Fusiona las directivas de varios addons: gana la mas conservadora (el minimo
+ * de cada campo), porque un addon que pide no cachear no puede verse anulado
+ * por otro que pide una hora.
+ */
+export function mergeCacheDirectives(directives: Array<CacheDirective | undefined>): CacheDirective | undefined {
+  const valid = directives.filter((entry): entry is CacheDirective => Boolean(entry));
+  if (!valid.length) return undefined;
+  const min = (key: keyof CacheDirective): number | undefined => {
+    const values = valid.map((entry) => entry[key]).filter((value): value is number => value !== undefined);
+    return values.length ? Math.min(...values) : undefined;
+  };
+  const maxAge = min('maxAge');
+  const staleRevalidate = min('staleRevalidate');
+  const staleError = min('staleError');
+  return {
+    ...(maxAge !== undefined ? { maxAge } : {}),
+    ...(staleRevalidate !== undefined ? { staleRevalidate } : {}),
+    ...(staleError !== undefined ? { staleError } : {}),
+  };
+}
+
 export function normalizeCatalogResponse(input: unknown): CatalogResponse {
   const metas = isRecord(input) && Array.isArray(input['metas']) ? input['metas'] : [];
+  const cache = parseCacheDirective(input);
   return {
     metas: metas
       .map((meta) => normalizeMetaPreview(meta))
       .filter((meta): meta is MetaPreview => meta !== null),
+    ...(cache ? { cache } : {}),
   };
 }
 
 export function normalizeMetaResponse(input: unknown): MetaResponse {
   const raw = isRecord(input) ? input['meta'] : undefined;
-  return { meta: normalizeMeta(raw) };
+  // La directiva puede venir en la respuesta o dentro del propio objeto meta.
+  const cache = parseCacheDirective(input) ?? parseCacheDirective(raw);
+  return { meta: normalizeMeta(raw), ...(cache ? { cache } : {}) };
 }
 
 export function normalizeStreamResponse(input: unknown): StreamResponse {
   const streams = isRecord(input) && Array.isArray(input['streams']) ? input['streams'] : [];
+  const cache = parseCacheDirective(input);
   return {
     streams: streams
       .map((stream) => normalizeStream(stream))
       .filter((stream): stream is Stream => stream !== null),
+    ...(cache ? { cache } : {}),
   };
 }
 
 export function normalizeSubtitleResponse(input: unknown): SubtitleResponse {
   const subtitles = isRecord(input) && Array.isArray(input['subtitles']) ? input['subtitles'] : [];
+  const cache = parseCacheDirective(input);
   return {
     subtitles: subtitles
       .map((subtitle) => normalizeSubtitle(subtitle))
       .filter((subtitle): subtitle is Subtitle => subtitle !== null),
+    ...(cache ? { cache } : {}),
   };
 }
 

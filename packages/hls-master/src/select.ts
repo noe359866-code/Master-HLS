@@ -2,10 +2,10 @@
  * Politicas de seleccion de variantes y pistas dentro de un master playlist.
  *
  * Un master de un stream de debrid suele traer 10-20 variantes (4K, 1080p, 720p,
- * audio 5.1/2.0, Dolby Vision...). Elegir a ciegas es lo que hace que un TV
- * ue un stream 4K HDR en un dispositivo que no lo soporta. Aqui se decide de
- * forma explicita segun las capacidades del dispositivo y las preferencias del
- * perfil (idioma de audio/subtitulos).
+ * audio 5.1/2.0, Dolby Vision...). Elegir a ciegas es lo que acaba reproduciendo
+ * un stream 4K HDR en un dispositivo que no lo soporta. Aqui se decide de forma
+ * explicita segun las capacidades del dispositivo y las preferencias del perfil
+ * (idioma de audio/subtitulos).
  */
 
 import type { MasterPlaylist, MediaRendition, RenditionType, Variant } from './parser.js';
@@ -91,6 +91,41 @@ function languageMatches(candidate: string | undefined, wanted: string | undefin
   return (aliases[aPrimary ?? ''] ?? aPrimary) === (aliases[bPrimary ?? ''] ?? bPrimary);
 }
 
+/** Nombres de idioma tal y como aparecen en los atributos NAME de los addons. */
+const LANGUAGE_NAME_HINTS: Record<string, string[]> = {
+  es: ['espanol', 'español', 'spanish', 'esp', 'castellano', 'latino'],
+  en: ['english', 'ingles', 'inglés', 'eng'],
+  fr: ['french', 'francais', 'français', 'fra'],
+  de: ['german', 'deutsch', 'aleman', 'alemán', 'deu'],
+  pt: ['portuguese', 'portugues', 'portugués', 'por'],
+  it: ['italian', 'italiano', 'ita'],
+  ja: ['japanese', 'japones', 'japonés', 'jpn'],
+  ko: ['korean', 'coreano', 'kor'],
+  zh: ['chinese', 'chino', 'mandarin', 'zho'],
+  ar: ['arabic', 'arabe', 'árabe', 'ara'],
+  ru: ['russian', 'ruso', 'rus'],
+  hi: ['hindi', 'hin'],
+};
+
+/** true si el atributo NAME de la pista menciona el idioma pedido. */
+export function nameMatchesLanguage(name: string | undefined, wanted: string | undefined): boolean {
+  if (!name || !wanted) return false;
+  const text = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const code = wanted.toLowerCase().split('-')[0] ?? '';
+  if (!code) return false;
+  // El codigo tiene que aparecer como palabra suelta: `de` esta dentro de
+  // «declarado» y «en» dentro de «english», y un substring suelto eligiria mal.
+  const asWord = new RegExp(`(^|[^a-z0-9])${code}([^a-z0-9]|$)`);
+  if (asWord.test(text)) return true;
+  const hints = LANGUAGE_NAME_HINTS[code] ?? [];
+  return hints.some((hint) =>
+    text.includes(hint.normalize('NFD').replace(/[\u0300-\u036f]/g, '')),
+  );
+}
+
 /** Puntuacion de una variante segun las capacidades del dispositivo. */
 export function scoreVariant(variant: Variant, capabilities: DeviceCapabilities = {}): number {
   let score = 0;
@@ -143,7 +178,7 @@ export function selectVariant(
   if (!candidates.length) candidates = master.variants;
 
   // Un dispositivo sin soporte HDR no debe recibir variantes PQ/HLG: se
-  // reproducibles pero con washed colors, por eso se descartan de entrada.
+  // reproducen, pero con los colores lavados, por eso se descartan de entrada.
   if (capabilities.supportsHdr === false) {
     const sdr = candidates.filter((variant) => !isHdrVariant(variant));
     if (sdr.length) candidates = sdr;
@@ -180,10 +215,16 @@ export function selectRendition(
   if (!pool.length) return undefined;
 
   if (options.language) {
+    // 1. Coincidencia por el atributo LANGUAGE del playlist.
     const exact = pool.find((rendition) => languageMatches(rendition.language, options.language));
     if (exact) return exact;
-    const partial = pool.find((rendition) => languageMatches(rendition.language, options.language));
-    if (partial) return partial;
+    // 2. Muchos addons no rellenan LANGUAGE y ponen el idioma en NAME
+    //    («Español Latino», «English CC»): se busca tambien ahi.
+    const byName = pool.find((rendition) =>
+      languageMatches(rendition.language, options.language) ||
+      nameMatchesLanguage(rendition.name, options.language),
+    );
+    if (byName) return byName;
   }
 
   if (options.preferDefault !== false) {

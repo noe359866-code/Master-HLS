@@ -4,6 +4,9 @@
  *  - `/api/opensubtitles`             busca subtitulos en OpenSubtitles.
  *  - `/api/opensubtitles/download`     descarga uno y lo sirve como WebVTT.
  *  - `/api/opensubtitles/file/:name`   sirve el WebVTT ya convertido.
+ *  - `/api/subtitles/proxy`            normaliza cualquier subtitulo externo
+ *                                     (SRT/ASS/VTT, cualquier codificacion) y lo
+ *                                     sirve como WebVTT o como cues en JSON.
  *  - `/api/skip-intro`                 indica hasta donde saltar la intro.
  *
  * El analisis de la intro es **nativo**: usa los subtitulos que ya traen los
@@ -11,6 +14,7 @@
  * "skip intro" ni de analisis de audio.
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -25,8 +29,9 @@ import type { AddonRegistry } from '@vibeflix/addon-engine';
 import { createGuardedFetch, type HostLookup } from '@vibeflix/scrapers';
 
 import type { Router } from '../http/router.js';
-import { sendJson, sendText } from '../http/router.js';
+import { DEFAULT_CACHE_POLICIES, sendBinary, sendJson, sendText } from '../http/router.js';
 import type { AppData } from '../model.js';
+import { transformSubtitle } from '../library/subtitle-proxy.js';
 import { OpenSubtitlesService, type OpenSubtitleEntry } from '../services/opensubtitles.js';
 
 export interface SubtitleRouteOptions {
@@ -142,6 +147,112 @@ export function registerSubtitleRoutes(
     } catch {
       sendJson(res, 404, { error: 'Subtitulo no encontrado' });
     }
+  });
+
+  // ------------------------------------------------------- proxy de subtitulos
+  /**
+   * `GET /api/subtitles/proxy?url=...&lang=es&clean=1&offset=1500&format=json`
+   *
+   * Resuelve los tres problemas que hacen que los subtitulos externos se vean
+   * mal en un navegador o en ExoPlayer:
+   *  1. **Formato**: `<track>` y Media3 solo entienden WebVTT; los addons
+   *     sirven SRT y ASS. Aqui se convierten (ASS con sus estilos de dialogo).
+   *  2. **Codificacion**: un SRT en windows-1252 o windows-1256 se ve como
+   *     basura si se sirve tal cual. Se detecta el juego de caracteres y se
+   *     repara el mojibake (el arreglo que WuPlay v0.9.3 hizo para el arabe).
+   *  3. **CORS**: el origen no suele permitir leer el fichero desde el
+   *     navegador; al pasar por el servidor desaparece el problema.
+   *
+   * Ademas aplica Clean SDH y el desfase, y con `format=json` devuelve las cues
+   * para el renderizador propio del reproductor (el unico que permite cambiar
+   * tamano, color y desfase en caliente).
+   */
+  router.get('/api/subtitles/proxy', async ({ req, res, query }) => {
+    const target = query.get('url') ?? query.get('src') ?? '';
+    if (!target) {
+      sendJson(res, 400, { error: 'Falta el parametro url' });
+      return;
+    }
+
+    const settings = getData().settings.subtitles;
+    const language = query.get('lang') ?? query.get('language') ?? '';
+    const cleanParam = query.get('clean');
+    const clean = cleanParam === null ? Boolean(settings?.cleanSdh) : cleanParam !== '0' && cleanParam !== 'false';
+    const offsetParam = Number(query.get('offset') ?? NaN);
+    const offsetMs = Number.isFinite(offsetParam) ? offsetParam : Number(settings?.delayMs ?? 0);
+    const asJson = (query.get('format') ?? '') === 'json';
+    const key = crypto
+      .createHash('sha1')
+      .update(`${target}|${language}|${clean ? 1 : 0}|${offsetMs}|${asJson ? 'json' : 'vtt'}`)
+      .digest('hex')
+      .slice(0, 24);
+    const name = `proxy-${key}.${asJson ? 'json' : 'vtt'}`;
+    const file = path.join(cacheDir, name);
+
+    try {
+      const cached = await fs.readFile(file);
+      sendBinary(res, 200, cached, asJson ? 'application/json' : 'text/vtt', {
+        req,
+        cache: DEFAULT_CACHE_POLICIES.subtitles,
+        headers: { 'x-vibeflix-cache': 'hit' },
+      });
+      return;
+    } catch {
+      // No estaba en disco: se descarga.
+    }
+
+    let bytes: Uint8Array;
+    try {
+      const response = await fetchImpl(target);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      sendJson(res, 502, { error: `No se pudo descargar el subtitulo: ${(error as Error).message}` });
+      return;
+    }
+
+    const result = transformSubtitle({ bytes, language: language || undefined, cleanSdh: clean, offsetMs });
+    if (!result.cues.length) {
+      sendJson(res, 422, {
+        error: 'El fichero no tiene dialogo util',
+        sourceFormat: result.sourceFormat,
+        encoding: result.encoding,
+      });
+      return;
+    }
+
+    const payload = asJson
+      ? JSON.stringify({
+          cues: result.cues,
+          count: result.cues.length,
+          encoding: result.encoding,
+          guessedEncoding: result.guessedEncoding,
+          sourceFormat: result.sourceFormat,
+          sdh: result.sdh,
+          repaired: result.repaired,
+          language,
+          offsetMs,
+          cleanSdh: clean,
+        })
+      : result.vtt;
+
+    try {
+      await fs.mkdir(cacheDir, { recursive: true });
+      await fs.writeFile(file, payload, 'utf8');
+    } catch {
+      // Sin disco (o sin permisos) se sirve igual: solo se pierde la cache.
+    }
+
+    sendText(res, 200, payload, asJson ? 'application/json' : 'text/vtt', {
+      req,
+      cache: DEFAULT_CACHE_POLICIES.subtitles,
+      headers: {
+        'x-vibeflix-cache': 'miss',
+        'x-vibeflix-encoding': result.encoding,
+        'x-vibeflix-format': result.sourceFormat,
+        ...(result.sdh ? { 'x-vibeflix-sdh': '1' } : {}),
+      },
+    });
   });
 
   // ------------------------------------------------------------- omitir intro

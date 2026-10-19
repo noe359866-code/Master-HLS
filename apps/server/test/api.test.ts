@@ -141,11 +141,17 @@ describe('servidor Vibe Flix', () => {
 
   it('devuelve los streams ordenados por calidad', async () => {
     const response = await fetch(`${base}/stream/movie/tt1.json`);
-    const body = (await response.json()) as { streams: Array<{ name: string; title: string; url: string; description?: string }> };
+    const body = (await response.json()) as { streams: Array<{
+      name: string; title: string; url: string; description?: string;
+      behaviorHints?: { filename?: string };
+    }> };
     assert.equal(body.streams.length, 2);
     assert.equal(body.streams[0]?.url, 'https://cdn.tld/1080.m3u8'); // calidad interna intacta
+    // `description` es el campo actual del protocolo (`title` esta deprecado):
+    // viaja la misma etiqueta publica, sin informacion del proveedor.
     assert.ok(body.streams.every((stream) => stream.name === 'Pelicula Uno' &&
-      stream.title === 'Pelicula Uno' && !stream.description));
+      stream.title === 'Pelicula Uno' && stream.description === 'Pelicula Uno'));
+    assert.ok(body.streams.every((stream) => !stream.behaviorHints?.filename));
   });
 
   it('devuelve los subtitulos', async () => {

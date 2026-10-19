@@ -1,6 +1,7 @@
 import { useApp } from '../store';
 import { NAV_ITEMS } from '../navigation-items';
 import { Icon, type IconName } from './icons';
+import { useI18n } from '../i18n';
 
 /**
  * Rail lateral de navegación (estilo WuPlay, acabado moderno).
@@ -25,6 +26,7 @@ const ICONS: Record<string, IconName> = {
 
 export function SideRail() {
   const { route, navigate, activeProfile, settings } = useApp();
+  const { t } = useI18n();
 
   // Se respeta la personalización del menú guardada en el servidor.
   const items = NAV_ITEMS.filter((item) => {
@@ -39,7 +41,7 @@ export function SideRail() {
   const activeId = items.find((item) => item.route.name === route.name)?.id;
 
   return (
-    <nav className="rail" aria-label="Navegación principal">
+    <nav className="rail" aria-label={t('HOME')}>
       <span className="rail__brand" aria-hidden="true">
         V
       </span>
@@ -55,7 +57,7 @@ export function SideRail() {
             aria-current={activeId === item.id ? 'page' : undefined}
           >
             <Icon name={ICONS[item.id] ?? 'home'} />
-            <span>{item.label}</span>
+            <span>{item.labelKey ? t(item.labelKey) : item.label}</span>
           </button>
         ))}
       </div>

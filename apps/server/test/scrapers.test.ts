@@ -169,11 +169,21 @@ describe('scrapers nativos', () => {
     // El addon nativo queda registrado y participa en el fan-out de streams.
     const streams = await fetch(`${base}/stream/movie/tt1.json`);
     assert.equal(streams.status, 200);
-    const body = (await streams.json()) as { streams: Array<{ url?: string; name?: string }> };
+    const body = (await streams.json()) as { streams: Array<{ url?: string; name?: string; title?: string }> };
     const scraped = body.streams.find((stream) => stream.url?.includes('cdn.example.com'));
     assert.ok(scraped, 'el stream raspeado deberia estar en la respuesta');
     assert.equal(scraped!.name, 'Pelicula Uno');
-    assert.equal((scraped as { description?: string }).description, undefined);
+    // `description` es el campo actual del protocolo (`title` esta deprecado):
+    // lleva la misma etiqueta publica, nunca el nombre del proveedor.
+    assert.equal((scraped as { description?: string }).description, 'Pelicula Uno');
+    // La etiqueta publica (y el grupo de binge derivado) no filtra el
+    // proveedor; las cabeceras de reproduccion si llevan el Referer original,
+    // que es imprescindible para que el stream funcione.
+    const hints = (scraped as { behaviorHints?: { bingeGroup?: string; filename?: string } }).behaviorHints;
+    assert.ok(!/cinehax|hax|example|proveedor/i.test(
+      `${scraped!.name} ${scraped!.title ?? ''} ${(scraped as { description?: string }).description ?? ''} ${hints?.bingeGroup ?? ''}`,
+    ));
+    assert.equal(hints?.filename, undefined);
   });
 
   it('invalida la cache cuando cambian los proveedores', async () => {
@@ -223,7 +233,7 @@ describe('scrapers nativos', () => {
     const stream = body.streams.find((item) => item.url?.includes('remux.unlimplay.com'));
     assert.ok(stream, 'el adaptador nativo debe resolver la fuente del sitio simulado');
     assert.equal(stream.name, 'Pelicula Uno');
-    assert.equal(stream.description, undefined);
+    assert.equal(stream.description, 'Pelicula Uno');
     assert.ok(!body.streams.some((item) => item.url?.endsWith('/en.mp4')));
 
     const debug = await fetch(`${base}/api/scrapers/test`, {

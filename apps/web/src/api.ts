@@ -15,6 +15,8 @@ import type {
   Manifest,
   MasterInfo,
   Meta,
+  ProxySubtitleResult,
+  Thumbnail,
   ProgressEntry,
   Profile,
   Rating,
@@ -489,6 +491,54 @@ export const api = {
   },
 
   // --------------------------------------------------------------------- HLS
+  /**
+   * Miniaturas de previsualizacion del salto.
+   *
+   * Sigue `#EXT-X-IMAGE-STREAM-INF` del master y devuelve los recortes ya
+   * calculados (WuPlay v0.9.3 los usa en la barra de progreso).
+   */
+  async thumbnails(url: string, headers?: Record<string, string>): Promise<{
+    thumbnails: Thumbnail[];
+    imageStreams: MasterInfo['imageStreams'];
+    url: string;
+  }> {
+    const encodedHeaders = headers
+      ? btoa(unescape(encodeURIComponent(JSON.stringify(headers))))
+      : undefined;
+    return request(`/hls/thumbnails${query({ url, h: encodedHeaders })}`);
+  },
+
+  /**
+   * Subtitulos externos normalizados por el servidor.
+   *
+   * Resuelve los tres problemas de cargar un subtitulo del addon directamente en
+   * el navegador: formato (SRT/ASS → WebVTT), codificacion (windows-1252/1256 →
+   * UTF-8, con reparacion de mojibake) y CORS. Con `format: 'json'` devuelve las
+   * cues para el renderizador propio, que es el unico que permite desfase,
+   * Clean SDH y cambios de estilo en caliente.
+   */
+  async subtitleProxy(params: {
+    url: string;
+    lang?: string;
+    clean?: boolean;
+    offsetMs?: number;
+    format?: 'vtt' | 'json';
+  }): Promise<{ url: string; text?: string; json?: ProxySubtitleResult }> {
+    const path = `/api/subtitles/proxy${query({
+      url: params.url,
+      lang: params.lang,
+      clean: params.clean === undefined ? undefined : params.clean ? '1' : '0',
+      offset: params.offsetMs,
+      format: params.format,
+    })}`;
+    if (params.format === 'json') {
+      return { url: path, json: await request<ProxySubtitleResult>(path) };
+    }
+    const response = await fetch(path);
+    if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status}`);
+    return { url: path, text: await response.text() };
+  },
+
   async masterInfo(
     url: string,
     options: { headers?: Record<string, string>; maxHeight?: number; audioLang?: string } = {},

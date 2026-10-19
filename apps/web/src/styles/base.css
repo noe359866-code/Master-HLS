@@ -94,6 +94,11 @@ body::before {
   body::before {
     animation: none;
   }
+
+  .poster {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {
@@ -350,11 +355,21 @@ img {
     linear-gradient(0deg, rgba(6, 8, 15, 0.95), transparent 60%);
 }
 
+/* El destacado se re-monta al cambiar de titulo (key = id): esta animacion es
+   la transicion, sin librerias ni state extra. */
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 .hero__body {
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  animation: hero-in 280ms var(--ease, ease);
 }
 
 .hero__eyebrow {
@@ -552,6 +567,15 @@ img {
   scroll-snap-type: x proximity;
 }
 
+.row__items {
+  /* Al llegar al final de la fila el scroll no se contagia a la pagina: es el
+     «row gliding» que WuPlay afino en la v0.9.3. */
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 12px;
+  /* El foco nunca queda pegado al borde del contenedor. */
+  scroll-padding-block: 8px;
+}
+
 .row__items::-webkit-scrollbar {
   height: 6px;
 }
@@ -581,6 +605,33 @@ img {
 
 .poster--landscape {
   aspect-ratio: 16 / 9;
+}
+
+/* Esqueleto del poster: se ve mientras la imagen no ha pintado y desaparece
+   solo cuando el <img> la tapa, sin necesidad de JavaScript. */
+.poster {
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.07) 42%,
+    rgba(255, 255, 255, 0) 62%
+  );
+  background-size: 220% 100%;
+  animation: poster-shimmer 1.5s linear infinite;
+}
+
+.poster img {
+  /* Evita el parpadeo blanco al decodificar: la tarjeta ya tiene su fondo. */
+  background: var(--bg-card);
+}
+
+@keyframes poster-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
 }
 
 .poster img {

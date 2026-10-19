@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { App } from './App';
+import { LocalizedApp } from './App';
 import { AppProvider } from './store';
 import { registerServiceWorker, setupInstallPrompt } from './pwa';
 import './styles.css';
@@ -16,7 +16,7 @@ setupInstallPrompt();
 createRoot(container).render(
   <StrictMode>
     <AppProvider>
-      <App />
+      <LocalizedApp />
     </AppProvider>
   </StrictMode>,
 );

@@ -16,6 +16,7 @@ const KEY_TAG = '#EXT-X-KEY:';
 const MAP_TAG = '#EXT-X-MAP:';
 const SESSION_KEY_TAG = '#EXT-X-SESSION-KEY:';
 const I_FRAME_TAG = '#EXT-X-I-FRAME-STREAM-INF:';
+const IMAGE_STREAM_TAG = '#EXT-X-IMAGE-STREAM-INF:';
 const RENDITION_REPORT_TAG = '#EXT-X-RENDITION-REPORT:';
 const PART_TAG = '#EXT-X-PART:';
 const PRELOAD_HINT_TAG = '#EXT-X-PRELOAD-HINT:';
@@ -57,10 +58,12 @@ export function rewritePlaylist(text: string, baseUrl: string, resolve: UriResol
 
     if (line.startsWith(MEDIA_TAG) || line.startsWith(KEY_TAG) || line.startsWith(MAP_TAG) ||
         line.startsWith(SESSION_KEY_TAG) || line.startsWith(I_FRAME_TAG) ||
+        line.startsWith(IMAGE_STREAM_TAG) ||
         line.startsWith(RENDITION_REPORT_TAG) || line.startsWith(PART_TAG) ||
         line.startsWith(PRELOAD_HINT_TAG)) {
       output.push(rewriteUriAttribute(line, baseUrl, resolve));
-      pendingVariant = line.startsWith(I_FRAME_TAG);
+      // I-FRAME e IMAGE-STREAM-INF pueden llevar la URI en la linea siguiente.
+      pendingVariant = line.startsWith(I_FRAME_TAG) || line.startsWith(IMAGE_STREAM_TAG);
       continue;
     }
 

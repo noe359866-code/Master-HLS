@@ -186,7 +186,14 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     await store.flush();
   };
 
-  registerStremioRoutes(router, { registry, getData, appVersion: APP_VERSION, debrid });
+  registerStremioRoutes(router, {
+    registry,
+    getData,
+    appVersion: APP_VERSION,
+    debrid,
+    contactEmail: process.env['CONTACT_EMAIL'],
+    publicUrl: () => config.publicUrl,
+  });
   registerAddonRoutes(router, {
     registry,
     getData,

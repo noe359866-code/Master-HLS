@@ -7,6 +7,17 @@ import { canInstall, isInstalled, onInstallChange, promptInstall } from '../pwa'
 import { getAdminToken, setAdminToken } from '../session';
 import { api } from '../api';
 import { Button, EmptyState, ErrorState, Loader } from '../components/ui';
+import { useI18n } from '../i18n';
+import { deviceEnvironment } from '../player/environment';
+import {
+  SUBTITLE_COLORS,
+  SUBTITLE_EDGES,
+  SUBTITLE_SIZES,
+  detectCapabilities,
+  formatDelay,
+  isLowEndDevice,
+  videoScaleLabel,
+} from '@vibeflix/player-core';
 import type { AppSettings, Genre, ProviderConfig, ScraperStatus } from '../types';
 
 /** Gestor de addons: instalar, actualizar y quitar. */
@@ -159,6 +170,8 @@ export function AddonsScreen() {
 
 export function SettingsScreen() {
   const { settings, activeProfile, saveSettings, navigate } = useApp();
+  const { t, locale, locales, change } = useI18n();
+  const [detectedSummary, setDetectedSummary] = useState('');
   const [debridMessage, setDebridMessage] = useState<string | null>(null);
   const [debridError, setDebridError] = useState<string | null>(null);
   const [installable, setInstallable] = useState(false);
@@ -212,6 +225,40 @@ export function SettingsScreen() {
   }, []);
 
   if (!settings) return <Loader />;
+
+  /**
+   * Rellena las capacidades del dispositivo con lo que detecta el navegador
+   * (pantalla, HDR, codecs, memoria y CPU). Es el mismo `detectCapabilities()`
+   * que usa el reproductor al arrancar: sirve para corregir a mano lo que la
+   * deteccion automatica no puede saber (por ejemplo un tope de bitrate).
+   */
+  const detectDevice = (): void => {
+    const environment = deviceEnvironment();
+    const detected = detectCapabilities(environment);
+    setDetectedSummary(
+      [
+        `${environment.screenWidth ?? '?'}x${environment.screenHeight ?? '?'} @ ${
+          environment.devicePixelRatio ?? 1
+        }x`,
+        `techo ${detected.maxHeight ?? '?'}p`,
+        `HDR ${detected.supportsHdr ? 'si' : 'no'}`,
+        `Dolby Vision ${detected.supportsDolbyVision ? 'si' : 'no'}`,
+        `codecs ${detected.preferredCodecs.join(', ') || '-'}`,
+        `${environment.hardwareConcurrency ?? '?'} CPU / ${environment.deviceMemory ?? '?'} GB`,
+        detected.maxBandwidthMbps ? `red ~${Math.round(detected.maxBandwidthMbps)} Mbps` : 'red ?',
+        isLowEndDevice(environment) ? 'gama baja' : 'gama normal',
+      ].join(' · '),
+    );
+    void saveSettings({
+      device: {
+        ...settings.device,
+        maxHeight: Math.min(settings.device.maxHeight || 4096, detected.maxHeight ?? 4096),
+        supportsHdr: Boolean(detected.supportsHdr),
+        supportsDolbyVision: Boolean(detected.supportsDolbyVision),
+      },
+    });
+  };
+
 
   const filters = settings.filters ?? {
     includeGenres: [],
@@ -390,15 +437,133 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
-        <h2>Reproducción</h2>
+        <h2>{t('SETTINGS_INTERFACE')}</h2>
         <label className="setting">
-          <span>Autoplay del siguiente episodio</span>
+          <span>{t('LANGUAGE')}</span>
+          <select
+            data-focusable="true"
+            value={locale}
+            onChange={(event) => change(event.target.value)}
+          >
+            {locales.map((info) => (
+              <option key={info.tag} value={info.tag}>
+                {info.label}
+                {info.translated ? '' : ' ·'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="panel__hint">{t('SETTINGS_INTERFACE_HELP')}</p>
+      </section>
+
+      <section className="panel">
+        <h2>{t('SETTINGS_PLAYBACK')}</h2>
+        <label className="setting">
+          <span>{t('AUTO_PLAY')}</span>
           <input
             type="checkbox"
             data-focusable="true"
             checked={settings.autoplayTrailers}
             onChange={(event) => void saveSettings({ autoplayTrailers: event.target.checked })}
           />
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_AUTOPLAY_COUNTDOWN')}</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.autoplayCountdown ?? 5}
+            onChange={(event) =>
+              void saveSettings({
+                playback: { ...settings.playback, autoplayCountdown: Number(event.target.value) },
+              })
+            }
+          >
+            {[0, 3, 5, 10, 15].map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {seconds === 0 ? t('OFF') : `${seconds} s`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_MAX_BITRATE')}</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.maxBitrateMbps ?? 0}
+            onChange={(event) =>
+              void saveSettings({
+                playback: { ...settings.playback, maxBitrateMbps: Number(event.target.value) },
+              })
+            }
+          >
+            {[0, 2, 4, 6, 8, 12, 16, 25, 40].map((mbps) => (
+              <option key={mbps} value={mbps}>
+                {mbps === 0 ? `${t('AUTO')} / ${t('OFF')}` : `${mbps} Mbps`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="panel__hint">{t('SETTINGS_MAX_BITRATE_HELP')}</p>
+        <label className="setting">
+          <span>{t('SETTINGS_BUFFER_SECONDS')}</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.bufferSeconds ?? 0}
+            onChange={(event) =>
+              void saveSettings({
+                playback: { ...settings.playback, bufferSeconds: Number(event.target.value) },
+              })
+            }
+          >
+            {[0, 15, 30, 45, 60, 90].map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {seconds === 0 ? t('AUTO') : `${seconds} s`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="setting">
+          <span>{t('CONTINUE_WATCHING')}</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={settings.playback?.resume !== false}
+            onChange={(event) =>
+              void saveSettings({ playback: { ...settings.playback, resume: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('PLAYER_THUMBNAILS')}</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={settings.playback?.thumbnails !== false}
+            onChange={(event) =>
+              void saveSettings({ playback: { ...settings.playback, thumbnails: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('PLAYER_VIDEO_SCALE')}</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.videoScale ?? 'contain'}
+            onChange={(event) =>
+              void saveSettings({
+                playback: {
+                  ...settings.playback,
+                  videoScale: event.target.value as 'contain' | 'cover' | 'fill' | 'zoom',
+                },
+              })
+            }
+          >
+            {(['contain', 'cover', 'fill', 'zoom'] as const).map((scale) => (
+              <option key={scale} value={scale}>
+                {videoScaleLabel(scale)}
+              </option>
+            ))}
+          </select>
         </label>
         <p className="panel__hint">
           Los streams se muestran con el título y, si corresponde, la temporada y el episodio.
@@ -407,10 +572,183 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
-        <h2>Capacidades del dispositivo</h2>
+        <h2>{t('SETTINGS_SUBTITLES')}</h2>
+        <label className="setting">
+          <span>{t('SUBTITLES')}</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={settings.subtitles?.enabled !== false}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, enabled: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('PLAYER_SUBTITLES_SIZE')}</span>
+          <select
+            data-focusable="true"
+            value={settings.subtitles?.size ?? 1}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, size: Number(event.target.value) } })
+            }
+          >
+            {SUBTITLE_SIZES.map((size) => (
+              <option key={size.id} value={size.scale}>
+                {size.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_COLOR')}</span>
+          <select
+            data-focusable="true"
+            value={settings.subtitles?.color ?? 'white'}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, color: event.target.value } })
+            }
+          >
+            {SUBTITLE_COLORS.map((color) => (
+              <option key={color.id} value={color.id}>
+                {color.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_OPACITY')}</span>
+          <input
+            type="range"
+            min={0.2}
+            max={1}
+            step={0.05}
+            data-focusable="true"
+            value={settings.subtitles?.opacity ?? 1}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, opacity: Number(event.target.value) } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_BACKGROUND')}</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            data-focusable="true"
+            value={settings.subtitles?.backgroundOpacity ?? 0.35}
+            onChange={(event) =>
+              void saveSettings({
+                subtitles: { ...settings.subtitles, backgroundOpacity: Number(event.target.value) },
+              })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_EDGE')}</span>
+          <select
+            data-focusable="true"
+            value={settings.subtitles?.edge ?? 'outline'}
+            onChange={(event) =>
+              void saveSettings({
+                subtitles: {
+                  ...settings.subtitles,
+                  edge: event.target.value as 'none' | 'outline' | 'shadow' | 'raised',
+                },
+              })
+            }
+          >
+            {SUBTITLE_EDGES.map((edge) => (
+              <option key={edge} value={edge}>
+                {edge}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_POSITION')}</span>
+          <input
+            type="range"
+            min={0}
+            max={30}
+            step={1}
+            data-focusable="true"
+            value={settings.subtitles?.verticalPosition ?? 8}
+            onChange={(event) =>
+              void saveSettings({
+                subtitles: { ...settings.subtitles, verticalPosition: Number(event.target.value) },
+              })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_BOLD')}</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={Boolean(settings.subtitles?.bold)}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, bold: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('SETTINGS_CLEAN_SDH')}</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={Boolean(settings.subtitles?.cleanSdh)}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, cleanSdh: event.target.checked } })
+            }
+          />
+        </label>
+        <p className="panel__hint">{t('SETTINGS_CLEAN_SDH_HELP')}</p>
+        <label className="setting">
+          <span>{t('SETTINGS_SUBTITLES_ONLY_FOREIGN')}</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={Boolean(settings.subtitles?.onlyForForeignAudio)}
+            onChange={(event) =>
+              void saveSettings({
+                subtitles: { ...settings.subtitles, onlyForForeignAudio: event.target.checked },
+              })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>{t('PLAYER_SUBTITLES_DELAY')}</span>
+          <select
+            data-focusable="true"
+            value={settings.subtitles?.delayMs ?? 0}
+            onChange={(event) =>
+              void saveSettings({ subtitles: { ...settings.subtitles, delayMs: Number(event.target.value) } })
+            }
+          >
+            {[-2000, -1000, -500, -250, 0, 250, 500, 1000, 2000].map((ms) => (
+              <option key={ms} value={ms}>
+                {formatDelay(ms)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+
+      <section className="panel">
+        <h2>{t('SETTINGS_DEVICE')}</h2>
         <p className="panel__hint">
           Determinan qué variante HLS se elige automáticamente en el reproductor.
         </p>
+        <div className="setting">
+          <span>{t('SETTINGS_DETECT_DEVICE')}</span>
+          <Button variant="ghost" onClick={detectDevice}>
+            {t('SETTINGS_DETECT_DEVICE')}
+          </Button>
+        </div>
+        <p className="panel__hint">{detectedSummary}</p>
         <label className="setting">
           <span>Resolución máxima</span>
           <select

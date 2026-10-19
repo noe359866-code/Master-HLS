@@ -11,11 +11,11 @@
  *  - subtitulos: fan-out a todos los addons de subtitulos.
  *
  * Cada addon va aislado: un addon caido o lento no rompe la respuesta, se
- * reporta en `errors` y el resto de addons siguen Seigneurrecolando.
+ * reporta en `errors` y el resto de addons siguen respondiendo.
  */
 
 import { HttpClient } from './http.js';
-import { SingleFlight, TtlCache } from './cache.js';
+import { SingleFlight, TtlCache, type CachePeek } from './cache.js';
 import {
   AddonClient,
   matchesIdPrefix,
@@ -25,7 +25,7 @@ import {
 } from './client.js';
 import type { AddonSource } from './source.js';
 import { BUILTIN_METADATA_ID, BuiltinMetadataAddon, DEFAULT_METADATA_BASE_URL } from './builtin.js';
-import { mergeMeta, mergeVideos } from './normalize.js';
+import { mergeCacheDirectives, mergeMeta, mergeVideos } from './normalize.js';
 import { sortStreamsByQuality, streamDedupeKey } from './streamQuality.js';
 import {
   AddonError,
@@ -64,6 +64,12 @@ export interface RegistryOptions {
   http?: HttpClient;
   manifestTtlMs?: number;
   resourceTtlMs?: number;
+  /**
+   * Ventana stale-while-revalidate de la cache de recursos: durante este tiempo
+   * un valor caducado se sirve al instante mientras se refresca en segundo
+   * plano (`0` desactiva el comportamiento).
+   */
+  staleTtlMs?: number;
   /** Timeout por addon en el fan-out. */
   fanoutTimeoutMs?: number;
 }
@@ -75,6 +81,14 @@ export interface AggregatedResult<T> {
   sources: string[];
   /** Addons que fallaron, con su motivo. */
   errors: Array<{ addonId: string; message: string }>;
+  /**
+   * true cuando el resultado esta caducado y se sirve mientras se refresca en
+   * segundo plano (stale-while-revalidate): el cliente puede decidir mostrarlo
+   * ya y actualizar cuando llegue el dato nuevo.
+   */
+  stale?: boolean;
+  /** Segundos desde que se obtuvo el dato (para la cabecera `Cache-Control`). */
+  ageSeconds?: number;
 }
 
 export interface CatalogEntry extends CatalogDescriptor {
@@ -96,8 +110,46 @@ export class AddonRegistry {
 
   constructor(options: RegistryOptions = {}) {
     this.http = options.http ?? new HttpClient();
-    this.resourceCache = new TtlCache<unknown>({ ttlMs: options.resourceTtlMs ?? 3 * 60_000 });
+    this.resourceCache = new TtlCache<unknown>({
+      ttlMs: options.resourceTtlMs ?? 3 * 60_000,
+      // Ventana SWR: al caducar un catalogo se sirve el anterior mientras se
+      // refresca en segundo plano. En TV, esperar 3 s a un addon lento se nota
+      // mucho mas que ver un listado de hace unos minutos.
+      staleTtlMs: options.staleTtlMs ?? 30 * 60_000,
+    });
     this.fanoutTimeoutMs = options.fanoutTimeoutMs ?? 10_000;
+  }
+
+  /**
+   * Cache con stale-while-revalidate y single-flight.
+   *
+   * - Valor fresco → se devuelve tal cual.
+   * - Valor caducado dentro de la ventana SWR → se devuelve **inmediatamente**
+   *   y se lanza el refresco en segundo plano (una sola vez por clave).
+   * - Sin valor → se espera al fan-out.
+   * - Si el refresco falla, se alarga la ventana del valor viejo: es mejor un
+   *   dato caducado que una pantalla vacia cuando un addon se cae.
+   */
+  private async cachedResource<T>(
+    key: string,
+    compute: () => Promise<AggregatedResult<T>>,
+  ): Promise<AggregatedResult<T>> {
+    const fresh = this.resourceCache.get(key) as AggregatedResult<T> | undefined;
+    if (fresh) return { ...fresh, ageSeconds: 0 };
+
+    const inflight = this.singleFlight.run(key, compute);
+    const stale = this.resourceCache.peek(key) as CachePeek<AggregatedResult<T>> | undefined;
+
+    if (stale) {
+      inflight
+        .then((result) => this.resourceCache.set(key, result))
+        .catch(() => this.resourceCache.extend(key));
+      return { ...stale.value, stale: true, ageSeconds: Math.round(stale.ageMs / 1000) };
+    }
+
+    const result = await inflight;
+    this.resourceCache.set(key, result);
+    return { ...result, ageSeconds: 0 };
   }
 
   /** Instala (o reinstala) un addon a partir de su manifest URL. */
@@ -219,10 +271,8 @@ export class AddonRegistry {
   ): Promise<AggregatedResult<CatalogResponse>> {
     const term = query.trim();
     const key = `search:${options.type ?? '*'}:${term}`;
-    const cached = this.resourceCache.get(key) as AggregatedResult<CatalogResponse> | undefined;
-    if (cached) return cached;
 
-    const result = await this.singleFlight.run(key, async () => {
+    return this.cachedResource<CatalogResponse>(key, async () => {
       const tasks: Array<{ addonId: string; type: string; id: string }> = [];
       for (const manifest of this.manifests.values()) {
         if (!supportsResource(manifest, 'catalog')) continue;
@@ -252,11 +302,13 @@ export class AddonRegistry {
       const sources: string[] = [];
       const errors: Array<{ addonId: string; message: string }> = [];
       const byId = new Map<string, CatalogResponse['metas'][number]>();
+      const directives: Array<CatalogResponse['cache']> = [];
 
       settled.forEach((outcome, index) => {
         const addonId = tasks[index]!.addonId;
         if (outcome.status === 'fulfilled') {
           if (!sources.includes(addonId)) sources.push(addonId);
+          directives.push(outcome.value.value.cache);
           for (const meta of outcome.value.value.metas) {
             const existing = byId.get(meta.id);
             byId.set(meta.id, existing ? { ...meta, ...existing } : meta);
@@ -270,16 +322,17 @@ export class AddonRegistry {
         }
       });
 
+      const cache = mergeCacheDirectives(directives);
       const metas = [...byId.values()];
       return {
-        value: { metas: options.limit ? metas.slice(0, options.limit) : metas },
+        value: {
+          metas: options.limit ? metas.slice(0, options.limit) : metas,
+          ...(cache ? { cache } : {}),
+        },
         sources,
         errors,
       };
     });
-
-    this.resourceCache.set(key, result);
-    return result;
   }
 
   /** Catalogo unificado de todos los addons instalados. */
@@ -310,10 +363,8 @@ export class AddonRegistry {
    */
   async catalog(request: AddonCatalogRequest): Promise<AggregatedResult<CatalogResponse>> {
     const key = `catalog:${request.type}:${request.id}:${JSON.stringify(request.extra ?? {})}`;
-    const cached = this.resourceCache.get(key) as AggregatedResult<CatalogResponse> | undefined;
-    if (cached) return cached;
 
-    const result = await this.singleFlight.run(key, async () => {
+    return this.cachedResource<CatalogResponse>(key, async () => {
       const sources = this.manifestsForCatalog(request.type, request.id);
       const responses = await this.fanout(
         sources,
@@ -327,24 +378,20 @@ export class AddonRegistry {
           byId.set(meta.id, existing ? { ...meta, ...existing } : meta);
         }
       }
+      const cache = mergeCacheDirectives(responses.ok.map((entry) => entry.value.cache));
       return {
-        value: { metas: [...byId.values()] },
+        value: { metas: [...byId.values()], ...(cache ? { cache } : {}) },
         sources: responses.ok.map((entry) => entry.addonId),
         errors: responses.errors,
       };
     });
-
-    this.resourceCache.set(key, result);
-    return result;
   }
 
   /** Meta agregada: fan-out a los addons de metadatos compatibles con el id. */
   async meta(request: { type: string; id: string }): Promise<AggregatedResult<MetaResponse>> {
     const key = `meta:${request.type}:${request.id}`;
-    const cached = this.resourceCache.get(key) as AggregatedResult<MetaResponse> | undefined;
-    if (cached) return cached;
 
-    const result = await this.singleFlight.run(key, async () => {
+    return this.cachedResource<MetaResponse>(key, async () => {
       const sources = this.manifestsForMeta(request.type, request.id);
       const responses = await this.fanout(
         sources,
@@ -355,15 +402,13 @@ export class AddonRegistry {
       for (const { value } of responses.ok) {
         merged = mergeMeta(merged, value.meta);
       }
+      const cache = mergeCacheDirectives(responses.ok.map((entry) => entry.value.cache));
       return {
-        value: { meta: merged },
+        value: { meta: merged, ...(cache ? { cache } : {}) },
         sources: responses.ok.map((entry) => entry.addonId),
         errors: responses.errors,
       };
     });
-
-    this.resourceCache.set(key, result);
-    return result;
   }
 
   /** Streams agregados: fan-out a todos los addons de streams, ordenados por calidad. */
@@ -375,10 +420,8 @@ export class AddonRegistry {
     preferredAddonIds?: string[];
   }): Promise<AggregatedResult<StreamResponse>> {
     const key = `streams:${request.type}:${request.id}:${request.cacheScope ?? ''}:${(request.preferredAddonIds ?? []).join(',')}`;
-    const cached = this.resourceCache.get(key) as AggregatedResult<StreamResponse> | undefined;
-    if (cached) return cached;
 
-    const result = await this.singleFlight.run(key, async () => {
+    return this.cachedResource<StreamResponse>(key, async () => {
       const sources = this.manifestsForStream(request.type, request.id);
       const responses = await this.fanout(
         sources,
@@ -409,24 +452,20 @@ export class AddonRegistry {
         ...sortStreamsByQuality(entries.filter((entry) => entry.preferred).map((entry) => entry.stream)),
         ...sortStreamsByQuality(entries.filter((entry) => !entry.preferred).map((entry) => entry.stream)),
       ];
+      const cache = mergeCacheDirectives(responses.ok.map((entry) => entry.value.cache));
       return {
-        value: { streams },
+        value: { streams, ...(cache ? { cache } : {}) },
         sources: responses.ok.map((entry) => entry.addonId),
         errors: responses.errors,
       };
     });
-
-    this.resourceCache.set(key, result);
-    return result;
   }
 
   /** Subtitulos agregados. */
   async subtitles(request: { type: string; id: string }): Promise<AggregatedResult<SubtitleResponse>> {
     const key = `subtitles:${request.type}:${request.id}`;
-    const cached = this.resourceCache.get(key) as AggregatedResult<SubtitleResponse> | undefined;
-    if (cached) return cached;
 
-    const result = await this.singleFlight.run(key, async () => {
+    return this.cachedResource<SubtitleResponse>(key, async () => {
       const sources = this.manifestsForSubtitles(request.type, request.id);
       const responses = await this.fanout(
         sources,
@@ -440,15 +479,13 @@ export class AddonRegistry {
           if (!byKey.has(key)) byKey.set(key, subtitle);
         }
       }
+      const cache = mergeCacheDirectives(responses.ok.map((entry) => entry.value.cache));
       return {
-        value: { subtitles: [...byKey.values()] },
+        value: { subtitles: [...byKey.values()], ...(cache ? { cache } : {}) },
         sources: responses.ok.map((entry) => entry.addonId),
         errors: responses.errors,
       };
     });
-
-    this.resourceCache.set(key, result);
-    return result;
   }
 
   /** Vacia las caches de recursos (tras instalar/quitar addons o refrescar). */

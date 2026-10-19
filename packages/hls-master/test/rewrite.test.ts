@@ -54,6 +54,23 @@ describe('rewritePlaylist', () => {
   });
 });
 
+describe('reescritura de pistas de imagenes', () => {
+  it('reescribe la URI de EXT-X-IMAGE-STREAM-INF (atributo y linea siguiente)', () => {
+    const playlist = [
+      '#EXTM3U',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1',
+      'video/index.m3u8',
+      '#EXT-X-IMAGE-STREAM-INF:URI="thumbs/sprites.m3u8",TILES=5x5',
+      '#EXT-X-IMAGE-STREAM-INF:RESOLUTION=160x90',
+      'images/preview.m3u8',
+      '',
+    ].join('\n');
+    const rewritten = rewritePlaylist(playlist, 'https://cdn.tld/master.m3u8', (url) => `/hls/proxy?url=${url}`);
+    assert.match(rewritten, /URI="\/hls\/proxy\?url=https:\/\/cdn\.tld\/thumbs\/sprites\.m3u8"/);
+    assert.match(rewritten, /^\/hls\/proxy\?url=https:\/\/cdn\.tld\/images\/preview\.m3u8$/m);
+  });
+});
+
 describe('buildSingleVariantPlaylist', () => {
   it('genera un master de una sola variante', () => {
     const playlist = buildSingleVariantPlaylist({

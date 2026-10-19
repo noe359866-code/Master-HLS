@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parsePlaylist } from '../src/parser.js';
-import { selectBest, selectRendition, selectVariant, listVariants } from '../src/select.js';
+import { nameMatchesLanguage, selectBest, selectRendition, selectVariant, listVariants } from '../src/select.js';
 
 const MASTER = `#EXTM3U
 #EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="aud",SUBTITLES="sub",NAME="1080p"
@@ -88,5 +88,36 @@ describe('listVariants', () => {
     const master = parsePlaylist(MASTER, 'https://base.tld/master.m3u8');
     const variants = listVariants(master, { maxHeight: 2160, supportsHdr: true });
     assert.equal(variants[0]?.height, 2160);
+  });
+});
+
+describe('selectRendition por nombre', () => {
+  const master = parsePlaylist(
+    [
+      '#EXTM3U',
+      '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English 5.1",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,URI="en.m3u8"',
+      '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Espanol Latino",LANGUAGE="es-MX",DEFAULT=YES,AUTOSELECT=YES,URI="es.m3u8"',
+      '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Francais",DEFAULT=NO,AUTOSELECT=NO,URI="fr.m3u8"',
+      '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Sin idioma declarado",DEFAULT=NO,AUTOSELECT=NO,URI="unk.m3u8"',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=640x360,AUDIO="aud"',
+      'low/index.m3u8',
+      '',
+    ].join('\n'),
+    'https://base.tld/master.m3u8',
+  );
+
+  it('encuentra el idioma cuando el addon solo lo pone en NAME', () => {
+    assert.equal(nameMatchesLanguage('English 5.1', 'en'), true);
+    assert.equal(nameMatchesLanguage('Espanol Latino', 'es'), true);
+    assert.equal(nameMatchesLanguage('Frances', 'fr'), true);
+    assert.equal(nameMatchesLanguage('Frances', 'de'), false);
+    assert.equal(nameMatchesLanguage(undefined, 'es'), false);
+    assert.equal(selectRendition(master, 'AUDIO', { groupId: 'aud', language: 'fr' })?.name, 'Francais');
+  });
+
+  it('sigue prefiriendo el atributo LANGUAGE y la pista por defecto', () => {
+    assert.equal(selectRendition(master, 'AUDIO', { groupId: 'aud', language: 'es' })?.name, 'Espanol Latino');
+    assert.equal(selectRendition(master, 'AUDIO', { groupId: 'aud' })?.name, 'Espanol Latino');
+    assert.equal(selectRendition(master, 'AUDIO', { groupId: 'aud', language: 'de' })?.name, 'Espanol Latino');
   });
 });

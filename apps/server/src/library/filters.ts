@@ -4,7 +4,7 @@
  * Los filtros son globales de la app (se guardan en los ajustes del
  * servidor) y se aplican a las pantallas de contenido: busqueda, generos y
  * decadas. Entre los addons y la metadata, lo que llega a la pantalla es
- * "lo que hay"; estos filtros permitenlimpiarlo sin instalar nada.
+ * "lo que hay"; estos filtros permiten limpiarlo sin instalar nada.
  *
  * WuPlay tambien permite excluir palabras clave ("exclude keywords and
  * genres in content filters"): aqui se soporta con los generos y las
