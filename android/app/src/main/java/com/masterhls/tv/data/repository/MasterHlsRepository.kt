@@ -11,6 +11,7 @@ import com.masterhls.tv.data.remote.dto.MasterInfoDto
 import com.masterhls.tv.data.remote.dto.MetaDto
 import com.masterhls.tv.data.remote.dto.RatingDto
 import com.masterhls.tv.data.remote.dto.StreamDto
+import com.masterhls.tv.util.HeaderCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -103,8 +104,23 @@ class MasterHlsRepository @Inject constructor(
     suspend fun devices(): List<DeviceDto> =
         withContext(Dispatchers.IO) { api.devices().devices }
 
-    suspend fun masterInfo(url: String, maxHeight: Int?, audioLanguage: String?): MasterInfoDto =
-        withContext(Dispatchers.IO) {
-            api.masterInfo(url, maxHeight, audioLanguage = audioLanguage)
-        }
+    suspend fun masterInfo(
+        url: String,
+        maxHeight: Int?,
+        audioLanguage: String?,
+        supportsHdr: Boolean? = null,
+        headers: Map<String, String> = emptyMap(),
+    ): MasterInfoDto = withContext(Dispatchers.IO) {
+        api.masterInfo(
+            url = url,
+            maxHeight = maxHeight,
+            hdr = when (supportsHdr) {
+                true -> 1
+                false -> 0
+                null -> null
+            },
+            audioLanguage = audioLanguage,
+            headers = HeaderCodec.encode(headers).ifBlank { null },
+        )
+    }
 }

@@ -25,6 +25,17 @@
   - [x] Inicio, descubrir, búsqueda, detalle, reproductor, listas, historial
   - [x] Gestor de addons y ajustes de dispositivo
 - [x] **Shell Android TV** (Kotlin, Compose for TV, Media3)
+  - [x] Reproductor Media3 (ExoPlayer 1.8) con HLS optimizado: buffer amplio,
+        `HlsMediaSource` propio (chunkless desactivado) y techo de calidad
+  - [x] Caché de reproducción: `SimpleCache` LRU de 512 MB con índice SQLite,
+        `FLAG_IGNORE_CACHE_ON_ERROR` y claves con ventana temporal para los
+        playlists (los segmentos se cachean por URI)
+  - [x] Velocidad de reproducción y elección exacta de pista de audio y de
+        subtítulos (`TrackSelectionOverride`)
+  - [x] Control por D-pad: flechas para saltar y volumen, OK play/pausa, barra
+        de controles con foco propio y auto-ocultado
+  - [x] Cabeceras HTTP del addon (`behaviorHints.proxyHeaders.request`)
+        propagadas a todas las peticiones del reproductor
 - [x] Addon de demostración para trabajar sin conexión
 - [x] **Metadata integrada** (addon embebido, conmutable desde Ajustes)
 - [x] **Ficha de persona** con filmografía (`/api/person`)

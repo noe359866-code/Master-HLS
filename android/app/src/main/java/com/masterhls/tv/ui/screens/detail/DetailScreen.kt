@@ -37,7 +37,7 @@ fun DetailScreen(
     type: String,
     id: String,
     onBack: () -> Unit,
-    onPlay: (url: String, name: String, title: String) -> Unit,
+    onPlay: (url: String, name: String, title: String, headers: Map<String, String>) -> Unit,
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -99,6 +99,7 @@ fun DetailScreen(
                                             stream.url.orEmpty(),
                                             stream.name.orEmpty(),
                                             meta?.name.orEmpty(),
+                                            stream.requestHeaders(),
                                         )
                                     }
                                 },
@@ -114,7 +115,17 @@ fun DetailScreen(
         }
 
         items(state.streams, key = { it.name ?: it.url.orEmpty() }) { stream ->
-            StreamRow(stream = stream, onPlay = { onPlay(it, stream.name.orEmpty(), meta?.name.orEmpty()) })
+            StreamRow(
+                stream = stream,
+                onPlay = {
+                    onPlay(
+                        it,
+                        stream.name.orEmpty(),
+                        meta?.name.orEmpty(),
+                        stream.requestHeaders(),
+                    )
+                },
+            )
         }
     }
 }
@@ -170,3 +181,13 @@ private fun StreamRow(stream: StreamDto, onPlay: (String) -> Unit) {
         }
     }
 }
+
+/**
+ * Cabeceras HTTP que el addon pide usar para el stream.
+ *
+ * El protocolo Stremio las expone en `behaviorHints.proxyHeaders.request` y
+ * muchos CDN las exigen (Referer, User-Agent, cookies). El reproductor de
+ * Android las replica en sus peticiones.
+ */
+private fun StreamDto.requestHeaders(): Map<String, String> =
+    behaviorHints?.proxyHeaders?.request.orEmpty()

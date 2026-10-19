@@ -157,6 +157,46 @@ streams agregados  ->  candidatos (infoHash / externalUrl)
 - El cliente Android habla con el servidor usando el protocolo Stremio, igual
   que cualquier otro cliente de addons.
 
+### 6.1 Reproductor Media3 (`android/app/src/main/java/com/masterhls/tv/data/player/`)
+
+```
+url + cabeceras
+   -> PlayerViewModel.prepare()      consulta /hls/master (variante + pistas)
+   -> PlayerEngine.setMedia()        MediaItem con mimeType HLS
+   -> MasterHlsMediaSourceFactory    HlsMediaSource (chunkless off) o default
+   -> CacheDataSource                SimpleCache (LRU 512 MB) + clave propia
+   -> OkHttpDataSource               cabeceras del addon en cada peticion
+```
+
+- **Motor** (`PlayerEngine.kt`): `ExoPlayer` con `DefaultLoadControl`
+  (50 s / 120 s / 2,5 s / 5 s), `DefaultTrackSelector` con techo por
+  `setMaxVideoSize`, `AudioAttributes` con foco de audio y un `StateFlow`
+  (`PlaybackState`) que la UI observa. Comandos: play/pausa, salto ±10 s,
+  velocidad, volumen, elección exacta de pista y Subtítulos on/off.
+- **Caché** (`PlaybackCache.kt`): `SimpleCache` con
+  `LeastRecentlyUsedCacheEvictor` (512 MB) y `StandaloneDatabaseProvider`
+  (índice en SQLite, sobrevive a reinicios). `CacheDataSource` con
+  `FLAG_IGNORE_CACHE_ON_ERROR` para servir lo cacheado cuando el origen falla.
+- **Claves** (`HlsCacheKeys.kt`): lógica pura y testeable en la JVM. Los
+  segmentos y las claves AES se cachean por URI (inmutables); los playlists
+  añaden un *bucket* temporal (`uri#playlist=<bucket>`) para que un directo no
+  se quede congelado y, a la vez, se reutilice dentro de la ventana de 60 s.
+- **Cabeceras**: `behaviorHints.proxyHeaders.request` viaja en la ruta de
+  navegación (`h`, JSON en base64) y se aplica a todas las peticiones, así que
+  los segmentos exigidos por el CDN también los reciben.
+
+### 6.2 Integración con el D-pad (`ui/screens/player/PlayerScreen.kt`)
+
+- `PlayerView` con `useController = false`: la superficie de video no captura
+  el foco (`isFocusable = false`) y el control lo lleva la capa de Compose.
+- `onPreviewKeyEvent` en la raíz: flechas, OK, BACK y teclas multimedia se
+  gestionan antes que el foco de los hijos.
+- La barra de controles (`PlayerControls`) es un contenedor *focusable*: al
+  desplegarla se le cede el foco con un `FocusRequester`, y mientras lo tiene
+  las flechas recorren los botones de forma nativa.
+- Los controles se ocultan a los 5 s de inactividad, pero no mientras el
+  usuario los está usando.
+
 ## 7. Endurecimiento pendiente
 
 - Límite de concurrencia global del fan-out (hoy es `Promise.allSettled` sin

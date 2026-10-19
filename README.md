@@ -199,6 +199,63 @@ cd android
 - Antes de compilar hay que exportar el artefacto `hilt.compiler` en el catálogo
   de versiones (ver `android/gradle/libs.versions.toml`).
 
+### Reproductor Media3 (HLS optimizado)
+
+El reproductor de la app de TV es **AndroidX Media3 (ExoPlayer 1.8.0)** con una
+capa propia encima (`data/player/`):
+
+| Pieza | Archivo | Qué hace |
+| --- | --- | --- |
+| `PlayerEngine` | `data/player/PlayerEngine.kt` | Envuelve el `ExoPlayer`: buffer, pista, velocidad, volumen y estado (`StateFlow`). |
+| `PlaybackCache` | `data/player/PlaybackCache.kt` | `SimpleCache` (LRU 512 MB) + `StandaloneDatabaseProvider` para que la cache sobreviva a reinicios. |
+| `HlsCacheKeys` | `data/player/HlsCacheKeys.kt` | Claves de cache: los segmentos son inmutables; los playlists rotan por ventana de 60 s. |
+| `PlayerControls` | `ui/screens/player/PlayerControls.kt` | Barra de controles de TV: velocidad, audio, subtítulos, variantes y volumen. |
+| `PlayerScreen` | `ui/screens/player/PlayerScreen.kt` | Superficie de video (`PlayerView` sin controlador) + manejo del D-pad. |
+
+**Optimización para HLS**
+
+- `DefaultLoadControl` con buffers amplios (50 s mínimo, 120 s máximo, 2,5 s
+  para arrancar y 5 s tras un rebobinado) y `prioritizeTimeOverSizeThresholds`
+  activo: la red puede caer sin cortar la imagen.
+- `HlsMediaSource.Factory` propio con `allowChunklessPreparation` desactivado:
+  muchos CDN de addons no soportan la preparación sin chunks.
+- La **variante** la elige el servidor (`/hls/master`) según la resolución
+  máxima, el soporte HDR y el idioma de audio del dispositivo; en el cliente
+  queda un techo de calidad (`setMaxVideoSize`) como red de seguridad.
+- El playback parte de un master multivariant: el servidor devuelve la
+  variante concreta y el cliente reproduce esa URL.
+
+**Caché para evitar cortes**
+
+- `CacheDataSource` con `FLAG_IGNORE_CACHE_ON_ERROR`: si el origen falla, se
+  sirve el segmento cacheado en lugar de cortar.
+- `CacheKeyFactory` propio: los segmentos y las claves AES se cachean por URI
+  (inmutables) y los playlists incluyen una ventana temporal, de modo que un
+  stream en directo no se queda congelado en el primer manifiesto.
+- Cabeceras: las que pide el addon (`behaviorHints.proxyHeaders.request`) se
+  transportan hasta el reproductor (base64 en la ruta de navegación) y se
+  aplican a **todas** las peticiones, incluidas las de los segmentos.
+
+**Velocidad y pistas**
+
+- Velocidad: 0,5× · 0,75× · 1× · 1,25× · 1,5× · 2× (`setPlaybackSpeed`).
+- Audio y subtítulos: se fija la pista exacta con `TrackSelectionOverride`
+  (grupo + índice), no solo por idioma, para no confundir dos voces del mismo
+  idioma. Los subtítulos se activan y desactivan sin perder el audio elegido.
+
+**Control por D-pad (Android TV)**
+
+| Tecla | Acción |
+| --- | --- |
+| ◀ / ▶ | Retroceder o avanzar 10 s |
+| ▲ / ▼ | Desplegar la barra de controles y cederle el foco |
+| OK / ENTER | Reproducir o pausar |
+| BACK | Salir del reproductor (o devolver el foco al video) |
+| VOLUME ± / teclas multimedia | Volumen, play-pausa, avance y retroceso |
+
+La barra de controles se oculta sola a los 5 s de inactividad y vuelve a
+aparecer con cualquier pulsación; cuando tiene el foco no se oculta.
+
 ---
 
 ## Decisiones de diseño
@@ -234,6 +291,8 @@ cd android
 - [x] PIN de perfil aplicado (servidor + cliente)
 - [x] Trailers en la ficha de detalle
 - [x] Shell Android TV (Kotlin, Compose for TV, Media3)
+- [x] Reproductor Media3 en Android TV: HLS optimizado, caché de segmentos,
+      velocidad, cambio de pistas de audio/subtítulos y control por D-pad
 - [x] Debrid nativo en el servidor (Real-Debrid, AllDebrid, TorBox, Premiumize)
 - [x] PWA instalable (manifest + service worker) para usar la web TV como app
 - [x] Sincronización multi-dispositivo por código de vinculación

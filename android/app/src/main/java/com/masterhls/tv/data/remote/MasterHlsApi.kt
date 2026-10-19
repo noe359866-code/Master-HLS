@@ -94,5 +94,7 @@ interface MasterHlsApi {
         @Query("maxHeight") maxHeight: Int? = null,
         @Query("hdr") hdr: Int? = null,
         @Query("audioLang") audioLanguage: String? = null,
+        /** Cabeceras HTTP del stream (JSON en base64url). */
+        @Query("h") headers: String? = null,
     ): MasterInfoDto
 }
