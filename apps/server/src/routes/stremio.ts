@@ -57,6 +57,12 @@ import {
 } from '../http/router.js';
 import type { AppData } from '../model.js';
 import { applyContentFilters } from '../library/filters.js';
+import {
+  applyParentalFilters,
+  parentalBlockReason,
+  parentalPinLockRemaining,
+  verifyParentalPin,
+} from '../library/parental.js';
 import { presentStreams, streamDisplayName } from '../library/stream-labels.js';
 import {
   addonConfigFields,
@@ -286,6 +292,12 @@ function resourceSendOptions<T extends { cache?: CacheDirective }>(
 export function registerStremioRoutes(router: Router, options: StremioRouteOptions): void {
   const { registry, getData, appVersion, debrid, contactEmail, publicUrl } = options;
 
+  /** Reglas parentales del perfil activo (catálogos, búsqueda y streams). */
+  const activeParental = () => {
+    const data = getData();
+    return data.profiles.find((entry) => entry.id === data.activeProfileId)?.parental;
+  };
+
   /** Manifiesto completo del addon, con la configuracion de la URL aplicada. */
   const buildManifest = (ctx: RouteContext, config?: AddonConfig) => {
     const data = getData();
@@ -401,6 +413,7 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       extra: { ...extra, ...(language ? { language } : {}) },
     });
     let metas = applyContentFilters(result.value.metas, data.settings.filters);
+    metas = applyParentalFilters(metas, activeParental());
     if (config?.hideAdult) {
       metas = applyContentFilters(metas, { ...data.settings.filters, hideAdult: true });
     }
@@ -449,6 +462,27 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       }),
       registry.meta({ type: type === 'episode' ? 'series' : type, id: titleId }),
     ]);
+    // Control parental (NuvioTV: `ParentalGuide`): el título bloqueado no
+    // resuelve streams salvo que el perfil lo desbloque con su PIN.
+    const titleMeta = metadata.value.meta;
+    const blockReason = titleMeta ? parentalBlockReason(titleMeta, profile?.parental) : null;
+    if (blockReason) {
+      const canUnlock = Boolean(profile?.pin && profile?.parental?.requirePin);
+      const given = String(ctx.req?.headers['x-vibe-flix-parental-pin'] ?? '');
+      const unlocked = canUnlock && Boolean(given) && verifyParentalPin(profile!.id, profile!.pin!, given);
+      if (!unlocked) {
+        const wait = parentalPinLockRemaining(profile?.id ?? '');
+        sendJson(ctx.res, wait ? 429 : 403, {
+          error: wait
+            ? `Demasiados intentos de PIN. Espera ${wait} s.`
+            : `Bloqueado por el control parental: ${blockReason}`,
+          code: 'parental_blocked',
+          requiresPin: canUnlock,
+          ...(wait ? { retryAfterSeconds: wait } : {}),
+        });
+        return;
+      }
+    }
     // Debrid antes de enmascarar: la ordenación y el desbloqueo usan la
     // información original del stream; el cliente solo verá título + T/E.
     const resolved = debrid?.enabled
@@ -503,7 +537,10 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     const result = await registry.search(term, { type: query.get('type') ?? undefined });
     // Los filtros de contenido se aplican tambien a la busqueda (WuPlay los
     // aplica a todas las pantallas de catalogo).
-    const metas = applyContentFilters(result.value.metas, getData().settings.filters);
+    const metas = applyParentalFilters(
+      applyContentFilters(result.value.metas, getData().settings.filters),
+      activeParental(),
+    );
     sendJson(res, 200, { metas }, resourceSendOptions(req, DEFAULT_CACHE_POLICIES.search, result));
   });
 
@@ -577,9 +614,12 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       }
     }
 
-    const titles = applyContentFilters(
-      [...scored.values()].sort((a, b) => b.score - a.score).slice(0, 20).map((entry) => entry.meta),
-      data.settings.filters,
+    const titles = applyParentalFilters(
+      applyContentFilters(
+        [...scored.values()].sort((a, b) => b.score - a.score).slice(0, 20).map((entry) => entry.meta),
+        data.settings.filters,
+      ),
+      data.profiles.find((entry) => entry.id === profileId)?.parental,
     );
     sendJson(res, 200, { titles }, { req, cache: DEFAULT_CACHE_POLICIES.api });
   });
@@ -603,7 +643,12 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     const titles = await findSimilarTitles(registry, meta, {
       type: query.get('filterType') ?? type,
     });
-    sendJson(res, 200, { titles: applyContentFilters(titles, getData().settings.filters) }, {
+    sendJson(res, 200, {
+      titles: applyParentalFilters(
+        applyContentFilters(titles, getData().settings.filters),
+        activeParental(),
+      ),
+    }, {
       req,
       cache: DEFAULT_CACHE_POLICIES.meta,
     });

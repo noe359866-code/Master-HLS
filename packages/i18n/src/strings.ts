@@ -180,6 +180,27 @@ export const EN = {
   SETTINGS_SHORTCUT_SHORTCUTS: 'Show Shortcuts',
   SETTINGS_SHORTCUT_PIP: 'Picture in picture',
 
+  // ------------------------------------------------------- modo y parental
+  SETTINGS_EXPERIENCE: 'Experience',
+  SETTINGS_UI_MODE: 'Interface mode',
+  SETTINGS_UI_MODE_ESSENTIAL: 'Essential',
+  SETTINGS_UI_MODE_ADVANCED: 'Advanced',
+  SETTINGS_UI_MODE_HELP:
+    'Essential shows only the basic settings (language, playback and subtitles). Switch to Advanced for debrid, scrapers, filters and device tuning. Nothing is disabled: only hidden.',
+  PARENTAL_TITLE: 'Parental control',
+  PARENTAL_HELP:
+    'Limits which titles this profile can see and play. Applied on the server, so it is the same in the web, Android TV and the installed addon.',
+  PARENTAL_LEVEL: 'Maximum maturity',
+  PARENTAL_LEVEL_OFF: 'Off',
+  PARENTAL_LEVEL_KIDS: 'Kids (≤12)',
+  PARENTAL_LEVEL_TEEN: 'Teen (≤15)',
+  PARENTAL_LEVEL_ADULT: 'Adult (≤18)',
+  PARENTAL_BLOCKED_GENRES: 'Blocked genres',
+  PARENTAL_REQUIRE_PIN: 'Ask for the profile PIN to unlock a title',
+  PARENTAL_BLOCKED: 'Blocked by parental control',
+  PARENTAL_PIN_HINT: 'Enter the profile PIN to play this title.',
+  PARENTAL_UNLOCK: 'Unlock',
+
   // -------------------------------------------------------------- Vibe Flix
   VIBE_STREAM_SOURCE: 'Source',
   VIBE_HLS_SELECTION: 'Server selection',
@@ -354,6 +375,27 @@ export const ES: Record<TranslationKey, string> = {
   SETTINGS_SHORTCUT_SKIP_INTRO: 'Saltar intro',
   SETTINGS_SHORTCUT_SHORTCUTS: 'Mostrar atajos',
   SETTINGS_SHORTCUT_PIP: 'Imagen en imagen',
+
+  // ------------------------------------------------------- modo y parental
+  SETTINGS_EXPERIENCE: 'Experiencia',
+  SETTINGS_UI_MODE: 'Modo de interfaz',
+  SETTINGS_UI_MODE_ESSENTIAL: 'Esencial',
+  SETTINGS_UI_MODE_ADVANCED: 'Avanzado',
+  SETTINGS_UI_MODE_HELP:
+    'El modo Esencial muestra solo los ajustes básicos (idioma, reproducción y subtítulos). Cambia a Avanzado para debrid, scrapers, filtros y capacidades del dispositivo. No se desactiva nada: solo se oculta.',
+  PARENTAL_TITLE: 'Control parental',
+  PARENTAL_HELP:
+    'Limita los títulos que este perfil puede ver y reproducir. Se aplica en el servidor, así que vale igual en la web, Android TV y el addon instalado.',
+  PARENTAL_LEVEL: 'Madurez máxima',
+  PARENTAL_LEVEL_OFF: 'Sin control',
+  PARENTAL_LEVEL_KIDS: 'Infantil (≤12)',
+  PARENTAL_LEVEL_TEEN: 'Adolescente (≤15)',
+  PARENTAL_LEVEL_ADULT: 'Adulto (≤18)',
+  PARENTAL_BLOCKED_GENRES: 'Géneros bloqueados',
+  PARENTAL_REQUIRE_PIN: 'Pedir el PIN del perfil para desbloquear un título',
+  PARENTAL_BLOCKED: 'Bloqueado por el control parental',
+  PARENTAL_PIN_HINT: 'Escribe el PIN del perfil para reproducir este título.',
+  PARENTAL_UNLOCK: 'Desbloquear',
 
   VIBE_STREAM_SOURCE: 'Fuente',
   VIBE_HLS_SELECTION: 'Selección del servidor',

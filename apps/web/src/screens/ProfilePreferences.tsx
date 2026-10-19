@@ -1,9 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { ApiError } from '../api';
+import { api, ApiError } from '../api';
 import { useApp } from '../store';
-import type { Profile } from '../types';
+import type { Genre, MaturityLevel, Profile } from '../types';
 import { Button } from '../components/ui';
+import { useI18n } from '../i18n';
+
+/** Niveles del control parental (NuvioTV: ParentalGuide). */
+const MATURITY_LEVELS: Array<{ id: MaturityLevel; key: 'PARENTAL_LEVEL_OFF' | 'PARENTAL_LEVEL_KIDS' | 'PARENTAL_LEVEL_TEEN' | 'PARENTAL_LEVEL_ADULT' }> = [
+  { id: 'off', key: 'PARENTAL_LEVEL_OFF' },
+  { id: 'kids', key: 'PARENTAL_LEVEL_KIDS' },
+  { id: 'teen', key: 'PARENTAL_LEVEL_TEEN' },
+  { id: 'adult', key: 'PARENTAL_LEVEL_ADULT' },
+];
 
 /** Idiomas configurables; solo hay streams si existe un proveedor compatible. */
 export const CONTENT_LANGUAGES = [
@@ -38,6 +47,7 @@ export function ProfilePreferences({
   onCancel?: () => void;
 }) {
   const { updateProfile } = useApp();
+  const { t } = useI18n();
   const [name, setName] = useState(
     profile.id === 'default' && profile.name === 'Perfil principal' && !profile.contentLanguage
       ? '' : profile.name,
@@ -48,6 +58,24 @@ export function ProfilePreferences({
   const [removePin, setRemovePin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Control parental (NuvioTV: ParentalGuide + PIN de perfil de WuPlay).
+  const [maxMaturity, setMaxMaturity] = useState<MaturityLevel>(profile.parental?.maxMaturity ?? 'off');
+  const [blockedGenres, setBlockedGenres] = useState<string[]>(profile.parental?.blockedGenres ?? []);
+  const [requirePin, setRequirePin] = useState(profile.parental?.requirePin ?? true);
+  const [genres, setGenres] = useState<Genre[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.genres()
+      .then((result) => { if (!cancelled) setGenres(result.genres); })
+      .catch(() => { /* sin red: el selector de géneros queda vacío */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const parentalChanged =
+    maxMaturity !== (profile.parental?.maxMaturity ?? 'off') ||
+    requirePin !== (profile.parental?.requirePin ?? true) ||
+    [...blockedGenres].sort().join(',') !== [...(profile.parental?.blockedGenres ?? [])].sort().join(',');
 
   const hasStoredPin = Boolean(profile.pin);
   // Cambiar o quitar un PIN exige demostrar que se conoce el actual.
@@ -65,17 +93,32 @@ export function ProfilePreferences({
         return;
       }
     }
+    // Cambiar el control parental de un perfil con PIN exige conocerlo: si no,
+    // cualquiera podría relajar las reglas desde el propio perfil.
+    if (parentalChanged && hasStoredPin && !currentPin) {
+      setError('Escribe tu PIN actual para cambiar el control parental.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await updateProfile(profile.id, {
         name: name.trim(),
         contentLanguage: language,
-        ...(pinChanged
+        ...(parentalChanged
           ? {
-              pin: removePin ? '' : newPin.trim(),
-              ...(hasStoredPin ? { currentPin } : {}),
+              parental: maxMaturity === 'off' && !blockedGenres.length
+                ? null
+                : { maxMaturity, blockedGenres, requirePin },
             }
+          : {}),
+        ...(pinChanged
+          ? { pin: removePin ? '' : newPin.trim() }
+          : {}),
+        // El PIN actual viaja siempre que haga falta demostrarlo (cambio de PIN
+        // o del control parental en un perfil protegido).
+        ...(hasStoredPin && currentPin && (pinChanged || parentalChanged)
+          ? { currentPin }
           : {}),
       });
       setCurrentPin('');
@@ -181,6 +224,64 @@ export function ProfilePreferences({
             />
             <span>Quitar el PIN de este perfil</span>
           </label>
+        ) : null}
+      </div>
+      <div className="profile-preferences__field profile-preferences__parental">
+        <span>{t('PARENTAL_TITLE')}</span>
+        <p className="panel__hint">{t('PARENTAL_HELP')}</p>
+        <label className="setting">
+          <span>{t('PARENTAL_LEVEL')}</span>
+          <select
+            data-focusable="true"
+            value={maxMaturity}
+            onChange={(event) => setMaxMaturity(event.target.value as MaturityLevel)}
+          >
+            {MATURITY_LEVELS.map((level) => (
+              <option key={level.id} value={level.id}>{t(level.key)}</option>
+            ))}
+          </select>
+        </label>
+        {genres.length ? (
+          <div className="profile-preferences__genres" role="group" aria-label={t('PARENTAL_BLOCKED_GENRES')}>
+            <span>{t('PARENTAL_BLOCKED_GENRES')}</span>
+            <div className="profile-preferences__genre-chips">
+              {genres.map((genre) => {
+                const active = blockedGenres.includes(genre.id);
+                return (
+                  <button
+                    key={genre.id}
+                    type="button"
+                    data-focusable="true"
+                    aria-pressed={active}
+                    className={`chip ${active ? 'chip--active' : ''}`}
+                    onClick={() => setBlockedGenres((current) =>
+                      active
+                        ? current.filter((entry) => entry !== genre.id)
+                        : [...current, genre.id],
+                    )}
+                  >
+                    {genre.emoji} {genre.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+        <label className="profile-preferences__checkbox">
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={requirePin}
+            disabled={!hasStoredPin}
+            onChange={(event) => setRequirePin(event.target.checked)}
+          />
+          <span>
+            {t('PARENTAL_REQUIRE_PIN')}
+            {hasStoredPin ? '' : ` · ${t('VIBE_PIN_REQUIRED')}: —`}
+          </span>
+        </label>
+        {hasStoredPin && parentalChanged ? (
+          <p className="panel__hint">{t('PARENTAL_PIN_HINT')}</p>
         ) : null}
       </div>
       {error ? <p className="pin-dialog__error" role="alert">{error}</p> : null}

@@ -170,6 +170,8 @@ export function AddonsScreen() {
 
 export function SettingsScreen() {
   const { settings, activeProfile, saveSettings, navigate } = useApp();
+  // Modo esencial (NuvioTV: «Essential / Advanced»): solo cambia la visibilidad.
+  const essential = settings?.uiMode === 'essential';
   const { t, locale, locales, change } = useI18n();
   const [detectedSummary, setDetectedSummary] = useState('');
   const [debridMessage, setDebridMessage] = useState<string | null>(null);
@@ -420,6 +422,25 @@ export function SettingsScreen() {
         </section>
       ) : null}
       <section className="panel">
+        <h2>{t('SETTINGS_EXPERIENCE')}</h2>
+        <label className="setting">
+          <span>{t('SETTINGS_UI_MODE')}</span>
+          <select
+            data-focusable="true"
+            value={settings.uiMode ?? 'advanced'}
+            onChange={(event) =>
+              void saveSettings({ uiMode: event.target.value as 'essential' | 'advanced' })
+            }
+          >
+            <option value="essential">{t('SETTINGS_UI_MODE_ESSENTIAL')}</option>
+            <option value="advanced">{t('SETTINGS_UI_MODE_ADVANCED')}</option>
+          </select>
+        </label>
+        <p className="panel__hint">{t('SETTINGS_UI_MODE_HELP')}</p>
+      </section>
+
+      {!essential ? (
+      <section className="panel">
         <h2>Metadata integrada</h2>
         <p className="panel__hint">
           Permite usar Vibe Flix sin instalar ningún addon de metadatos (el «built-in metadata» de
@@ -435,6 +456,7 @@ export function SettingsScreen() {
           />
         </label>
       </section>
+      ) : null}
 
       <section className="panel">
         <h2>{t('SETTINGS_INTERFACE')}</h2>
@@ -485,6 +507,8 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
+        {!essential ? (
+          <>
         <label className="setting">
           <span>{t('SETTINGS_MAX_BITRATE')}</span>
           <select
@@ -522,6 +546,8 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
+          </>
+        ) : null}
         <label className="setting">
           <span>{t('CONTINUE_WATCHING')}</span>
           <input
@@ -533,6 +559,8 @@ export function SettingsScreen() {
             }
           />
         </label>
+        {!essential ? (
+          <>
         <label className="setting">
           <span>{t('PLAYER_THUMBNAILS')}</span>
           <input
@@ -569,6 +597,8 @@ export function SettingsScreen() {
           Los streams se muestran con el título y, si corresponde, la temporada y el episodio.
           No se muestran nombres de proveedores ni enlaces en las fichas.
         </p>
+          </>
+        ) : null}
       </section>
 
       <section className="panel">
@@ -616,6 +646,8 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
+        {!essential ? (
+          <>
         <label className="setting">
           <span>{t('SETTINGS_SUBTITLES_OPACITY')}</span>
           <input
@@ -694,6 +726,8 @@ export function SettingsScreen() {
             }
           />
         </label>
+          </>
+        ) : null}
         <label className="setting">
           <span>{t('SETTINGS_CLEAN_SDH')}</span>
           <input
@@ -737,6 +771,8 @@ export function SettingsScreen() {
         </label>
       </section>
 
+      {!essential ? (
+        <>
       <section className="panel">
         <h2>{t('SETTINGS_DEVICE')}</h2>
         <p className="panel__hint">
@@ -1015,6 +1051,8 @@ export function SettingsScreen() {
         {openSubtitlesMessage ? <p className="panel__ok">{openSubtitlesMessage}</p> : null}
         {openSubtitlesError ? <ErrorState message={openSubtitlesError} /> : null}
       </section>
+        </>
+      ) : null}
 
       <section className="panel">
         <h2>Omitir intro</h2>
@@ -1058,6 +1096,8 @@ export function SettingsScreen() {
         </label>
       </section>
 
+      {!essential ? (
+        <>
       <section className="panel">
         <h2>Personalización del menú</h2>
         <p className="panel__hint">
@@ -1178,6 +1218,8 @@ export function SettingsScreen() {
           })}
         </div>
       </section>
+        </>
+      ) : null}
 
       <section className="panel">
         <h2>Instalar en la TV</h2>

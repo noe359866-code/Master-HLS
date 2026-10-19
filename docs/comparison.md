@@ -4,9 +4,10 @@ Revisión hecha contra el código real de las dos bases:
 
 - **WuPlay** — repositorio público `wuplayapp/wuplay-releases` (solo releases;
   el APK es cerrado) + `README.md` y `CHANGELOG.md` completos (v0.8.1 → v0.9.3).
-- **NuvioTV** — `NuvioMedia/NuvioTV` rama `dev`, 6.100 commits, 1.572 ficheros;
-  se han revisado `app/src/main/java/com/nuvio/tv/**`, `docs/essential-mode.md`
-  y `docs/architecture/mdblist-library.md`.
+- **NuvioTV** — `NuvioMedia/NuvioTV`, se han revisado `app/src/main/java/com/nuvio/tv/**`,
+  `docs/essential-mode.md` y `docs/architecture/mdblist-library.md`. El detalle
+  módulo a módulo y las conclusiones de la última revisión están en
+  [nuviotv-review.md](nuviotv-review.md).
 
 ---
 
@@ -63,7 +64,7 @@ instalable como addon en las tres apps existentes.
 | Valoraciones (Me gusta / No para mí) | ✅ | parcial | ✅ (`/api/ratings`) |
 | Recomendaciones personalizadas | ✅ ("Recommended by Wuplay") | ❌ | ✅ (`/api/recommended`) |
 | Trakt / MDBList / Simkl | ✅ | ✅ | ❌ **pendiente** |
-| Control parental | ❌ | ✅ | ❌ **pendiente** |
+| Control parental | ❌ | ✅ | ✅ **por perfil, en el servidor** (madurez + PIN) |
 | **Skip intro / Skip recap** | ❌ | ✅ (IntroDB/AniSkip + Simkl) | ✅ **nativo** (análisis de los subtítulos, sin servicios externos) |
 | **OpenSubtitles nativo** | ✅ (addon) | ✅ (hash de archivo + API) | ✅ **nativo** (API oficial v1 desde el servidor) |
 
@@ -77,8 +78,8 @@ instalable como addon en las tres apps existentes.
 | **Proxy con cabeceras (Referer/UA/Cookie)** | ❌ | ❌ | ✅ |
 | **Reescritura de playlists (segmentos, claves AES)** | ❌ | ❌ | ✅ |
 | Pistas de audio y subtítulos seleccionables | ✅ | ✅ | ✅ (hls.js + `<track>` externo) |
-| Subtítulos solo para audio extranjero | ✅ | ✅ | ❌ **pendiente** |
-| Subtítulos SDH limpios / opacidad / colores | ✅ | ✅ | ❌ **pendiente** |
+| Subtítulos solo para audio extranjero | ✅ | ✅ | ✅ (`onlyForForeignAudio`) |
+| Subtítulos SDH limpios / opacidad / colores | ✅ | ✅ | ✅ (Clean SDH + estilo completo) |
 | **Reproducción automática (siguiente episodio)** | ✅ | ✅ | ✅ (tarjeta con cuenta atrás y cancelación) |
 | Continuar donde lo dejaste | ✅ | ✅ | ✅ |
 | Preview thumbnails en scrubbing | ✅ | ❌ | ❌ **no aplica (web)** |
@@ -139,7 +140,7 @@ in web configurator"):
 | Watch parties | ❌ | ✅ | ❌ **pendiente** |
 | Chromecast | ❌ | ✅ | ❌ **pendiente** |
 | Debrid nativo | ⚠️ (solo HTTP) | ✅ (RD, Premiumize, TorBox) | ✅ (RD, AllDebrid, TorBox, Premiumize) |
-| Modo esencial / avanzado | ❌ | ✅ | ⚠️ solo "avanzado" |
+| Modo esencial / avanzado | ❌ | ✅ | ✅ (`settings.uiMode`, solo visibilidad) |
 | Custom screens / hubs | ✅ | ✅ | ❌ **pendiente** |
 | P2P / torrent / usenet | ❌ | ✅ | ❌ (decisión de diseño: solo HTTP) |
 | Compartir en comunidad | ✅ | ❌ | ❌ **pendiente** |
@@ -270,12 +271,16 @@ Android TV y en el propio addon instalado en Stremio, WuPlay o NuvioTV.
 - [x] Valoraciones y recomendaciones personalizadas
 - [x] Teclado en pantalla, buscador nativo con historial, pantalla de géneros,
       pantalla de décadas y personalización del menú (estilo WuPlay)
-- [ ] Subtítulos: SDH limpio, opacidad, color, solo-audio-extranjero
+- [x] Subtítulos: SDH limpio, opacidad, color, solo-audio-extranjero
 - [x] PWA instalable (usar la web TV como app sin APK)
+- [x] Control parental por perfil (madurez + PIN, en el servidor) — ver
+      [revisión de NuvioTV](nuviotv-review.md)
 
 ### Baja / específicas de plataforma
 
 - [ ] Watch parties y Chromecast
-- [ ] Modo esencial (versión simplificada para usuarios nuevos)
+- [x] Modo esencial (versión simplificada para usuarios nuevos)
 - [ ] Idiomas de interfaz adicionales
-- [ ] Control parental, skip intro, frame-rate matching
+- [x] Skip intro (nativo, con `@vibeflix/skip-intro`)
+- [ ] Frame-rate matching (solo aplica al shell Android)
+- [ ] Resincronización de subtítulos y desfase de audio (Nuvio: `AutomaticSubtitleSync`)

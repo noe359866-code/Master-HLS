@@ -118,12 +118,30 @@ export interface InstalledAddon {
   installedAt: number;
 }
 
+/** Nivel de madurez máximo del control parental del perfil. */
+export type MaturityLevel = 'off' | 'kids' | 'teen' | 'adult';
+
+/** Reglas de control parental de un perfil. */
+export interface ParentalSettings {
+  maxMaturity: MaturityLevel;
+  blockedGenres: string[];
+  requirePin: boolean;
+}
+
+/** Parche de perfil para la API (`parental: null` desactiva el control). */
+export type ProfilePatch = Omit<Partial<Profile>, 'parental'> & {
+  currentPin?: string;
+  parental?: ParentalSettings | null;
+};
+
 export interface Profile {
   id: string;
   name: string;
   avatar: string;
   color: string;
   pin?: string;
+  /** Control parental del perfil (NuvioTV: ParentalGuide). Ausente = off. */
+  parental?: ParentalSettings;
   /** Idioma/región de fuentes elegido en el perfil. */
   contentLanguage?: string;
   audioLanguage?: string;
@@ -175,6 +193,8 @@ export interface ProgressEntry {
 
 export interface AppSettings {
   language: string;
+  /** Modo de experiencia (NuvioTV: Essential / Advanced). */
+  uiMode: 'essential' | 'advanced';
   /** Metadata integrada: usar la app sin instalar addons. */
   builtInMetadata: boolean;
   /** Proveedor de la metadata integrada (compatible con Cinemeta). */

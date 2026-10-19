@@ -146,6 +146,9 @@ export function PlayerScreen({
   const nextStreamsRef = useRef<Stream[] | null>(null);
 
   const playback = settings?.playback;
+  // Modo esencial (NuvioTV): el reproductor oculta los controles avanzados
+  // (estadísticas y modo de imagen); los atajos de teclado siguen igual.
+  const essentialMode = settings?.uiMode === 'essential';
   const subtitleSettings = settings?.subtitles;
   const deviceSettings = settings?.device;
   const skipEnabled = settings?.skipIntro?.enabled !== false;
@@ -1302,14 +1305,18 @@ export function PlayerScreen({
               onClick={() => setMenu(menu === 'quality' ? null : 'quality')} aria-label={t('QUALITY')}>
               <Icon name="quality" />
             </button>
-            <button type="button" data-focusable="true" className="player__btn"
-              onClick={() => setMenu(menu === 'stats' ? null : 'stats')} aria-label={t('PLAYER_STATS')}>
-              <Icon name="stats" />
-            </button>
-            <button type="button" data-focusable="true" className="player__btn" onClick={cycleScale}
-              aria-label={t('PLAYER_VIDEO_SCALE')}>
-              <Icon name="scale" />
-            </button>
+            {!essentialMode ? (
+              <>
+                <button type="button" data-focusable="true" className="player__btn"
+                  onClick={() => setMenu(menu === 'stats' ? null : 'stats')} aria-label={t('PLAYER_STATS')}>
+                  <Icon name="stats" />
+                </button>
+                <button type="button" data-focusable="true" className="player__btn" onClick={cycleScale}
+                  aria-label={t('PLAYER_VIDEO_SCALE')}>
+                  <Icon name="scale" />
+                </button>
+              </>
+            ) : null}
             <button type="button" data-focusable="true" className="player__btn" onClick={toggleFullscreen}
               aria-label={t('PLAYER_FULLSCREEN')}>
               <Icon name="expand" />

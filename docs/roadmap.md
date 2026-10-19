@@ -122,8 +122,22 @@
         restricciones sin autorización). No registrar IPTV como episodios ni
         equiparar archivos de referencia con puertos implementados.
 
+- [x] **Revisión de NuvioTV** ([docs/nuviotv-review.md](nuviotv-review.md)) con
+      dos mejoras importadas de su diseño:
+  - [x] **Control parental por perfil** (`library/parental.ts`): niveles de
+        madurez (off/kids/teen/adult), clasificación por edades cuando la ficha
+        la declara, géneros bloqueados y desbloqueo con el PIN del perfil;
+        aplicado en el servidor (catálogos, búsqueda, recomendados, similares y
+        streams con 403 `parental_blocked`).
+  - [x] **Modo esencial / avanzado** (`settings.uiMode`, spec de
+        `docs/essential-mode.md` de NuvioTV): ajustes simplificados y
+        reproductor sin controles avanzados; solo cambia visibilidad.
+
 ## Siguiente
 
+- [ ] **Persistencia de pistas y desfase por videoId** (Nuvio:
+      `TrackPreferenceDataStore`): recordar audio/subtítulo/desfase por
+      episodio, y retardo de audio (`AudioDelayMediaSource`).
 - [ ] **Plugins estilo Nuvio** — repositorios de plugins y CloudStream.
 - [ ] **Más proveedores de debrid** (Offcloud, debrid.link) y descarga en
       segundo plano con aviso de "listo" en la UI.

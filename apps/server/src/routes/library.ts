@@ -7,6 +7,7 @@ import { normalizeLanguage } from '@vibeflix/scrapers';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import { hashProfilePin, PIN_PLACEHOLDER, publicProfile, verifyProfilePin } from '../library/profile-pin.js';
+import { normalizeParental } from '../library/parental.js';
 import { maskSecret, restoreSecret } from '../http/security.js';
 import {
   DEFAULT_PROFILE,
@@ -147,6 +148,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       autoplayFirstStream: typeof body.autoplayFirstStream === 'boolean'
         ? body.autoplayFirstStream : DEFAULT_PROFILE.autoplayFirstStream,
       pin: storedPin(body.pin),
+      ...(body.parental ? { parental: normalizeParental(body.parental) } : {}),
       ...(input.contentLanguage ? {
         contentLanguage: input.contentLanguage,
         audioLanguage: input.contentLanguage.split('-')[0],
@@ -179,11 +181,14 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
 
     const pinProvided = 'pin' in body;
     const changingPin = pinProvided && body['pin'] !== PIN_PLACEHOLDER;
+    // Cambiar el control parental exige demostrar que se conoce el PIN: si no,
+    // un niño podría relajar las reglas desde el propio perfil.
+    const changingParental = 'parental' in body;
     const isActive = data.activeProfileId === id;
     // Un PIN no se puede quitar ni cambiar sin conocerlo. Además, un perfil
     // protegido que no está activo no se puede editar sin desbloquearlo: así
     // tampoco se puede preparar el terreno cambiando el nombre y luego entrar.
-    if (current.pin && (changingPin || !isActive)) {
+    if (current.pin && (changingPin || changingParental || !isActive)) {
       const wait = pinLockRemaining(id);
       if (wait) {
         sendJson(res, 429, {
@@ -236,6 +241,12 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     }
     if (pinProvided) {
       patch['pin'] = storedPin(body['pin'], current.pin);
+    }
+    if (changingParental) {
+      // `null` desactiva el control parental; un objeto lo configura.
+      patch['parental'] = body['parental'] === null
+        ? undefined
+        : normalizeParental(body['parental']);
     }
 
     await save((data) => {
@@ -603,6 +614,11 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         filters?: Partial<AppSettings['filters']>;
         scrapers?: Partial<AppSettings['scrapers']>;
       } & Record<string, unknown>;
+      // `uiMode` solo admite los dos modos documentados (NuvioTV: Essential /
+      // Advanced); cualquier otro valor se ignora y conserva el anterior.
+      if ('uiMode' in rest && rest.uiMode !== 'essential' && rest.uiMode !== 'advanced') {
+        delete rest.uiMode;
+      }
       Object.assign(data.settings, rest);
       if (debrid) {
         const next = { ...debrid };

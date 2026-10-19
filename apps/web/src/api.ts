@@ -19,19 +19,22 @@ import type {
   Thumbnail,
   ProgressEntry,
   Profile,
+  ProfilePatch,
   Rating,
   Stream,
   Subtitle,
   Watchlist,
   WatchlistItem,
 } from './types';
-import { getAdminToken, getDeviceToken, setDeviceToken } from './session';
+import { getAdminToken, getDeviceToken, getParentalPin, setDeviceToken } from './session';
 
 /** Error HTTP con el mensaje del servidor y la marca `requiresPin`. */
 export class ApiError extends Error {
   readonly status: number;
   readonly requiresPin: boolean;
   readonly adminRequired: boolean;
+  /** Código de negocio del servidor (p. ej. `parental_blocked`). */
+  readonly code?: string;
 
   constructor(status: number, message: string, payload?: Record<string, unknown>) {
     super(message);
@@ -39,6 +42,7 @@ export class ApiError extends Error {
     this.status = status;
     this.requiresPin = payload?.['requiresPin'] === true;
     this.adminRequired = payload?.['adminRequired'] === true;
+    this.code = typeof payload?.['code'] === 'string' ? payload['code'] : undefined;
   }
 }
 
@@ -53,6 +57,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(token ? { 'x-vibe-flix-token': token } : {}),
       // Token de administración (scrapers, ajustes y emisión de vínculos).
       ...(adminToken ? { 'x-vibe-flix-admin-token': adminToken } : {}),
+      // PIN de desbloqueo parental (solo esta pestaña).
+      ...(getParentalPin() ? { 'x-vibe-flix-parental-pin': getParentalPin()! } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -169,7 +175,7 @@ export const api = {
 
   async updateProfile(
     id: string,
-    patch: Partial<Profile> & { currentPin?: string },
+    patch: ProfilePatch,
   ): Promise<Profile> {
     const body = await request<{ profile: Profile }>(`/api/profiles/${encodeURIComponent(id)}`, {
       method: 'PUT',
