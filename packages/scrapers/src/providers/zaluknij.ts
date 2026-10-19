@@ -64,6 +64,11 @@ function links(html: string): string[] {
 
 export const zaluknijProvider: ScrapeProvider = {
   id: 'zaluknij', name: 'Zaluknij', types: ['movie'], languages: ['pl'], region: 'Polaco',
+  coverage: 'partial',
+  limitations: [
+    'Solo películas: no se portaron la enumeración de temporadas/episodios ni el WebView de clearance del upstream.',
+    'Puede devolver cero fuentes si el sitio exige superar un antibot fuera del alcance del servidor Node.',
+  ],
   async fetchSources(request: ScrapeRequest, context: ScrapeContext): Promise<ScrapedSource[]> {
     const title = request.title?.trim();
     if (request.type !== 'movie' || !title) return [];

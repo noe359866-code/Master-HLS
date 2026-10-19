@@ -9,6 +9,7 @@ import { AddonRegistry, HttpClient } from '@vibeflix/addon-engine';
 
 import { createApp, type App } from '../src/app.js';
 import { OpenSubtitlesService, type OpenSubtitleEntry } from '../src/services/opensubtitles.js';
+import { publicLookup } from './test-dns.js';
 
 const VTT = `WEBVTT
 
@@ -98,6 +99,7 @@ describe('subtitulos nativos y omitir intro', () => {
       registry,
       publicUrl: 'http://localhost:0',
       fetchImpl: addonFetch,
+      dnsLookup: publicLookup,
       createOpenSubtitles: (apiKey: string) =>
         new OpenSubtitlesService({
           apiKey,
@@ -204,8 +206,10 @@ describe('subtitulos nativos y omitir intro', () => {
     // `enabled` cambia, pero `offsetSeconds` conserva su valor.
     assert.equal(body.settings.skipIntro.enabled, false);
     assert.equal(body.settings.skipIntro.offsetSeconds, 90);
-    // La API key de OpenSubtitles sigue ahí.
-    assert.equal(body.settings.opensubtitles.apiKey, 'TEST-KEY');
+    // La API key sigue guardada, pero la API no la devuelve en claro.
+    assert.equal(body.settings.opensubtitles.apiKey, '••••');
+    const stillWorks = await fetch(`${base}/api/opensubtitles?imdbId=tt1`);
+    assert.equal(((await stillWorks.json()) as { enabled: boolean }).enabled, true);
 
     await fetch(`${base}/api/settings`, {
       method: 'PUT',

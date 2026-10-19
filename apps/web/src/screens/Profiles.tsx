@@ -14,6 +14,7 @@ export function ProfilesScreen() {
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState(AVATARS[0]!);
   const [color, setColor] = useState(COLORS[0]!);
+  const [newPin, setNewPin] = useState('');
   const [pinProfile, setPinProfile] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
@@ -23,12 +24,23 @@ export function ProfilesScreen() {
   const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const pin = newPin.trim();
+    if (pin && !/^\d{4,12}$/.test(pin)) {
+      setCreateError('El PIN debe tener entre 4 y 12 dígitos.');
+      return;
+    }
     setCreateError(null);
     try {
-      const profile = await api.createProfile({ name: trimmed, avatar, color });
+      const profile = await api.createProfile({
+        name: trimmed,
+        avatar,
+        color,
+        ...(pin ? { pin } : {}),
+      });
       await refreshAll();
-      await setActiveProfile(profile.id);
+      await setActiveProfile(profile.id, pin || undefined);
       setName('');
+      setNewPin('');
       navigate({ name: 'home' }); // el nuevo perfil elegirá su idioma al entrar
     } catch (cause) {
       setCreateError((cause as Error).message);
@@ -160,6 +172,19 @@ export function ProfilesScreen() {
             />
           ))}
         </div>
+        <input
+          className="profile-create__input"
+          type="password"
+          inputMode="numeric"
+          autoComplete="new-password"
+          maxLength={12}
+          value={newPin}
+          placeholder="PIN opcional (4–12 dígitos)"
+          onChange={(event) => setNewPin(event.target.value.replace(/\D/g, ''))}
+        />
+        <p className="panel__hint">
+          Si le pones PIN, se pedirá cada vez que alguien active este perfil.
+        </p>
         {createError ? <p className="pin-dialog__error" role="alert">{createError}</p> : null}
         <Button onClick={() => void create()} disabled={!name.trim()}>Crear perfil</Button>
       </section>

@@ -1,6 +1,9 @@
-import { detectQuality, normalizeUrl, resolveEmbed } from '../embed.js';
+import { detectQuality, resolveEmbed } from '../embed.js';
+import { publicHttpUrl } from '../ssrf.js';
 import { normalizeTitle } from '../normalize.js';
 import type { ScrapeContext, ScrapedSource } from '../types.js';
+
+export { publicHttpUrl } from '../ssrf.js';
 
 /** Año explícito al final de la ficha; no confundir títulos como «2001» con su estreno. */
 export function titleYear(value: string): number | undefined {
@@ -15,30 +18,6 @@ export function sameTitle(candidate: string, title: string, year?: number, candi
     .replace(/^(?:a|an|the|el|la|los|las|le|les|un|une|il|lo|der|die|das) /, '');
   const a = clean(candidate);
   return !!a && a === clean(title);
-}
-
-/** Bloquea destinos privados literales; el aislamiento de red/DNS del servidor sigue siendo necesario. */
-export function publicHttpUrl(value: string, base?: string): string | undefined {
-  const normalized = normalizeUrl(value, base);
-  if (!normalized) return undefined;
-  try {
-    const url = new URL(normalized);
-    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
-        host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') ||
-        host.endsWith('.internal') || host === '::' || host === '::1' ||
-        (host.includes(':') && (host.startsWith('::ffff:') || host.startsWith('fe80:') ||
-          host.startsWith('fc') || host.startsWith('fd'))) ||
-        host.startsWith('0.') || host.startsWith('127.') ||
-        host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.') ||
-        /^172\.(?:1[6-9]|2\d|3[01])\./.test(host) ||
-        /^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host) ||
-        /^\d+\.\d+\.\d+\.\d+$/.test(host) &&
-        host.split('.').some((part) => Number(part) > 255)) return undefined;
-    return url.toString();
-  } catch {
-    return undefined;
-  }
 }
 
 /** Jamás se presenta una URL de iframe/ficha como si fuese vídeo. */

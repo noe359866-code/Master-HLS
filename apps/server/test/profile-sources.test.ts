@@ -10,6 +10,7 @@ import { NATIVE_SCRAPERS_ID } from '@vibeflix/scrapers';
 import { createApp, type App } from '../src/app.js';
 import { DEFAULT_PROFILE, emptyData } from '../src/model.js';
 import { verifyProfilePin } from '../src/library/profile-pin.js';
+import { publicLookup } from './test-dns.js';
 
 const META_MANIFEST = {
   id: 'metadata', name: 'Metadata', version: '1',
@@ -77,7 +78,7 @@ describe('migración de perfiles antiguos', () => {
       old.profiles = [{ ...DEFAULT_PROFILE, id: 'legacy', name: 'Antiguo', pin: '4321', createdAt: 1 }];
       old.activeProfileId = 'legacy';
       await fs.writeFile(file, JSON.stringify(old));
-      const app = createApp({ dataDir, fetchImpl: fakeFetch() });
+      const app = createApp({ dataDir, fetchImpl: fakeFetch(), dnsLookup: publicLookup });
       await app.bootstrap();
       const migrated = JSON.parse(await fs.readFile(file, 'utf8'));
       assert.ok(verifyProfilePin(migrated.profiles[0].pin, '4321'));
@@ -85,7 +86,7 @@ describe('migración de perfiles antiguos', () => {
       assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
 
       const freshDir = path.join(dataDir, 'new');
-      const fresh = createApp({ dataDir: freshDir, fetchImpl: fakeFetch() });
+      const fresh = createApp({ dataDir: freshDir, fetchImpl: fakeFetch(), dnsLookup: publicLookup });
       await fresh.bootstrap();
       const persisted = JSON.parse(await fs.readFile(path.join(freshDir, 'vibe-flix.json'), 'utf8'));
       assert.equal(persisted.profiles[0].id, 'default');
@@ -107,7 +108,7 @@ describe('perfiles y selección automática de fuentes', () => {
     const registry = new AddonRegistry({
       http: new HttpClient({ fetchImpl, retries: 0 }), fanoutTimeoutMs: 1500,
     });
-    app = createApp({ dataDir, registry, fetchImpl, publicUrl: 'http://localhost:0' });
+    app = createApp({ dataDir, registry, fetchImpl, publicUrl: 'http://localhost:0', dnsLookup: publicLookup });
     app.store.mutate((data) => { data.settings.builtInMetadata = false; });
     await app.bootstrap();
     await registry.install('https://meta.test/manifest.json');

@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import { AddonRegistry, HttpClient } from '@vibeflix/addon-engine';
 
 import { createApp, type App } from '../src/app.js';
+import { publicLookup } from './test-dns.js';
 
 const MANIFEST = {
   id: 'com.test.meta',
@@ -47,7 +48,7 @@ function createFetch(): typeof fetch {
         { status: 200 },
       );
     }
-    if (exposeCineHax && url === 'https://cinehax.com') {
+    if (exposeCineHax && (url === 'https://cinehax.com' || url === 'https://cinehax.com/')) {
       return new Response('<script>var config={"nonce":"test-nonce"}</script>', { status: 200 });
     }
     if (exposeCineHax && url.startsWith('https://cinehax.com/wp-admin/admin-ajax.php')) {
@@ -94,7 +95,7 @@ describe('scrapers nativos', () => {
       http: new HttpClient({ fetchImpl, retries: 0 }),
       fanoutTimeoutMs: 3000,
     });
-    app = createApp({ dataDir, registry, fetchImpl, publicUrl: 'http://localhost:0' });
+    app = createApp({ dataDir, registry, fetchImpl, publicUrl: 'http://localhost:0', dnsLookup: publicLookup });
     await app.bootstrap();
     await registry.install('https://meta.tld/manifest.json');
 

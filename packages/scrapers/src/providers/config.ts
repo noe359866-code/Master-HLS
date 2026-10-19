@@ -7,6 +7,7 @@
 
 import { detectQuality, extractStreams, normalizeUrl, resolveEmbed } from '../embed.js';
 import { extractYear, titleMatches } from '../normalize.js';
+import { publicHttpUrl } from '../ssrf.js';
 import type { ProviderConfig, ScrapeContext, ScrapeProvider, ScrapeRequest, ScrapedSource } from '../types.js';
 
 /** Sustituye las plantillas de una URL con los datos de la petición. */
@@ -84,12 +85,19 @@ export function createConfigProvider(config: ProviderConfig): ScrapeProvider {
         itemIds.push(request.titleId ?? request.id);
       }
 
-      const sourceFor = (url: string, quality?: string, referer?: string): ScrapedSource => ({
-        url,
-        provider: config.name,
-        quality: config.defaultQuality ?? quality ?? detectQuality(url),
-        headers: { ...(referer ? { Referer: referer } : {}), ...(config.headers ?? {}) },
-      });
+      const sourceFor = (url: string, quality?: string, referer?: string): ScrapedSource | undefined => {
+        // Un sitio comprometido no puede convertir la lista de fuentes en un
+        // salto a la red interna del servidor o del reproductor. Los magnet no
+        // se descargan en el servidor y siguen siendo válidos.
+        const safe = url.startsWith('magnet:') ? url : publicHttpUrl(url);
+        if (!safe) return undefined;
+        return {
+          url: safe,
+          provider: config.name,
+          quality: config.defaultQuality ?? quality ?? detectQuality(safe),
+          headers: { ...(referer ? { Referer: referer } : {}), ...(config.headers ?? {}) },
+        };
+      };
 
       for (const itemId of itemIds) {
         const itemUrl = config.itemUrl
@@ -117,7 +125,8 @@ export function createConfigProvider(config: ProviderConfig): ScrapeProvider {
         for (const pattern of config.streamPatterns ?? []) {
           const match = new RegExp(pattern, 'i').exec(pageHtml);
           const url = normalizeUrl(match?.[1] ?? '', pageUrl);
-          if (url) sources.push(sourceFor(url, undefined, pageUrl));
+          const source = url ? sourceFor(url, undefined, pageUrl) : undefined;
+          if (source) sources.push(source);
         }
 
         if (config.useEmbedResolver) {
@@ -126,7 +135,8 @@ export function createConfigProvider(config: ProviderConfig): ScrapeProvider {
             headers: { ...headers, Referer: itemUrl || searchUrl },
           });
           for (const candidate of candidates) {
-            sources.push(sourceFor(candidate.url, candidate.quality, pageUrl));
+            const source = sourceFor(candidate.url, candidate.quality, pageUrl);
+            if (source) sources.push(source);
           }
         }
       }
@@ -136,7 +146,8 @@ export function createConfigProvider(config: ProviderConfig): ScrapeProvider {
       if (!itemIds.length && !config.itemUrl && !config.episodeUrl && searchUrl &&
           (!episodic || (config.searchUrl?.includes('{season}') && config.searchUrl.includes('{episode}')))) {
         for (const candidate of extractStreams(html, searchUrl)) {
-          sources.push(sourceFor(candidate.url, candidate.quality, searchUrl));
+          const source = sourceFor(candidate.url, candidate.quality, searchUrl);
+          if (source) sources.push(source);
         }
       }
 

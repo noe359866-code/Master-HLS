@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 
 import { AddonRegistry, HttpClient } from '@vibeflix/addon-engine';
 import { createApp, type App } from '../src/app.js';
+import { publicLookup } from './test-dns.js';
 
 const MANIFESTS: Record<string, unknown> = {
   'https://meta.tld/manifest.json': {
@@ -97,7 +98,7 @@ describe('servidor Vibe Flix', () => {
       http: new HttpClient({ fetchImpl: createFetch(), retries: 0 }),
       fanoutTimeoutMs: 3000,
     });
-    app = createApp({ dataDir, registry, publicUrl: 'http://localhost:0' });
+    app = createApp({ dataDir, registry, publicUrl: 'http://localhost:0', dnsLookup: publicLookup });
     await app.bootstrap();
     await registry.install('https://meta.tld/manifest.json');
     await registry.install('https://streams.tld/manifest.json');
@@ -252,7 +253,7 @@ describe('servidor Vibe Flix', () => {
     const edited = await fetch(`${base}/api/profiles/${profile.id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Actualizado', pin: profile.pin }),
+      body: JSON.stringify({ name: 'Actualizado', pin: profile.pin, currentPin: '1234' }),
     });
     assert.equal((await edited.json() as { profile: { pin: string } }).profile.pin, '••••');
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { ApiError } from '../api';
 import { useApp } from '../store';
 import type { Profile } from '../types';
 import { Button } from '../components/ui';
@@ -42,18 +43,51 @@ export function ProfilePreferences({
       ? '' : profile.name,
   );
   const [language, setLanguage] = useState(profile.contentLanguage ?? '');
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [removePin, setRemovePin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const hasStoredPin = Boolean(profile.pin);
+  // Cambiar o quitar un PIN exige demostrar que se conoce el actual.
+  const pinChanged = removePin || newPin.trim().length > 0;
+
   const save = async () => {
     if (!name.trim() || !language || busy) return;
+    if (pinChanged) {
+      if (!removePin && !/^\d{4,12}$/.test(newPin.trim())) {
+        setError('El PIN nuevo debe tener entre 4 y 12 dígitos.');
+        return;
+      }
+      if (hasStoredPin && !currentPin) {
+        setError('Escribe tu PIN actual para cambiarlo o quitarlo.');
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     try {
-      await updateProfile(profile.id, { name: name.trim(), contentLanguage: language });
+      await updateProfile(profile.id, {
+        name: name.trim(),
+        contentLanguage: language,
+        ...(pinChanged
+          ? {
+              pin: removePin ? '' : newPin.trim(),
+              ...(hasStoredPin ? { currentPin } : {}),
+            }
+          : {}),
+      });
+      setCurrentPin('');
+      setNewPin('');
+      setRemovePin(false);
       onSaved();
     } catch (cause) {
-      setError((cause as Error).message);
+      if (cause instanceof ApiError && cause.requiresPin) {
+        setError(cause.message);
+      } else {
+        setError((cause as Error).message);
+      }
     } finally {
       setBusy(false);
     }
@@ -104,6 +138,51 @@ export function ProfilePreferences({
         Se guarda en este perfil, junto a tus listas y progreso. Las fuentes disponibles dependen
         de los addons y sitios que configures; elegir un idioma no crea contenido nuevo.
       </p>
+
+      <div className="profile-preferences__field profile-preferences__pin">
+        <span>
+          PIN del perfil {hasStoredPin ? '(activo)' : '(opcional)'}
+        </span>
+        <p className="panel__hint">
+          {hasStoredPin
+            ? 'Para cambiar o quitar el PIN hace falta el actual. Sin él, los demás datos del perfil se pueden editar igualmente.'
+            : 'Con un PIN, este perfil pedirá el código antes de activarse. Se guarda como hash scrypt en el servidor, nunca en claro.'}
+        </p>
+        {hasStoredPin ? (
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            data-focusable="true"
+            maxLength={12}
+            value={currentPin}
+            placeholder="PIN actual"
+            onChange={(event) => setCurrentPin(event.target.value)}
+          />
+        ) : null}
+        <input
+          type="password"
+          inputMode="numeric"
+          autoComplete="new-password"
+          data-focusable="true"
+          maxLength={12}
+          value={newPin}
+          disabled={removePin}
+          placeholder={hasStoredPin ? 'PIN nuevo (vacío = conservar)' : 'PIN opcional (4–12 dígitos)'}
+          onChange={(event) => setNewPin(event.target.value.replace(/\D/g, ''))}
+        />
+        {hasStoredPin ? (
+          <label className="profile-preferences__checkbox">
+            <input
+              type="checkbox"
+              data-focusable="true"
+              checked={removePin}
+              onChange={(event) => setRemovePin(event.target.checked)}
+            />
+            <span>Quitar el PIN de este perfil</span>
+          </label>
+        ) : null}
+      </div>
       {error ? <p className="pin-dialog__error" role="alert">{error}</p> : null}
       <div className="profile-preferences__actions">
         <Button disabled={busy || !name.trim() || !language} onClick={() => void save()}>

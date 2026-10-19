@@ -32,3 +32,24 @@ export function clearDeviceToken(): void {
     // Sin efecto.
   }
 }
+
+
+/** Token de administración del servidor (solo se guarda en este navegador). */
+const ADMIN_TOKEN_KEY = 'vibe-flix.admin-token';
+
+export function getAdminToken(): string | undefined {
+  try {
+    return window.localStorage.getItem(ADMIN_TOKEN_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setAdminToken(token: string | undefined): void {
+  try {
+    if (token) window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    else window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch {
+    // Sin almacenamiento: el token solo vale para la pestaña actual.
+  }
+}

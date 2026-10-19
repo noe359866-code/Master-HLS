@@ -22,6 +22,18 @@ export interface ServerConfig {
   builtInMetadataUrl: string;
   /** Directorio del cliente web compilado (apps/web/dist). */
   webRoot: string;
+  /**
+   * Token de administrador opcional. Si está definido, las rutas que pueden
+   * provocar descargas del servidor (scrapers, addons, ajustes, debrid y
+   * creación de códigos de vinculación) exigen `Authorization: Bearer` o
+   * `X-Vibe-Flix-Admin-Token`.
+   */
+  adminToken: string;
+  /**
+   * Permite que scrapers/HLS descarguen de IP privadas (solo desarrollo o LAN
+   * de confianza). Por defecto se bloquean para evitar SSRF.
+   */
+  allowPrivateHosts: boolean;
 }
 
 function envList(name: string): string[] {
@@ -50,5 +62,7 @@ export function loadConfig(): ServerConfig {
     builtInMetadataUrl:
       process.env['BUILTIN_METADATA_URL'] ?? 'https://v3-cinemeta.strem.io',
     webRoot: process.env['WEB_ROOT'] ?? path.resolve(here, '../../../apps/web/dist'),
+    adminToken: (process.env['ADMIN_TOKEN'] ?? '').trim(),
+    allowPrivateHosts: process.env['ALLOW_PRIVATE_HOSTS'] === '1',
   };
 }

@@ -104,6 +104,14 @@ export interface ScrapeProvider {
   languages?: string[];
   /** Region o descripcion corta (opcional). */
   region?: string;
+  /**
+   * Alcance real del port respecto al proveedor upstream:
+   * `full` = mismo flujo (películas/series según `types`); `partial` = solo
+   * una parte (p. ej. Zaluknij sin episodios ni WebView antibot).
+   */
+  coverage?: 'full' | 'partial';
+  /** Limitaciones conocidas y visibles en la API de estado. */
+  limitations?: string[];
   /** Resuelve las fuentes de un titulo. */
   fetchSources(request: ScrapeRequest, context: ScrapeContext): Promise<ScrapedSource[]>;
 }

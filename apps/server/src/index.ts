@@ -95,7 +95,10 @@ async function main(): Promise<void> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
     res.setHeader('access-control-allow-origin', '*');
-    res.setHeader('access-control-allow-headers', 'content-type, x-vibe-flix-token');
+    res.setHeader(
+      'access-control-allow-headers',
+      'content-type, x-vibe-flix-token, x-vibe-flix-admin-token, x-vibe-flix-pin',
+    );
     res.setHeader('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {

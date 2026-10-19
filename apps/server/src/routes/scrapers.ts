@@ -12,15 +12,19 @@
 
 import type { AddonRegistry } from '@vibeflix/addon-engine';
 import {
+  assertPublicHttpUrl,
   createConfigProvider,
   createScrapeContext,
   DEFAULT_PROVIDERS,
+  fillTemplate,
   normalizeLanguage,
   parseEpisodeId,
   STREAMFLIX_PROVIDER_CATALOG,
   STREAMFLIX_UPSTREAM_COMMIT,
+  type HostLookup,
   type ProviderConfig,
   type ScrapeProvider,
+  type ScrapeRequest,
   type ScraperRegistry,
 } from '@vibeflix/scrapers';
 
@@ -37,6 +41,10 @@ export interface ScraperRouteOptions {
   onSettingsChanged?: (data: AppData) => void;
   /** `fetch` inyectable (tests). */
   fetchImpl?: typeof fetch;
+  /** Resolutor DNS inyectable para el guardia SSRF (tests). */
+  dnsLookup?: HostLookup;
+  /** Solo LAN de confianza: permite configurar fuentes privadas. */
+  allowPrivateHosts?: boolean;
 }
 
 /** Descripcion publica de un proveedor. */
@@ -51,7 +59,89 @@ function describe(provider: ScrapeProvider) {
     verification: DEFAULT_PROVIDERS.some((builtin) => builtin.id === provider.id)
       ? 'mock-tested' as const : 'not-tested' as const,
     liveVerified: false,
+    coverage: provider.coverage ?? 'full',
+    limitations: provider.limitations ?? [],
   };
+}
+
+/** Resumen de cobertura calculado a partir del inventario y los puertos reales. */
+function coverageSummary() {
+  const vod = STREAMFLIX_PROVIDER_CATALOG.filter((item) => item.state === 'registered-vod');
+  const pendingProviders = vod.filter((item) => !item.nativeId);
+  const nativeVod = DEFAULT_PROVIDERS.filter((provider) => provider.id !== 'internet-archive');
+  return {
+    upstreamVod: vod.length,
+    ported: nativeVod.length,
+    pending: pendingProviders.length,
+    partial: nativeVod.filter((provider) => provider.coverage === 'partial').map((provider) => provider.id),
+    mockTested: nativeVod.length,
+    liveVerified: 0,
+    extraProviders: DEFAULT_PROVIDERS.filter((provider) => provider.id === 'internet-archive')
+      .map((provider) => provider.id),
+    pendingProviders: pendingProviders.map((provider) => ({
+      file: provider.file,
+      languages: provider.languages,
+      media: provider.media,
+      upstreamUrl: provider.upstreamUrl,
+    })),
+  };
+}
+
+const CONFIG_URL_FIELDS = ['searchUrl', 'itemUrl', 'episodeUrl'] as const;
+const CONFIG_SAMPLE: ScrapeRequest = {
+  type: 'series',
+  id: 'tt0000000:1:1',
+  titleId: 'tt0000000',
+  imdbId: 'tt0000000',
+  tmdbId: '12345',
+  title: 'titulo',
+  year: 2000,
+  season: 1,
+  episode: 1,
+};
+
+/**
+ * Valida las URLs y expresiones regulares de un proveedor configurable.
+ *
+ * Las URLs se comprueban también contra DNS: un host que resuelve a
+ * `127.0.0.1`/`10.x`/`169.254.x` se rechaza al guardar y al probar, antes de
+ * que el proveedor llegue a descargar nada. Los patrones se compilan aquí para
+ * no guardar una configuración que reventaría en cada petición.
+ */
+async function configValidationError(
+  config: ProviderConfig,
+  options: { dnsLookup?: HostLookup; allowPrivateHosts?: boolean },
+): Promise<string | undefined> {
+  for (const field of CONFIG_URL_FIELDS) {
+    const template = config[field];
+    if (!template) continue;
+    const filled = fillTemplate(template, CONFIG_SAMPLE);
+    try {
+      await assertPublicHttpUrl(filled, {
+        lookup: options.dnsLookup,
+        allowPrivate: options.allowPrivateHosts,
+      });
+    } catch (error) {
+      return `${field}: ${(error as Error).message}`;
+    }
+  }
+  const patterns = [
+    ...(config.itemPattern ? [{ name: 'itemPattern', value: config.itemPattern }] : []),
+    ...(config.episodePattern ? [{ name: 'episodePattern', value: config.episodePattern }] : []),
+    ...(config.streamPatterns ?? []).map((value, index) => ({
+      name: `streamPatterns[${index}]`, value,
+    })),
+  ];
+  if (patterns.length > 32) return 'Demasiados patrones';
+  for (const pattern of patterns) {
+    if (pattern.value.length > 2_000) return `El patrón ${pattern.name} es demasiado largo`;
+    try {
+      new RegExp(pattern.value);
+    } catch (error) {
+      return `${pattern.name}: ${(error as Error).message}`;
+    }
+  }
+  return undefined;
 }
 
 /** Valida una configuracion de proveedor minima. */
@@ -79,8 +169,14 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
       available: DEFAULT_PROVIDERS.map(describe),
       configs: settings?.configs ?? [],
       selected: settings?.providers ?? [],
+      coverage: coverageSummary(),
       upstreamInventory: '/api/scrapers/upstream',
     });
+  });
+
+  /** Cobertura explícita: puertos reales frente al inventario upstream. */
+  router.get('/api/scrapers/coverage', ({ res }) => {
+    sendJson(res, 200, coverageSummary());
   });
 
   /** Inventario de investigación: NO se confunde con los adaptadores activos. */
@@ -117,7 +213,19 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
       sendJson(res, 400, { error: 'Sólo puedes seleccionar adaptadores implementados' });
       return;
     }
-    const configs = body.configs ?? getData().settings.scrapers?.configs ?? [];
+    const existingConfigs = getData().settings.scrapers?.configs ?? [];
+    const configs = body.configs ?? existingConfigs;
+    // Solo se valida lo que llega en la petición: una configuración antigua
+    // privada no debe impedir desactivar los scrapers.
+    if (body.configs !== undefined) {
+      for (const config of configs) {
+        const error = await configValidationError(config, options);
+        if (error) {
+          sendJson(res, 400, { error: `Configuración de fuentes no válida (${error})` });
+          return;
+        }
+      }
+    }
 
     await save((data) => {
       data.settings.scrapers = {
@@ -164,6 +272,13 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
       sendJson(res, 400, { error: 'Idioma no válido' });
       return;
     }
+    if (body.config) {
+      const error = await configValidationError(body.config, options);
+      if (error) {
+        sendJson(res, 400, { error: `Configuración de fuentes no válida (${error})` });
+        return;
+      }
+    }
 
     let provider: ScrapeProvider;
     if (body.config) {
@@ -195,7 +310,11 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
         episode: body.episode,
         language: normalizeLanguage(body.language) ?? profile?.contentLanguage,
       },
-      createScrapeContext({ fetchImpl: options.fetchImpl }),
+      createScrapeContext({
+        fetchImpl: options.fetchImpl,
+        lookup: options.dnsLookup,
+        allowPrivateHosts: options.allowPrivateHosts,
+      }),
     );
     sendJson(res, 200, {
       provider: result.provider,

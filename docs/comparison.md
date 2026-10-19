@@ -174,7 +174,10 @@ implementado desde cero en TypeScript dentro de `packages/scrapers/`:
 - Se incluye **Internet Archive** (respaldo de dominio público, audio no
   declarado) y nueve puertos VOD de StreamFlix Reborn para es/en/de/fr/it/pl,
   probados con mocks pero **sin reproducción verificada en vivo**. Los ports
-  italiano y polaco se limitan a películas (el polaco no porta WebView). Véase el
+  italiano y polaco se limitan a películas (el polaco no porta WebView). Para
+  verificarlos contra los sitios reales está
+  `npm run verify:scrapers -- --title "…" --year 2024` (consulta cada
+  proveedor y sondea sus fuentes HLS/vídeo). Véase el
   [inventario VOD/IPTV](streamflix-reborn-inventory.md).
 - El addon se registra en el mismo `AddonRegistry` que el resto: los streams
   resueltos se mezclan con los de los addons instalados, los magnets siguen
