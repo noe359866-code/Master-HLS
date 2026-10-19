@@ -7,9 +7,12 @@ import { normalizeLanguage } from '@vibeflix/scrapers';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import { hashProfilePin, PIN_PLACEHOLDER, publicProfile, verifyProfilePin } from '../library/profile-pin.js';
+import { normalizeParental } from '../library/parental.js';
+import { saveTrackPreference, sanitizeTrackPreferencePatch } from '../library/track-prefs.js';
 import { maskSecret, restoreSecret } from '../http/security.js';
 import {
   DEFAULT_PROFILE,
+  DEFAULT_SETTINGS,
   type AppData,
   type AppSettings,
   type Profile,
@@ -147,6 +150,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       autoplayFirstStream: typeof body.autoplayFirstStream === 'boolean'
         ? body.autoplayFirstStream : DEFAULT_PROFILE.autoplayFirstStream,
       pin: storedPin(body.pin),
+      ...(body.parental ? { parental: normalizeParental(body.parental) } : {}),
       ...(input.contentLanguage ? {
         contentLanguage: input.contentLanguage,
         audioLanguage: input.contentLanguage.split('-')[0],
@@ -179,11 +183,14 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
 
     const pinProvided = 'pin' in body;
     const changingPin = pinProvided && body['pin'] !== PIN_PLACEHOLDER;
+    // Cambiar el control parental exige demostrar que se conoce el PIN: si no,
+    // un niño podría relajar las reglas desde el propio perfil.
+    const changingParental = 'parental' in body;
     const isActive = data.activeProfileId === id;
     // Un PIN no se puede quitar ni cambiar sin conocerlo. Además, un perfil
     // protegido que no está activo no se puede editar sin desbloquearlo: así
     // tampoco se puede preparar el terreno cambiando el nombre y luego entrar.
-    if (current.pin && (changingPin || !isActive)) {
+    if (current.pin && (changingPin || changingParental || !isActive)) {
       const wait = pinLockRemaining(id);
       if (wait) {
         sendJson(res, 429, {
@@ -236,6 +243,12 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     }
     if (pinProvided) {
       patch['pin'] = storedPin(body['pin'], current.pin);
+    }
+    if (changingParental) {
+      // `null` desactiva el control parental; un objeto lo configura.
+      patch['parental'] = body['parental'] === null
+        ? undefined
+        : normalizeParental(body['parental']);
     }
 
     await save((data) => {
@@ -583,6 +596,48 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { deleted: true });
   });
 
+  // --------------------------------------------- preferencias de pista (Nuvio)
+  // Audio, subtítulo, desfase y velocidad por videoId (NuvioTV:
+  // `TrackPreferenceDataStore`): un desfase calibrado para un episodio no
+  // sirve para el siguiente, así que cada vídeo guarda lo suyo.
+
+  router.get('/api/track-prefs/:videoId', ({ res, params, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const videoId = params['videoId'] ?? '';
+    const pref = getData().trackPrefs[profileId]?.[videoId] ?? null;
+    sendJson(res, 200, { pref });
+  });
+
+  router.put('/api/track-prefs/:videoId', async ({ res, params, body: rawBody, query }) => {
+    const videoId = params['videoId'] ?? '';
+    if (!videoId || videoId.length > 128) {
+      sendJson(res, 400, { error: 'videoId no válido' });
+      return;
+    }
+    const body = (rawBody ?? {}) as Record<string, unknown> & { profileId?: string };
+    const profileId = body.profileId ?? query.get('profileId') ?? getData().activeProfileId;
+    const patch = sanitizeTrackPreferencePatch(body);
+    if (!Object.keys(patch).length) {
+      sendJson(res, 400, { error: 'Preferencia de pista sin campos válidos' });
+      return;
+    }
+    let saved: ReturnType<typeof saveTrackPreference> = null;
+    await save((data) => {
+      data.trackPrefs ??= {};
+      saved = saveTrackPreference(data.trackPrefs, profileId, videoId, patch);
+    });
+    sendJson(res, 200, { pref: saved });
+  });
+
+  router.delete('/api/track-prefs/:videoId', async ({ res, params, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const videoId = params['videoId'] ?? '';
+    await save((data) => {
+      delete data.trackPrefs[profileId]?.[videoId];
+    });
+    sendJson(res, 200, { deleted: true });
+  });
+
   // --------------------------------------------------------------- ajustes
 
   router.get('/api/settings', ({ res }) => {
@@ -591,19 +646,56 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { settings: publicSettings(getData().settings) });
   });
 
+  router.get('/api/export', ({ res }) => {
+    // Copia de datos del usuario (WuPlay: «Privacy & Data» de la configuración
+    // web). Los secretos (PIN, claves de API) salen como marcadores, nunca en
+    // claro: el fichero puede compartirse para soporte sin filtrar credenciales.
+    const data = getData();
+    const day = new Date().toISOString().slice(0, 10);
+    res.setHeader('content-disposition', `attachment; filename="vibeflix-export-${day}.json"`);
+    sendJson(res, 200, {
+      app: 'vibe-flix',
+      exportedAt: new Date().toISOString(),
+      ...data,
+      // `publicProfile` sustituye el PIN por un marcador; `publicSettings`
+      // hace lo propio con las claves de API (debrid, OpenSubtitles...).
+      profiles: data.profiles.map(publicProfile),
+      settings: publicSettings(data.settings),
+    });
+  });
+
   router.put('/api/settings', async ({ res, body: rawBody }) => {
     const body = (rawBody ?? {}) as Record<string, unknown>;
     await save((data) => {
       // Los objetos anidados (debrid, device) se fusionan en vez de sustituirse.
-      const { debrid, device, opensubtitles, skipIntro, filters, scrapers, ...rest } = body as {
+      const { debrid, device, opensubtitles, skipIntro, filters, scrapers, playback, ...rest } = body as {
         debrid?: Partial<AppSettings['debrid']>;
         device?: Partial<AppSettings['device']>;
         opensubtitles?: Partial<AppSettings['opensubtitles']>;
         skipIntro?: Partial<AppSettings['skipIntro']>;
         filters?: Partial<AppSettings['filters']>;
         scrapers?: Partial<AppSettings['scrapers']>;
+        playback?: Partial<AppSettings['playback']>;
       } & Record<string, unknown>;
+      // `uiMode` solo admite los dos modos documentados (NuvioTV: Essential /
+      // Advanced); cualquier otro valor se ignora y conserva el anterior.
+      if ('uiMode' in rest && rest.uiMode !== 'essential' && rest.uiMode !== 'advanced') {
+        delete rest.uiMode;
+      }
       Object.assign(data.settings, rest);
+      if (playback) {
+        const next = { ...playback };
+        // «¿Sigues viendo?»: entero 0-20 (0 = nunca); fuera de rango cae al
+        // por defecto (3 episodios, WuPlay v0.6.5), igual que al cargar.
+        if ('stillWatchingAfter' in next) {
+          const value = Number(next.stillWatchingAfter);
+          next.stillWatchingAfter =
+            Number.isInteger(value) && value >= 0 && value <= 20
+              ? value
+              : DEFAULT_SETTINGS.playback.stillWatchingAfter;
+        }
+        data.settings.playback = { ...data.settings.playback, ...next };
+      }
       if (debrid) {
         const next = { ...debrid };
         if ('apiKey' in next) {

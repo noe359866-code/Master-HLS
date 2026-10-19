@@ -17,6 +17,7 @@ import type {
   Manifest,
   ProgressEntry,
   Profile,
+  ProfilePatch,
   Watchlist,
 } from './types';
 
@@ -70,7 +71,7 @@ interface AppState {
   refreshAll: () => Promise<void>;
   reloadLibrary: () => Promise<void>;
   setActiveProfile: (id: string, pin?: string) => Promise<void>;
-  updateProfile: (id: string, patch: Partial<Profile> & { currentPin?: string }) => Promise<void>;
+  updateProfile: (id: string, patch: ProfilePatch) => Promise<void>;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
   installAddon: (url: string) => Promise<void>;
   removeAddon: (id: string) => Promise<void>;
@@ -158,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = useCallback(async (
     id: string,
-    patch: Partial<Profile> & { currentPin?: string },
+    patch: ProfilePatch,
   ) => {
     const updated = await api.updateProfile(id, patch);
     setProfiles((current) => current.map((profile) => profile.id === id ? updated : profile));

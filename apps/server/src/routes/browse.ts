@@ -23,6 +23,7 @@ import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
 import { DECADES, GENRES } from '../library/genres.js';
 import { applyContentFilters, ratingOf, yearOf } from '../library/filters.js';
+import { applyParentalFilters } from '../library/parental.js';
 
 export interface BrowseRouteOptions {
   registry: AddonRegistry;
@@ -86,11 +87,16 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
     const skip = Number(query.get('skip') ?? '0') || 0;
 
     const filters = getData().settings.filters;
+    // El control parental del perfil activo se aplica además de los filtros
+    // globales: así búsqueda, géneros y décadas devuelven lo mismo.
+    const parental = getData().profiles.find(
+      (entry) => entry.id === getData().activeProfileId,
+    )?.parental;
 
     // 1) Busqueda por texto: los catalogos que soportan `search`.
     if (search) {
       const result = await registry.search(search, { type: type || undefined });
-      const metas = applyContentFilters(result.value.metas, filters);
+      const metas = applyParentalFilters(applyContentFilters(result.value.metas, filters), parental);
       sendJson(res, 200, { metas: metas.slice(0, BROWSE_LIMIT), source: 'search' });
       return;
     }
@@ -117,7 +123,7 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
       const metas = dedupe(
         results.flatMap((result) => result.value.metas),
       );
-      const filtered = applyContentFilters(metas, filters);
+      const filtered = applyParentalFilters(applyContentFilters(metas, filters), parental);
       sendJson(res, 200, {
         metas: filtered.slice(skip, skip + BROWSE_LIMIT),
         source: 'genre',
@@ -134,7 +140,7 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
         return;
       }
       const metas = await byDecade(registry, decade.from, decade.to, type);
-      const filtered = applyContentFilters(metas, filters);
+      const filtered = applyParentalFilters(applyContentFilters(metas, filters), parental);
       sendJson(res, 200, {
         metas: filtered.slice(skip, skip + BROWSE_LIMIT),
         source: 'decade',

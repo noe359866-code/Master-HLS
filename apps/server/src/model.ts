@@ -10,6 +10,9 @@
 import type { DebridProviderId, MetaPreview } from '@vibeflix/addon-engine';
 import type { ProviderConfig } from '@vibeflix/scrapers';
 
+import { normalizeParental, type ParentalSettings } from './library/parental.js';
+import type { TrackPreference } from './library/track-prefs.js';
+
 export interface InstalledAddonRecord {
   id: string;
   name: string;
@@ -28,6 +31,13 @@ export interface Profile {
   color: string;
   /** PIN opcional para cambiar de perfil (WuPlay). */
   pin?: string;
+  /**
+   * Control parental del perfil (NuvioTV: `ParentalGuide`).
+   *
+   * Nivel de madurez máximo, géneros bloqueados y si hace falta el PIN del
+   * perfil para desbloquear un título restringido. Ausente = sin control.
+   */
+  parental?: ParentalSettings;
   /** Idioma/región de fuentes elegido explícitamente al entrar al perfil. */
   contentLanguage?: string;
   /** Idioma de audio preferido (ISO 639-1). */
@@ -127,6 +137,15 @@ export interface CatalogPreference {
 export interface AppSettings {
   /** Idioma de la interfaz. */
   language: string;
+  /**
+   * Modo de experiencia (NuvioTV: «Essential / Advanced»).
+   *
+   * `essential` muestra solo los ajustes básicos (idioma, reproducción y
+   * subtítulos) y oculta la superficie avanzada (debrid, scrapers, filtros,
+   * capacidades del dispositivo…). No desactiva nada: solo cambia la
+   * visibilidad; todo sigue disponible al volver a `advanced`.
+   */
+  uiMode: 'essential' | 'advanced';
   /**
    * Metadata integrada: permite usar la app sin instalar ningun addon
    * (el "built-in metadata" de WuPlay / modo "essential" de NuvioTV).
@@ -247,6 +266,11 @@ export interface AppSettings {
     speed: number;
     /** Guardar el progreso cada N segundos (0 = solo al pausar/salir). */
     progressIntervalSeconds: number;
+    /**
+     * «¿Sigues viendo?» tras N episodios avanzados en automático (WuPlay
+     * v0.6.5, por defecto 3). 0 = nunca preguntar.
+     */
+    stillWatchingAfter: number;
   };
   /**
    * Apariencia y comportamiento de los subtitulos.
@@ -304,11 +328,19 @@ export interface AppData {
   catalogPreferences: CatalogPreference[];
   /** Historial de busquedas por id de perfil. */
   searchHistory: Record<string, Array<{ term: string; at: number }>>;
+  /**
+   * Preferencias de pista por perfil y vídeo (NuvioTV:
+   * `TrackPreferenceDataStore`): audio, subtítulo, desfase y velocidad
+   * **por videoId**, porque un desfase calibrado para un episodio no sirve
+   * para el siguiente.
+   */
+  trackPrefs: Record<string, Record<string, TrackPreference>>;
   settings: AppSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   language: 'es',
+  uiMode: 'advanced',
   builtInMetadata: true,
   builtInMetadataUrl: 'https://v3-cinemeta.strem.io',
   theme: 'dark',
@@ -359,6 +391,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     thumbnails: true,
     speed: 1,
     progressIntervalSeconds: 15,
+    stillWatchingAfter: 3,
   },
   subtitles: {
     enabled: true,
@@ -408,6 +441,15 @@ export function normalizeData(data: AppData): AppData {
     playback: {
       ...DEFAULT_SETTINGS.playback,
       ...(settings.playback ?? {}),
+      // «¿Sigues viendo?»: entero 0-20 (0 = nunca). Cualquier otro valor cae
+      // al por defecto (3 episodios, como WuPlay v0.6.5).
+      stillWatchingAfter: (() => {
+        const raw = (settings.playback as { stillWatchingAfter?: unknown } | undefined)?.stillWatchingAfter;
+        const value = Number(raw);
+        return Number.isFinite(value) && Number.isInteger(value) && value >= 0 && value <= 20
+          ? value
+          : DEFAULT_SETTINGS.playback.stillWatchingAfter;
+      })(),
     },
     subtitles: {
       ...DEFAULT_SETTINGS.subtitles,
@@ -433,8 +475,16 @@ export function normalizeData(data: AppData): AppData {
     },
     sidebar: settings.sidebar?.length ? settings.sidebar : DEFAULT_SETTINGS.sidebar,
   };
+  // Valores que no son mergeables: se validan tras el merge.
+  if (data.settings.uiMode !== 'essential' && data.settings.uiMode !== 'advanced') {
+    data.settings.uiMode = DEFAULT_SETTINGS.uiMode;
+  }
   data.addons ??= [];
   data.profiles ??= [];
+  // El control parental de cada perfil se completa con los valores por defecto.
+  for (const profile of data.profiles) {
+    if (profile.parental) profile.parental = normalizeParental(profile.parental);
+  }
   data.watchlists ??= {};
   data.history ??= {};
   data.progress ??= {};
@@ -443,6 +493,7 @@ export function normalizeData(data: AppData): AppData {
   data.pairings ??= [];
   data.catalogPreferences ??= [];
   data.searchHistory ??= {};
+  data.trackPrefs ??= {};
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
 }
@@ -461,6 +512,7 @@ export function emptyData(): AppData {
     pairings: [],
     catalogPreferences: [],
     searchHistory: {},
+    trackPrefs: {},
     settings: { ...DEFAULT_SETTINGS },
   };
 }

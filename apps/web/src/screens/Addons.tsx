@@ -170,6 +170,8 @@ export function AddonsScreen() {
 
 export function SettingsScreen() {
   const { settings, activeProfile, saveSettings, navigate } = useApp();
+  // Modo esencial (NuvioTV: «Essential / Advanced»): solo cambia la visibilidad.
+  const essential = settings?.uiMode === 'essential';
   const { t, locale, locales, change } = useI18n();
   const [detectedSummary, setDetectedSummary] = useState('');
   const [debridMessage, setDebridMessage] = useState<string | null>(null);
@@ -420,6 +422,25 @@ export function SettingsScreen() {
         </section>
       ) : null}
       <section className="panel">
+        <h2>{t('SETTINGS_EXPERIENCE')}</h2>
+        <label className="setting">
+          <span>{t('SETTINGS_UI_MODE')}</span>
+          <select
+            data-focusable="true"
+            value={settings.uiMode ?? 'advanced'}
+            onChange={(event) =>
+              void saveSettings({ uiMode: event.target.value as 'essential' | 'advanced' })
+            }
+          >
+            <option value="essential">{t('SETTINGS_UI_MODE_ESSENTIAL')}</option>
+            <option value="advanced">{t('SETTINGS_UI_MODE_ADVANCED')}</option>
+          </select>
+        </label>
+        <p className="panel__hint">{t('SETTINGS_UI_MODE_HELP')}</p>
+      </section>
+
+      {!essential ? (
+      <section className="panel">
         <h2>Metadata integrada</h2>
         <p className="panel__hint">
           Permite usar Vibe Flix sin instalar ningún addon de metadatos (el «built-in metadata» de
@@ -435,6 +456,7 @@ export function SettingsScreen() {
           />
         </label>
       </section>
+      ) : null}
 
       <section className="panel">
         <h2>{t('SETTINGS_INTERFACE')}</h2>
@@ -486,6 +508,27 @@ export function SettingsScreen() {
           </select>
         </label>
         <label className="setting">
+          <span>{t('SETTINGS_STILL_WATCHING')}</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.stillWatchingAfter ?? 3}
+            onChange={(event) =>
+              void saveSettings({
+                playback: { ...settings.playback, stillWatchingAfter: Number(event.target.value) },
+              })
+            }
+          >
+            {[0, 2, 3, 4, 5, 8].map((episodes) => (
+              <option key={episodes} value={episodes}>
+                {episodes === 0 ? t('OFF') : `${episodes} ▶`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="panel__hint">{t('SETTINGS_STILL_WATCHING_HELP')}</p>
+        {!essential ? (
+          <>
+        <label className="setting">
           <span>{t('SETTINGS_MAX_BITRATE')}</span>
           <select
             data-focusable="true"
@@ -522,6 +565,8 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
+          </>
+        ) : null}
         <label className="setting">
           <span>{t('CONTINUE_WATCHING')}</span>
           <input
@@ -533,6 +578,8 @@ export function SettingsScreen() {
             }
           />
         </label>
+        {!essential ? (
+          <>
         <label className="setting">
           <span>{t('PLAYER_THUMBNAILS')}</span>
           <input
@@ -569,6 +616,8 @@ export function SettingsScreen() {
           Los streams se muestran con el título y, si corresponde, la temporada y el episodio.
           No se muestran nombres de proveedores ni enlaces en las fichas.
         </p>
+          </>
+        ) : null}
       </section>
 
       <section className="panel">
@@ -616,6 +665,8 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
+        {!essential ? (
+          <>
         <label className="setting">
           <span>{t('SETTINGS_SUBTITLES_OPACITY')}</span>
           <input
@@ -672,7 +723,7 @@ export function SettingsScreen() {
           <input
             type="range"
             min={0}
-            max={30}
+            max={95}
             step={1}
             data-focusable="true"
             value={settings.subtitles?.verticalPosition ?? 8}
@@ -694,6 +745,8 @@ export function SettingsScreen() {
             }
           />
         </label>
+          </>
+        ) : null}
         <label className="setting">
           <span>{t('SETTINGS_CLEAN_SDH')}</span>
           <input
@@ -728,7 +781,7 @@ export function SettingsScreen() {
               void saveSettings({ subtitles: { ...settings.subtitles, delayMs: Number(event.target.value) } })
             }
           >
-            {[-2000, -1000, -500, -250, 0, 250, 500, 1000, 2000].map((ms) => (
+            {[-180000, -60000, -30000, -10000, -5000, -2000, -1000, -500, -250, 0, 250, 500, 1000, 2000, 5000, 10000, 30000, 60000, 180000].map((ms) => (
               <option key={ms} value={ms}>
                 {formatDelay(ms)}
               </option>
@@ -737,6 +790,8 @@ export function SettingsScreen() {
         </label>
       </section>
 
+      {!essential ? (
+        <>
       <section className="panel">
         <h2>{t('SETTINGS_DEVICE')}</h2>
         <p className="panel__hint">
@@ -1015,6 +1070,8 @@ export function SettingsScreen() {
         {openSubtitlesMessage ? <p className="panel__ok">{openSubtitlesMessage}</p> : null}
         {openSubtitlesError ? <ErrorState message={openSubtitlesError} /> : null}
       </section>
+        </>
+      ) : null}
 
       <section className="panel">
         <h2>Omitir intro</h2>
@@ -1058,6 +1115,8 @@ export function SettingsScreen() {
         </label>
       </section>
 
+      {!essential ? (
+        <>
       <section className="panel">
         <h2>Personalización del menú</h2>
         <p className="panel__hint">
@@ -1178,6 +1237,8 @@ export function SettingsScreen() {
           })}
         </div>
       </section>
+        </>
+      ) : null}
 
       <section className="panel">
         <h2>Instalar en la TV</h2>
@@ -1215,6 +1276,23 @@ export function SettingsScreen() {
         </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'devices' })}>
           Vincular dispositivos
+        </Button>
+      </section>
+
+      <section className="settings-panel">
+        <h2>{t('SETTINGS_PRIVACY')}</h2>
+        <p className="panel__hint">{t('SETTINGS_EXPORT_DATA_HELP')}</p>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            // Descarga directa: el servidor responde con `content-disposition`.
+            const anchor = document.createElement('a');
+            anchor.href = '/api/export';
+            anchor.download = 'vibeflix-export.json';
+            anchor.click();
+          }}
+        >
+          {t('SETTINGS_EXPORT_DATA')}
         </Button>
       </section>
     </div>

@@ -22,7 +22,8 @@ export type SubtitleColorId = (typeof SUBTITLE_COLORS)[number]['id'];
 
 /** Escalas de tamano (multiplicador sobre el tamano base). */
 export const SUBTITLE_SIZES = [
-  { id: 'xs', label: 'XS', scale: 0.7 },
+  { id: 'xxs', label: 'XXS', scale: 0.25 },
+  { id: 'xs', label: 'XS', scale: 0.5 },
   { id: 'small', label: 'S', scale: 0.85 },
   { id: 'normal', label: 'M', scale: 1 },
   { id: 'large', label: 'L', scale: 1.25 },
@@ -83,10 +84,12 @@ export function normalizeSubtitleStyle(style?: Partial<SubtitleStyle> | null): S
     // Los ajustes guardan el identificador estable (`white`, `green`); aqui se
     // resuelve al valor CSS para que el que pinta no tenga que saberlo.
     color: resolveSubtitleColor(base.color),
-    size: clamp(base.size, 0.5, 2.5),
+    // Rangos estilo WuPlay (v0.6.5: «Subtitle min. size reduced from 50% to
+    // 25%», «max. offset increased from 30% to 95%»).
+    size: clamp(base.size, 0.25, 2.5),
     opacity: clamp(base.opacity, 0.2, 1),
     backgroundOpacity: clamp(base.backgroundOpacity, 0, 1),
-    verticalPosition: clamp(base.verticalPosition, 0, 40),
+    verticalPosition: clamp(base.verticalPosition, 0, 95),
     edge: SUBTITLE_EDGES.includes(base.edge) ? base.edge : 'outline',
     bold: Boolean(base.bold),
   };

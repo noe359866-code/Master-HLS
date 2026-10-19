@@ -53,3 +53,28 @@ export function setAdminToken(token: string | undefined): void {
     // Sin almacenamiento: el token solo vale para la pestaña actual.
   }
 }
+
+/**
+ * PIN de desbloqueo parental (`X-Vibe-Flix-Parental-Pin`).
+ *
+ * Vive solo en `sessionStorage`: el desbloqueo dura lo que la pestaña y se
+ * acaba al cerrarla. Nunca se persiste en disco.
+ */
+const PARENTAL_PIN_KEY = 'vibe-flix.parental-pin';
+
+export function getParentalPin(): string | undefined {
+  try {
+    return window.sessionStorage.getItem(PARENTAL_PIN_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setParentalPin(pin: string | undefined): void {
+  try {
+    if (pin) window.sessionStorage.setItem(PARENTAL_PIN_KEY, pin);
+    else window.sessionStorage.removeItem(PARENTAL_PIN_KEY);
+  } catch {
+    // Sin almacenamiento: el desbloqueo dura solo esta petición.
+  }
+}

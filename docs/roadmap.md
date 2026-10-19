@@ -122,8 +122,42 @@
         restricciones sin autorización). No registrar IPTV como episodios ni
         equiparar archivos de referencia con puertos implementados.
 
+- [x] **Revisión de NuvioTV** ([docs/nuviotv-review.md](nuviotv-review.md)) con
+      dos mejoras importadas de su diseño:
+  - [x] **Control parental por perfil** (`library/parental.ts`): niveles de
+        madurez (off/kids/teen/adult), clasificación por edades cuando la ficha
+        la declara, géneros bloqueados y desbloqueo con el PIN del perfil;
+        aplicado en el servidor (catálogos, búsqueda, recomendados, similares y
+        streams con 403 `parental_blocked`).
+  - [x] **Modo esencial / avanzado** (`settings.uiMode`, spec de
+        `docs/essential-mode.md` de NuvioTV): ajustes simplificados y
+        reproductor sin controles avanzados; solo cambia visibilidad.
+  - [x] **Preferencias de pista por vídeo** (Nuvio: `TrackPreferenceDataStore`,
+        #1063): audio, subtítulo («apagados a propósito»), desfase y velocidad
+        **por videoId** y perfil, con tope de 200 entradas
+        (`library/track-prefs.ts`, `/api/track-prefs/:videoId`, reproductor).
+- [x] **Test preexistente de scrapers alineado con el diseño vigente**
+      («prioriza la variante exacta…»): la prioridad de idioma ordena, no
+      oculta — las alternativas del mismo idioma se conservan como fallback
+      real. Suite completa en verde.
+- [x] **Revisión de WuPlay** ([docs/wuplay-review.md](wuplay-review.md),
+      releases cerrados: README + CHANGELOG) con sus estándares de subtítulos
+      y comodidad importados:
+  - [x] **Rangos de subtítulo** (v0.5.0/v0.6.5): desfase ±180 s (antes ±15),
+        tamaño mínimo 25 % y posición vertical hasta 95 %.
+  - [x] **Subtítulos forzados por defecto** (v0.4.2): detección `forced` en
+        pistas nativas y externas, se activan aunque los completos no.
+  - [x] **«¿Sigues viendo?»** (v0.6.5): `playback.stillWatchingAfter`
+        (default 3 episodios, 0 = nunca) congela el autoplay hasta confirmar.
+  - [x] **Orden de pistas por idioma preferido → interfaz → alfabético**
+        (v0.8.0): `sortSubtitleTracks` en player-core.
+  - [x] **Exportar datos** (v0.6.5 / Privacy & Data): `GET /api/export` con
+        secretos marcados + panel «Datos y privacidad» en Ajustes.
+
 ## Siguiente
 
+- [ ] **Retardo de audio** (Nuvio: `AudioDelayMediaSource`) en el reproductor
+      web y el shell Android.
 - [ ] **Plugins estilo Nuvio** — repositorios de plugins y CloudStream.
 - [ ] **Más proveedores de debrid** (Offcloud, debrid.link) y descarga en
       segundo plano con aviso de "listo" en la UI.
@@ -134,6 +168,13 @@
 - [ ] **Tomas de notas y listas por episodio**.
 - [ ] **Semáforo de concurrencia** en el fan-out de addons.
 - [ ] **Firmas `stremioAddonsConfig`** para addons oficiales verificados.
+- [ ] **Random Episode** (WuPlay v0.5.4) en series: botón aleatorio en la
+      ficha, decidiendo si abre el player directo o un candidato en Detail.
+- [ ] **Fallback de streams con temporizador de error** (WuPlay v0.6.4): qué
+      hacer cuando la fuente falla a mitad (rendirse, saltar al siguiente
+      stream, avisar). Requiere diseño.
+- [ ] **Borrado selectivo de datos** (WuPlay Privacy & Data): limpiar
+      historial por título/caché desde el panel de privacidad.
 
 ## Decisiones abiertas
 

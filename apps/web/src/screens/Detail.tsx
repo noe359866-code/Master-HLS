@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { api } from '../api';
+import { api, ApiError } from '../api';
+import { useI18n } from '../i18n';
+import { setParentalPin as persistParentalPin } from '../session';
 import { useApp } from '../store';
 import type { Meta, OpenSubtitleEntry, Rating, Stream, Video } from '../types';
 import { Button, ErrorState, Loader, Modal, Poster, useBackdrop } from '../components/ui';
 
 export function DetailScreen({ id, type }: { id: string; type: string }) {
   const { navigate, lists, toggleWatchlistItem, activeProfile } = useApp();
+  const { t } = useI18n();
   const [meta, setMeta] = useState<Meta | null>(null);
   const [streamResult, setStreamResult] = useState<{ id: string; streams: Stream[] } | null>(null);
   const [streamsLoading, setStreamsLoading] = useState(true);
@@ -28,6 +31,12 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
   const [selectedSubtitle, setSelectedSubtitle] = useState<{ url: string; label: string } | null>(
     null,
   );
+
+  // Control parental: el servidor puede bloquear las fuentes de este título.
+  const [parentalBlock, setParentalBlock] = useState<{ requiresPin: boolean; message: string } | null>(null);
+  const [parentalPinInput, setParentalPinInput] = useState('');
+  const [parentalError, setParentalError] = useState<string | null>(null);
+  const [streamsNonce, setStreamsNonce] = useState(0);
 
   const backdrop = useBackdrop(meta);
 
@@ -132,11 +141,23 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
     let cancelled = false;
     setStreamsLoading(true);
     void api.streams(type, streamId)
-      .then((result) => { if (!cancelled) setStreamResult({ id: streamId, streams: result.streams }); })
-      .catch(() => { if (!cancelled) setStreamResult({ id: streamId, streams: [] }); })
+      .then((result) => {
+        if (cancelled) return;
+        setParentalBlock(null);
+        setStreamResult({ id: streamId, streams: result.streams });
+      })
+      .catch((cause) => {
+        if (cancelled) return;
+        // 403 del control parental: se muestra el diálogo de desbloqueo en vez
+        // de la lista vacía (NuvioTV: `ParentalGuideOverlay`).
+        if (cause instanceof ApiError && cause.code === 'parental_blocked') {
+          setParentalBlock({ requiresPin: cause.requiresPin, message: cause.message });
+        }
+        setStreamResult({ id: streamId, streams: [] });
+      })
       .finally(() => { if (!cancelled) setStreamsLoading(false); });
     return () => { cancelled = true; };
-  }, [type, streamId, meta]);
+  }, [type, streamId, meta, streamsNonce]);
 
   // Autoplay: si el perfil lo pide, se reproduce el primer stream disponible.
   useEffect(() => {
@@ -478,6 +499,58 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
+            </div>
+          </Modal>
+        ) : null}
+
+        {parentalBlock ? (
+          <Modal title={t('PARENTAL_BLOCKED')} onClose={() => setParentalBlock(null)}>
+            <div className="detail__parental">
+              <p>{parentalBlock.message}</p>
+              {parentalBlock.requiresPin ? (
+                <>
+                  <p className="panel__hint">{t('PARENTAL_PIN_HINT')}</p>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    data-focusable="true"
+                    maxLength={12}
+                    value={parentalPinInput}
+                    placeholder={t('VIBE_PIN_REQUIRED')}
+                    onChange={(event) => setParentalPinInput(event.target.value.replace(/\D/g, ''))}
+                  />
+                  {parentalError ? (
+                    <p className="pin-dialog__error" role="alert">{parentalError}</p>
+                  ) : null}
+                  <div className="detail__actions">
+                    <Button
+                      onClick={() => {
+                        if (!parentalPinInput) {
+                          setParentalError(t('PARENTAL_PIN_HINT'));
+                          return;
+                        }
+                        persistParentalPin(parentalPinInput);
+                        setParentalBlock(null);
+                        setParentalPinInput('');
+                        setParentalError(null);
+                        setStreamsNonce((value) => value + 1);
+                      }}
+                    >
+                      {t('PARENTAL_UNLOCK')}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setParentalBlock(null)}>
+                      {t('BACK')}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="detail__actions">
+                  <Button variant="ghost" onClick={() => setParentalBlock(null)}>
+                    {t('BACK')}
+                  </Button>
+                </div>
+              )}
             </div>
           </Modal>
         ) : null}

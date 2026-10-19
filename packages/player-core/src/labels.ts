@@ -56,6 +56,36 @@ export function languageName(language?: string | null): string {
   return LANGUAGE_NAMES[code] ?? (code ? code.toUpperCase() : '');
 }
 
+/**
+ * Ordena las pistas de subtitulos como WuPlay v0.8.0: primero el idioma
+ * preferido del perfil, despues el idioma de la interfaz y el resto en orden
+ * alfabetico (estable dentro de cada grupo, sin perder la posicion original
+ * de las pistas que empatan).
+ */
+export function sortSubtitleTracks<T extends { lang?: string | null; label?: string }>(
+  tracks: T[],
+  preferred?: string | null,
+  appLanguage?: string | null,
+): T[] {
+  const preferredCode = languageCode(preferred);
+  const appCode = languageCode(appLanguage);
+  const rank = (track: T): number => {
+    const code = languageCode(track.lang);
+    if (code && code === preferredCode) return 0;
+    if (code && code === appCode) return 1;
+    return 2;
+  };
+  return tracks
+    .map((track, index) => ({ track, index }))
+    .sort(
+      (a, b) =>
+        rank(a.track) - rank(b.track) ||
+        (a.track.label ?? '').localeCompare(b.track.label ?? '', undefined, { sensitivity: 'base' }) ||
+        a.index - b.index,
+    )
+    .map((entry) => entry.track);
+}
+
 /** Pista de audio o subtitulos tal y como la publica hls.js o el addon. */
 export interface TrackLike {
   name?: string;

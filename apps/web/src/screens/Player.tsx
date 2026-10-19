@@ -52,6 +52,7 @@ import {
   shouldEnableSubtitles,
   speedLabel,
   subtitleTrackLabel,
+  sortSubtitleTracks,
   thumbnailAt,
   thumbnailBox,
   thumbnailCss,
@@ -68,6 +69,7 @@ import {
 
 import { api } from '../api';
 import { useApp } from '../store';
+import type { TrackPreference } from '../types';
 import { useI18n } from '../i18n';
 import type { MasterInfo, SkipSegment, Stream, Thumbnail } from '../types';
 import { Button } from '../components/ui';
@@ -101,6 +103,8 @@ interface SubtitleOption {
   /** URL del fichero externo (se normaliza por el proxy). */
   url?: string;
   sdh?: boolean;
+  /** Subtítulos forzados (diálogo extranjero, carteles): WuPlay los activa por defecto. */
+  forced?: boolean;
 }
 
 type MenuId =
@@ -116,6 +120,13 @@ type MenuId =
 
 /** Milisegundos que dura un aviso breve en pantalla. */
 const TOAST_MS = 1800;
+
+/**
+ * Episodios seguidos avanzados en automático durante la sesión. Vive a nivel
+ * de módulo para sobrevivir al cambio de episodio y a los remounts (cambios
+ * de perfil).
+ */
+let autoNextStreak = 0;
 
 export function PlayerScreen({
   id,
@@ -146,10 +157,15 @@ export function PlayerScreen({
   const nextStreamsRef = useRef<Stream[] | null>(null);
 
   const playback = settings?.playback;
+  // Modo esencial (NuvioTV): el reproductor oculta los controles avanzados
+  // (estadísticas y modo de imagen); los atajos de teclado siguen igual.
+  const essentialMode = settings?.uiMode === 'essential';
   const subtitleSettings = settings?.subtitles;
   const deviceSettings = settings?.device;
   const skipEnabled = settings?.skipIntro?.enabled !== false;
   const countdownSeconds = playback?.autoplayCountdown ?? 5;
+  /** WuPlay v0.6.5: «Are You Still Watching?» (por defecto tras 3 episodios). */
+  const stillWatchingAfter = playback?.stillWatchingAfter ?? 3;
   const saveEveryMs = Math.max(3, playback?.progressIntervalSeconds ?? 15) * 1000;
 
   // ------------------------------------------------------------- estado
@@ -198,11 +214,31 @@ export function PlayerScreen({
   const [audioOptions, setAudioOptions] = useState<Array<{ index: number; label: string; lang: string }>>([]);
   const [activeAudio, setActiveAudio] = useState(-1);
 
+  // Preferencias de pista por vídeo (NuvioTV: `TrackPreferenceDataStore`).
+  // `undefined` = aún cargando: no se decide ni se sobrescribe hasta que llegue.
+  const [trackPref, setTrackPref] = useState<TrackPreference | null | undefined>(undefined);
+  const savePrefTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** true cuando ya se decidió/apagó un subtítulo para este vídeo. */
+  const subtitleChosenRef = useRef(false);
+  /** Instantánea fresca de lo que hay que guardar (se lee al disparar el debounce). */
+  const latestPrefRef = useRef<Partial<Omit<TrackPreference, 'updatedAt'>>>({});
+  latestPrefRef.current = {
+    audioLanguage: audioOptions.find((track) => track.index === activeAudio)?.lang,
+    // Solo se recuerda el subtítulo si ya hubo decisión (o el usuario eligió):
+    // un `null` significa «apagados a propósito», no «aún no elegidos».
+    ...(subtitleChosenRef.current ? { subtitleKey: activeSubtitle } : {}),
+    subtitleLanguage: subtitleOptions.find((option) => option.key === activeSubtitle)?.lang,
+    delayMs: subtitleDelay,
+    speed,
+  };
+
   // Omitir intro y autoplay
   const [skipSegment, setSkipSegment] = useState<SkipSegment | null>(null);
   const [skipped, setSkipped] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [detectedNext, setDetectedNext] = useState<{ id: string; title: string } | null>(null);
+  /** «¿Sigues viendo?»: la cuenta atrás se congela y exige confirmación. */
+  const [stillWatching, setStillWatching] = useState(false);
 
   // Miniaturas de previsualizacion
   const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
@@ -433,12 +469,16 @@ export function PlayerScreen({
         const found = streams.find((stream) => stream.url === activeUrl);
         const fromStream: SubtitleOption[] = (found?.subtitles ?? [])
           .filter((subtitle) => Boolean(subtitle.url))
-          .map((subtitle, index) => ({
-            key: `ext:${index}`,
-            label: subtitleTrackLabel({ lang: subtitle.lang ?? subtitle.language, name: subtitle.lang }),
-            lang: subtitle.lang ?? subtitle.language ?? '',
-            url: subtitle.url as string,
-          }));
+          .map((subtitle, index) => {
+            const name = String((subtitle as { name?: string }).name ?? subtitle.lang ?? '');
+            return {
+              key: `ext:${index}`,
+              label: subtitleTrackLabel({ lang: subtitle.lang ?? subtitle.language, name: subtitle.lang }),
+              lang: subtitle.lang ?? subtitle.language ?? '',
+              url: subtitle.url as string,
+              forced: /\bforced\b/i.test(name),
+            };
+          });
         const fromProp: SubtitleOption[] = subtitleUrl
           ? [{
               key: `ext:${fromStream.length}`,
@@ -447,11 +487,17 @@ export function PlayerScreen({
               url: subtitleUrl,
             }]
           : [];
-        setSubtitleOptions((previous) => [
-          ...previous.filter((option) => option.native !== undefined),
-          ...fromStream,
-          ...fromProp,
-        ]);
+        setSubtitleOptions((previous) => sortSubtitleTracks(
+          [
+            ...previous.filter((option) => option.native !== undefined),
+            ...fromStream,
+            ...fromProp,
+          ],
+          // WuPlay v0.8.0: el idioma preferido primero, la interfaz después y
+          // el resto en orden alfabético.
+          activeProfile?.subtitleLanguage ?? activeProfile?.contentLanguage,
+          settings?.language,
+        ));
       } catch {
         // Sin lista de streams: se reproduce el que vino en la ruta.
       }
@@ -471,30 +517,113 @@ export function PlayerScreen({
       lang: track.lang ?? '',
       native: index,
       sdh: /sdh|cc/i.test(track.name ?? ''),
+      forced: /\bforced\b/i.test(track.name ?? ''),
     }));
     if (!native.length) return;
-    setSubtitleOptions((previous) => [...native, ...previous.filter((option) => option.native === undefined)]);
+    setSubtitleOptions((previous) => sortSubtitleTracks(
+      [...native, ...previous.filter((option) => option.native === undefined)],
+      activeProfile?.subtitleLanguage ?? activeProfile?.contentLanguage,
+      settings?.language,
+    ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levels, quality]);
+
+  // Cargar las preferencias guardadas para este vídeo (audio, subtítulo,
+  // desfase y velocidad). El desfase es **por vídeo**: un valor calibrado para
+  // un episodio no sirve para el siguiente (NuvioTV #1063).
+  useEffect(() => {
+    let cancelled = false;
+    setTrackPref(undefined);
+    void api.trackPref(id, activeProfileId || undefined)
+      .then((pref) => {
+        if (cancelled) return;
+        setTrackPref(pref);
+        if (typeof pref?.delayMs === 'number') setSubtitleDelay(pref.delayMs);
+        else setSubtitleDelay(subtitleSettings?.delayMs ?? 0);
+        const rememberedSpeed = pref?.speed && pref.speed !== 1 ? pref.speed : 1;
+        setSpeed(rememberedSpeed);
+        if (videoRef.current) videoRef.current.playbackRate = rememberedSpeed;
+      })
+      .catch(() => { if (!cancelled) setTrackPref(null); });
+    return () => {
+      cancelled = true;
+      if (savePrefTimer.current) clearTimeout(savePrefTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, activeProfileId]);
+
+  // Restaurar la pista de audio recordada cuando aparezcan las pistas (solo
+  // si el usuario no ha elegido todavía en esta sesión).
+  useEffect(() => {
+    if (trackPref === undefined || !audioOptions.length || activeAudio !== -1) return;
+    const wanted = trackPref?.audioLanguage;
+    if (!wanted) return;
+    const match =
+      audioOptions.find((track) => track.lang && track.lang === wanted) ??
+      audioOptions.find((track) => track.lang && track.lang.startsWith(wanted.slice(0, 2)));
+    if (match) {
+      controllerRef.current?.setAudioTrack(match.index);
+      setActiveAudio(match.index);
+    }
+  }, [trackPref, audioOptions, activeAudio]);
 
   // Decision inicial: subtitulos activos solo si el ajuste lo pide (y, con
   // «solo para audio extranjero», solo si el audio no es el del perfil).
   useEffect(() => {
     if (!subtitleOptions.length || activeSubtitle !== null) return;
+    if (trackPref === undefined) return;
+    // A partir de aquí hay decisión (aunque sea «dejarlos apagados»).
+    subtitleChosenRef.current = true;
+    // La preferencia guardada para este vídeo manda sobre el idioma del
+    // perfil: `null` significa que el usuario los apagó a propósito.
+    const remembered = trackPref;
+    if (remembered && remembered.subtitleKey === null) return;
+    if (remembered) {
+      const match =
+        (remembered.subtitleKey
+          ? subtitleOptions.find((option) => option.key === remembered.subtitleKey)
+          : undefined) ??
+        (remembered.subtitleLanguage
+          ? subtitleOptions.find((option) =>
+              option.lang &&
+              option.lang.toLowerCase().startsWith(remembered.subtitleLanguage!.toLowerCase().slice(0, 2)),
+            )
+          : undefined);
+      if (match) {
+        setActiveSubtitle(match.key);
+        return;
+      }
+    }
     if (subtitleSettings?.enabled === false) return;
     const wanted = activeProfile?.subtitleLanguage ?? activeProfile?.contentLanguage ?? settings?.language;
+    const langMatches = (option: SubtitleOption) =>
+      Boolean(option.lang && wanted && option.lang.toLowerCase().startsWith(wanted.toLowerCase().slice(0, 2)));
     const enable = shouldEnableSubtitles({
       audioLanguage: audioOptions.find((track) => track.index === activeAudio)?.lang,
       contentLanguage: wanted,
       onlyForForeignAudio: subtitleSettings?.onlyForForeignAudio,
       preferSubtitles: subtitleSettings?.enabled,
     });
-    if (!enable) return;
+    if (!enable) {
+      // WuPlay v0.4.2: «Forced subtitles are now shown by default if
+      // available». Aunque los subtítulos completos no se activen (audio en el
+      // idioma del usuario), los forzados traducen el diálogo extranjero.
+      const forced =
+        subtitleOptions.find((option) => option.forced && langMatches(option)) ??
+        subtitleOptions.find((option) => option.forced);
+      if (forced) setActiveSubtitle(forced.key);
+      return;
+    }
+    // Con subtítulos completos, los forzados quedan los últimos de su idioma.
+    const candidates = subtitleOptions.filter(langMatches);
     const match =
-      subtitleOptions.find((option) => option.lang && wanted && option.lang.toLowerCase().startsWith(wanted.toLowerCase().slice(0, 2))) ??
-      subtitleOptions.find((option) => option.native !== undefined) ??
+      candidates.find((option) => !option.forced) ??
+      candidates[0] ??
+      subtitleOptions.find((option) => option.native !== undefined && !option.forced) ??
+      subtitleOptions.find((option) => !option.forced) ??
       subtitleOptions[0];
     if (match) setActiveSubtitle(match.key);
-  }, [subtitleOptions, activeSubtitle, subtitleSettings, activeProfile, settings?.language, audioOptions, activeAudio]);
+  }, [subtitleOptions, activeSubtitle, subtitleSettings, activeProfile, settings?.language, audioOptions, activeAudio, trackPref]);
 
   // ---------------------------------------------- carga de subtitulos
   useEffect(() => {
@@ -723,6 +852,7 @@ export function PlayerScreen({
     if (countdown === null) return;
     if (countdown <= 0) {
       setCountdown(null);
+      autoNextStreak += 1;
       void playNext();
       return;
     }
@@ -803,6 +933,25 @@ export function PlayerScreen({
     });
   }, [notify, t]);
 
+  /**
+   * Guarda las pistas/desfase/velocidad de este vídeo (debounce corto: el
+   * desfase se ajusta a golpes de ±250 ms). Nunca se guarda antes de cargar
+   * la preferencia previa, para no sobrescribirla con los valores iniciales.
+   * Los valores se leen de `latestPrefRef` al dispararse: así el debounce no
+   * congela estados viejos.
+   */
+  const persistTrackPref = useCallback(() => {
+    if (trackPref === undefined) return;
+    if (savePrefTimer.current) clearTimeout(savePrefTimer.current);
+    const videoId = id;
+    const profileId = activeProfileId || undefined;
+    savePrefTimer.current = setTimeout(() => {
+      void api
+        .saveTrackPref(videoId, { profileId, ...latestPrefRef.current })
+        .catch(() => { /* sin red: se conserva el estado local */ });
+    }, 800);
+  }, [id, activeProfileId, trackPref]);
+
   const changeSpeed = useCallback(
     (direction: 1 | -1) => {
       setSpeed((current) => {
@@ -811,8 +960,9 @@ export function PlayerScreen({
         notify(`${t('PLAYER_PLAYBACK_SPEED')}: ${speedLabel(next)}`);
         return next;
       });
+      persistTrackPref();
     },
-    [notify, t],
+    [notify, t, persistTrackPref],
   );
 
   /** Salto de fotograma a fotograma (`,` y `.` en teclado; util para ajustar). */
@@ -847,9 +997,11 @@ export function PlayerScreen({
   );
 
   const selectSubtitle = useCallback((key: string | null) => {
+    subtitleChosenRef.current = true;
     setActiveSubtitle(key);
     setMenu(null);
-  }, []);
+    persistTrackPref();
+  }, [persistTrackPref]);
 
   const selectAudio = useCallback(
     (index: number) => {
@@ -858,25 +1010,29 @@ export function PlayerScreen({
       setMenu(null);
       const chosen = audioOptions.find((track) => track.index === index);
       if (chosen) notify(chosen.label);
+      persistTrackPref();
     },
-    [audioOptions, notify],
+    [audioOptions, notify, persistTrackPref],
   );
 
   const changeSubtitleDelay = useCallback(
     (deltaMs: number) => {
       setSubtitleDelay((current) => {
-        const next = Math.max(-15_000, Math.min(15_000, current + deltaMs));
+        // WuPlay v0.5.0: «maximum subtitle offset from 10 seconds to 180
+        // seconds» — un desfase grande es útil con subtítulos de otra release.
+        const next = Math.max(-180_000, Math.min(180_000, current + deltaMs));
         notify(`${t('PLAYER_SUBTITLES_DELAY')} ${formatDelay(next)}`);
         return next;
       });
+      persistTrackPref();
     },
-    [notify, t],
+    [notify, t, persistTrackPref],
   );
 
   const changeSubtitleSize = useCallback(
     (direction: 1 | -1) => {
       setSubtitleStyle((current) => {
-        const next = Math.max(0.6, Math.min(2.4, Number((current.size + direction * 0.1).toFixed(2))));
+        const next = Math.max(0.25, Math.min(2.5, Number((current.size + direction * 0.1).toFixed(2))));
         notify(`${t('PLAYER_SUBTITLES_SIZE')} ${Math.round(next * 100)}%`);
         return { ...current, size: next };
       });
@@ -1139,7 +1295,13 @@ export function PlayerScreen({
         onEnded={() => {
           saveProgress({ force: true });
           if (resolvedNextId && activeProfile?.autoplay !== false && countdownSeconds > 0) {
-            setCountdown(countdownSeconds);
+            // WuPlay v0.6.5: «Are You Still Watching?» tras N episodios seguidos
+            // en automático (por defecto 3). 0 = nunca preguntar.
+            if (stillWatchingAfter > 0 && autoNextStreak >= stillWatchingAfter) {
+              setStillWatching(true);
+            } else {
+              setCountdown(countdownSeconds);
+            }
           }
         }}
       />
@@ -1184,12 +1346,44 @@ export function PlayerScreen({
             <span className="player__next-label">{t('PLAYER_NEXT_EPISODE')}</span>
             <strong>{resolvedNextTitle ?? t('LOADING')}</strong>
             <div className="player__next-actions">
-              <Button onClick={() => void playNext()}>{t('PLAYER_NEXT_VIDEO_BUTTON_WATCH')}</Button>
+              <Button
+                onClick={() => {
+                  // Confirmación manual: la racha vuelve a cero.
+                  autoNextStreak = 0;
+                  setCountdown(null);
+                  void playNext();
+                }}
+              >
+                {t('PLAYER_NEXT_VIDEO_BUTTON_WATCH')}
+              </Button>
               <Button variant="ghost" onClick={() => setCountdown(null)}>
                 {t('PLAYER_NEXT_VIDEO_BUTTON_DISMISS')}
               </Button>
             </div>
             <span className="player__next-count">{toAsciiDigits(String(countdown))}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {stillWatching ? (
+        <div className="player__next" role="alertdialog" aria-label={t('PLAYER_STILL_WATCHING')}>
+          <div className="player__next-card">
+            <span className="player__next-label">{t('PLAYER_STILL_WATCHING')}</span>
+            <strong>{resolvedNextTitle ?? t('LOADING')}</strong>
+            <div className="player__next-actions">
+              <Button
+                onClick={() => {
+                  autoNextStreak = 0;
+                  setStillWatching(false);
+                  void playNext();
+                }}
+              >
+                {t('PLAYER_NEXT_VIDEO_BUTTON_WATCH')}
+              </Button>
+              <Button variant="ghost" onClick={() => setStillWatching(false)}>
+                {t('PLAYER_NEXT_VIDEO_BUTTON_DISMISS')}
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1302,14 +1496,18 @@ export function PlayerScreen({
               onClick={() => setMenu(menu === 'quality' ? null : 'quality')} aria-label={t('QUALITY')}>
               <Icon name="quality" />
             </button>
-            <button type="button" data-focusable="true" className="player__btn"
-              onClick={() => setMenu(menu === 'stats' ? null : 'stats')} aria-label={t('PLAYER_STATS')}>
-              <Icon name="stats" />
-            </button>
-            <button type="button" data-focusable="true" className="player__btn" onClick={cycleScale}
-              aria-label={t('PLAYER_VIDEO_SCALE')}>
-              <Icon name="scale" />
-            </button>
+            {!essentialMode ? (
+              <>
+                <button type="button" data-focusable="true" className="player__btn"
+                  onClick={() => setMenu(menu === 'stats' ? null : 'stats')} aria-label={t('PLAYER_STATS')}>
+                  <Icon name="stats" />
+                </button>
+                <button type="button" data-focusable="true" className="player__btn" onClick={cycleScale}
+                  aria-label={t('PLAYER_VIDEO_SCALE')}>
+                  <Icon name="scale" />
+                </button>
+              </>
+            ) : null}
             <button type="button" data-focusable="true" className="player__btn" onClick={toggleFullscreen}
               aria-label={t('PLAYER_FULLSCREEN')}>
               <Icon name="expand" />
@@ -1339,6 +1537,7 @@ export function PlayerScreen({
                     onClick={() => selectSubtitle(option.key)}>
                     {option.label}
                     {option.sdh ? ' · SDH' : ''}
+                    {option.forced ? ` · ${t('SUBTITLES_FORCED')}` : ''}
                   </button>
                 ))}
               </div>
@@ -1395,6 +1594,7 @@ export function PlayerScreen({
                       if (videoRef.current) videoRef.current.playbackRate = value;
                       setMenu(null);
                       notify(speedLabel(value));
+                      persistTrackPref();
                     }}>
                     {speedLabel(value)}
                   </button>
