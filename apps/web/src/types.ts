@@ -203,6 +203,15 @@ export interface AppSettings {
     enabled: boolean;
     offsetSeconds: number;
   };
+  /** Scrapers nativos: addon de streams resuelto en el servidor. */
+  scrapers: {
+    /** Activar el addon nativo de scrapers. */
+    enabled: boolean;
+    /** Ids de los proveedores activos (vacio = todos). */
+    providers: string[];
+    /** Proveedores propios descritos por configuracion. */
+    configs: ProviderConfig[];
+  };
   /** Filtros de contenido (WuPlay: Content Filters). */
   filters: {
     includeGenres: string[];
@@ -285,6 +294,47 @@ export interface Rating {
   rating: 'like' | 'dislike';
   genres?: string[];
   updatedAt: number;
+}
+
+/** Proveedor de scrapers descrito por configuracion (sin codigo). */
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  types: Array<'movie' | 'series' | 'episode'>;
+  languages?: string[];
+  region?: string;
+  /** URL de busqueda con las plantillas {title}, {year}, {season}... */
+  searchUrl?: string;
+  /** URL del item con {id} = id encontrado en la busqueda. */
+  itemUrl?: string;
+  /** Expresion regular que extrae el id del item de la pagina de resultados. */
+  itemPattern?: string;
+  /** Expresiones regulares que extraen la URL del stream. */
+  streamPatterns?: string[];
+  /** Usar el resolutor de embeds generico. */
+  useEmbedResolver?: boolean;
+  /** Calidad por defecto. */
+  defaultQuality?: string;
+  /** Cabeceras extra al descargar. */
+  headers?: Record<string, string>;
+}
+
+/** Descripcion de un proveedor de scrapers. */
+export interface ScraperProviderInfo {
+  id: string;
+  name: string;
+  region: string;
+  languages: string[];
+  types: string[];
+}
+
+/** Estado de los scrapers nativos en el servidor. */
+export interface ScraperStatus {
+  enabled: boolean;
+  providers: ScraperProviderInfo[];
+  available: ScraperProviderInfo[];
+  configs: ProviderConfig[];
+  selected: string[];
 }
 
 /** Estado del servicio de debrid en el servidor. */

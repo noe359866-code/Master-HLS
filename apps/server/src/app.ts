@@ -7,6 +7,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { AddonRegistry, DebridService, HttpClient } from '@vibeflix/addon-engine';
+import {
+  createScrapeContext,
+  DEFAULT_PROVIDERS,
+  NATIVE_SCRAPERS_ID,
+  NativeScrapersAddon,
+  ScraperRegistry,
+  type ProviderConfig,
+} from '@vibeflix/scrapers';
 
 import { loadConfig, type ServerConfig } from './config.js';
 import { JsonStore } from './store.js';
@@ -19,6 +27,7 @@ import { registerHlsRoutes } from './routes/hls.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerSubtitleRoutes } from './routes/subtitles.js';
 import { registerBrowseRoutes } from './routes/browse.js';
+import { registerScraperRoutes } from './routes/scrapers.js';
 import type { OpenSubtitlesService } from './services/opensubtitles.js';
 
 export const APP_VERSION = '1.0.0';
@@ -45,6 +54,12 @@ export interface App {
   applyBuiltinMetadata: (data: AppData) => void;
   /** Activa/desactiva el proveedor de debrid segun los ajustes. */
   applyDebrid: (data: AppData) => void;
+  /** Registro de scrapers nativos (addon de streams). */
+  scrapers: ScraperRegistry;
+  /** Addon nativo de scrapers. */
+  nativeScrapers: NativeScrapersAddon;
+  /** Activa/desactiva los scrapers nativos segun los ajustes. */
+  applyScrapers: (data: AppData) => void;
   handle: (ctx: RouteContext) => Promise<void>;
 }
 
@@ -103,6 +118,31 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     http: new HttpClient({ timeoutMs: 15_000, retries: 1 }),
   });
 
+  /**
+   * Scrapers nativos: un addon de streams mas que resuelve el titulo en el
+   * servidor. Se registra en el mismo registro que el resto de addons, asi
+   * que el fan-out, la cache y la fusion funcionan sin casos especiales.
+   */
+  const scrapers = new ScraperRegistry({ timeoutMs: config.fanoutTimeoutMs });
+  const nativeScrapers = new NativeScrapersAddon({
+    registry: scrapers,
+    context: createScrapeContext({ fetchImpl }),
+    version: APP_VERSION,
+    // El protocolo Stremio solo da el id: los metadatos se resuelven aqui.
+    resolveTitle: async (type, id) => {
+      const result = await registry.meta({ type, id });
+      const meta = result.value.meta;
+      if (!meta) return {};
+      const year = meta.releaseInfo ? Number(/\d{4}/.exec(meta.releaseInfo)?.[0]) : undefined;
+      return {
+        title: meta.name,
+        year: year && !Number.isNaN(year) ? year : undefined,
+        imdbId: id.startsWith('tt') ? id : undefined,
+        tmdbId: meta.id?.startsWith('tmdb:') ? meta.id.slice(5) : undefined,
+      };
+    },
+  });
+
   const router = new Router();
   const getData = () => store.get();
   const save = async (mutate: (data: AppData) => void) => {
@@ -118,9 +158,18 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     onSettingsChanged: (data) => {
       app.applyBuiltinMetadata(data);
       app.applyDebrid(data);
+      app.applyScrapers(data);
     },
   });
   registerBrowseRoutes(router, { registry, getData, save });
+  registerScraperRoutes(router, {
+    scrapers,
+    registry,
+    getData,
+    save,
+    fetchImpl,
+    onSettingsChanged: (data) => app.applyScrapers(data),
+  });
   registerHlsRoutes(router, {});
   registerDeviceRoutes(router, { getData, save });
   registerSubtitleRoutes(router, {
@@ -146,6 +195,8 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     store,
     registry,
     debrid,
+    scrapers,
+    nativeScrapers,
     router,
     /** Activa o desactiva el addon de metadata integrada segun los ajustes. */
     applyBuiltinMetadata(data: AppData) {
@@ -156,6 +207,36 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       } else {
         registry.disableBuiltinMetadata();
       }
+    },
+    /**
+     * Activa o desactiva los scrapers nativos segun los ajustes.
+     *
+     * Se reconstruye el registro de proveedores: los que trae el servidor y
+     * los que el usuario ha definido por configuracion.
+     */
+    applyScrapers(data: AppData) {
+      const settings = data.settings.scrapers;
+      if (!settings?.enabled) {
+        registry.unregisterSource(NATIVE_SCRAPERS_ID);
+        nativeScrapers.invalidateResourceCache();
+        return;
+      }
+      scrapers.clear();
+      const selected = settings.providers ?? [];
+      for (const provider of DEFAULT_PROVIDERS) {
+        if (!selected.length || selected.includes(provider.id)) scrapers.register(provider);
+      }
+      for (const config of settings.configs ?? []) {
+        try {
+          scrapers.registerConfig(config);
+        } catch (error) {
+          console.warn('[scrapers] configuracion invalida:', (error as Error).message);
+        }
+      }
+      registry.registerSource(nativeScrapers);
+      // La cache interna del addon puede tener resultados de antes de cambiar
+      // los proveedores: se invalida para que se vuelva a resolver.
+      nativeScrapers.invalidateResourceCache();
     },
     /** Configura el proveedor de debrid segun los ajustes. */
     applyDebrid(data: AppData) {
@@ -185,6 +266,9 @@ export function createApp(overrides: CreateAppOptions = {}): App {
 
       // Debrid nativo: resolucion de enlaces premium en el servidor.
       this.applyDebrid(data);
+
+      // Scrapers nativos: addon de streams resuelto en el servidor.
+      this.applyScrapers(data);
 
       // Garantiza al menos un perfil (WuPlay arranca pidiendo un perfil).
       if (!data.profiles.length) {

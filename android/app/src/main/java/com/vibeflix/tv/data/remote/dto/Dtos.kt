@@ -268,6 +268,8 @@ data class ServerSettingsDto(
     @Json(name = "skipIntro") val skipIntro: SkipIntroSettingsDto? = null,
     /** Menu de navegacion personalizado (WuPlay: "manage sidebar items"). */
     @Json(name = "sidebar") val sidebar: List<SidebarItemDto>? = null,
+    /** Scrapers nativos (addon de streams del servidor). */
+    @Json(name = "scrapers") val scrapers: ScraperSettingsDto? = null,
 )
 
 /** Elemento del menu de navegacion (id, visible y orden). */
@@ -284,6 +286,12 @@ data class OpenSubtitlesSettingsDto(
 data class SkipIntroSettingsDto(
     @Json(name = "enabled") val enabled: Boolean = true,
     @Json(name = "offsetSeconds") val offsetSeconds: Int = 90,
+)
+
+/** Scrapers nativos: addon de streams resuelto en el servidor. */
+data class ScraperSettingsDto(
+    @Json(name = "enabled") val enabled: Boolean = true,
+    @Json(name = "providers") val providers: List<String>? = null,
 )
 
 data class SettingsResponseDto(

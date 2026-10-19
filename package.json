@@ -14,12 +14,12 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:packages": "npm run build -w @vibeflix/addon-engine -w @vibeflix/hls-master -w @vibeflix/skip-intro",
+    "build:packages": "npm run build -w @vibeflix/addon-engine -w @vibeflix/hls-master -w @vibeflix/skip-intro -w @vibeflix/scrapers",
     "dev": "npm run dev -w @vibeflix/server",
     "start": "npm run start -w @vibeflix/server",
     "build:web": "npm run build -w @vibeflix/web",
-    "test": "npm run test -w @vibeflix/addon-engine && npm run test -w @vibeflix/hls-master && npm run test -w @vibeflix/skip-intro && npm run test -w @vibeflix/server",
-    "typecheck": "tsc -b packages/addon-engine packages/hls-master packages/skip-intro apps/server --pretty",
+    "test": "npm run test -w @vibeflix/addon-engine && npm run test -w @vibeflix/hls-master && npm run test -w @vibeflix/skip-intro && npm run test -w @vibeflix/scrapers && npm run test -w @vibeflix/server",
+    "typecheck": "tsc -b packages/addon-engine packages/hls-master packages/skip-intro packages/scrapers apps/server --pretty",
     "clean": "rm -rf packages/*/dist apps/server/dist apps/web/dist"
   },
   "devDependencies": {

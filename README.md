@@ -34,11 +34,12 @@ consumen exactamente la misma lógica.
 
 | Paquete | Descripción |
 | --- | --- |
-| `@vibe-flix/addon-engine` | Cliente del protocolo de addons Stremio: manifest, `catalog`/`meta`/`stream`/`subtitles`, **fan-out paralelo** con aislamiento de fallos por addon, caché TTL + single-flight, normalización tolerante de respuestas, y heurística de calidad para ordenar streams. |
-| `@vibe-flix/hls-master` | Núcleo HLS: parser de master playlist (variantes, pistas de audio/subtítulos, `CODECS`, `VIDEO-RANGE`), política de selección por capacidades del dispositivo, y reescritura de playlists para hacerlas pasar por el proxy. |
-| `@vibe-flix/skip-intro` | Núcleo de **omitir intro**: parser de subtítulos (SRT/WebVTT), detección de intro y de «anteriormente en…» sobre los propios subtítulos, conversión entre formatos y valor por defecto configurable. Sin servicios externos. |
-| `@vibe-flix/server` | Servidor: expone Vibe Flix **como addon Stremio** (`/manifest.json`, `/catalog/…`, `/meta/…`, `/stream/…`, `/subtitles/…`), API de biblioteca/perfiles, proxy HLS y hosting del cliente web. |
-| `@vibe-flix/web` | Cliente de TV en React + Vite + hls.js: navegación espacial con D-pad, rail lateral, portada, descubrir, búsqueda con teclado, detalle, reproductor, listas, historial, addons, ajustes y perfiles. |
+| `@vibeflix/addon-engine` | Cliente del protocolo de addons Stremio: manifest, `catalog`/`meta`/`stream`/`subtitles`, **fan-out paralelo** con aislamiento de fallos por addon, caché TTL + single-flight, normalización tolerante de respuestas, y heurística de calidad para ordenar streams. |
+| `@vibeflix/hls-master` | Núcleo HLS: parser de master playlist (variantes, pistas de audio/subtítulos, `CODECS`, `VIDEO-RANGE`), política de selección por capacidades del dispositivo, y reescritura de playlists para hacerlas pasar por el proxy. |
+| `@vibeflix/skip-intro` | Núcleo de **omitir intro**: parser de subtítulos (SRT/WebVTT), detección de intro y de «anteriormente en…» sobre los propios subtítulos, conversión entre formatos y valor por defecto configurable. Sin servicios externos. |
+| `@vibeflix/scrapers` | **Scrapers nativos**: addon de streams que resuelve el título en el servidor con varios proveedores en paralelo (patrón de extractores/embeds de StreamFlix Reborn), desempaquetador de JavaScript, resolutor de embeds y proveedores extensibles **por configuración JSON**, sin escribir código. |
+| `@vibeflix/server` | Servidor: expone Vibe Flix **como addon Stremio** (`/manifest.json`, `/catalog/…`, `/meta/…`, `/stream/…`, `/subtitles/…`), API de biblioteca/perfiles, proxy HLS y hosting del cliente web. |
+| `@vibeflix/web` | Cliente de TV en React + Vite + hls.js: navegación espacial con D-pad, rail lateral, portada, descubrir, búsqueda con teclado, detalle, reproductor, listas, historial, addons, ajustes y perfiles. |
 | `android/` | Shell Android TV (Kotlin, Compose for TV, Media3, Hilt, Retrofit/Moshi) que consume los mismos motores a través del servidor. |
 
 ---
@@ -103,6 +104,8 @@ tocar el cliente.
 | `GET` | `/api/recommended` | Recomendaciones según las valoraciones del perfil |
 | `GET`/`POST` | `/api/ratings` | Valoraciones «Me gusta» / «No para mí» |
 | `GET`/`POST` | `/api/debrid` · `/api/debrid/test` | Estado y comprobación del proveedor de debrid |
+| `GET`/`PUT` | `/api/scrapers` | Estado, proveedores activos y proveedores propios (configuración) de los scrapers nativos |
+| `POST` | `/api/scrapers/test` | Prueba un proveedor de scrapers con un título y devuelve las fuentes que encuentra |
 | `GET`/`POST`/`DELETE` | `/api/devices` · `/api/pairing` · `/api/pairing/claim` | Vinculación de dispositivos (biblioteca compartida) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles |
@@ -159,6 +162,47 @@ decir, también WuPlay y NuvioTV) reciben el mismo enlace directo.
   comprobar la conexión con «Probar conexión».
 - Se mantiene la decisión de diseño *solo HTTP*: un enlace resuelto por debrid
   es HTTP, así que el proxy HLS sigue funcionando sin casos especiales.
+
+---
+
+## Scrapers nativos (addon de streams)
+
+Además de los addons que instales, Vibe Flix puede **resolver las fuentes por su
+propia cuenta**: es un addon de streams más, nativo del servidor, con el patrón
+de extractores y embeds de **StreamFlix Reborn** (proveedores por sitio, capa de
+embeds y ejecución en paralelo) pero implementado desde cero en TypeScript.
+
+- **Fan-out en paralelo** con aislamiento de fallos: cada proveedor tiene su
+  propio timeout; si uno se cae, el resto del resultado se entrega igual.
+- **Un solo camino de streams**: las fuentes resueltas se mezclan con las de los
+  addons instalados y el cliente las ve igual (mismo orden por calidad, mismo
+  proxy HLS, misma resolución de debrid para los magnets).
+- **Resolutor de embeds**: extrae la URL directa de un player (`hls`, `file`,
+  `sources[]`, `<video>`, `$.get(...)`) y **desempaqueta** el JavaScript
+  empaquetado de Dean Edwards (decodificado, nunca ejecutado).
+- **Proveedores por configuración**: se añaden desde *Ajustes → Scrapers
+  nativos* con un JSON (URL de búsqueda, expresiones regulares del item y del
+  stream) **sin tocar el código**; se pueden probar antes de activarlos.
+- **Proveedor incluido y legítimo**: *Internet Archive* (dominio público), que
+  además sirve de referencia de cómo escribir un proveedor nuevo.
+- Caché de resultados por título (5 min) que se invalida al cambiar los
+  proveedores.
+
+```json
+{
+  "id": "mi-sitio",
+  "name": "Mi sitio",
+  "types": ["movie"],
+  "searchUrl": "https://sitio.example/buscar?q={title}&y={year}",
+  "itemUrl": "https://sitio.example/pelicula/{id}",
+  "itemPattern": "href="\/pelicula\/(\w+)"",
+  "streamPatterns": ["src="(https?:\/\/[^\"]+\.m3u8)""]
+}
+```
+
+> Vibe Flix **no incluye extractores de sitios pirateados**: la arquitectura
+> está preparada para que cada uno añada sus propios proveedores (legales o
+> propios) por configuración, igual que se hace con los addons.
 
 ---
 
@@ -466,6 +510,9 @@ búsqueda clásico:
       con fondo, acciones rápidas, encabezados de página, foco de TV con
       anillo de luz, paleta de cristal y degradado de marca, iconos SVG
       propios y esqueletos de carga
+- [x] **Scrapers nativos**: addon de streams del servidor con proveedores en
+      paralelo, resolutor de embeds, desempaquetador de JavaScript y
+      proveedores extensibles por configuración (patrón StreamFlix Reborn)
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [ ] Watch parties y Chromecast
 

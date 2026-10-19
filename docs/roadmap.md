@@ -86,6 +86,18 @@
         orden en la web y en Android TV
   - [x] Endpoint `POST /api/lists/{id}/items/batch` para guardar resultados
 
+- [x] **Scrapers nativos** (addon de streams del servidor, patrón StreamFlix
+      Reborn)
+  - [x] Registro de proveedores con fan-out paralelo, timeout por proveedor y
+        aislamiento de fallos
+  - [x] Capa de embeds: extractores de player, resolución de embeds y
+        desempaquetador de JavaScript (decodificado, no ejecutado)
+  - [x] Proveedores extensibles **por configuración** (JSON) desde los ajustes,
+        con prueba antes de activarlos
+  - [x] Proveedor legítimo de referencia: Internet Archive (dominio público)
+  - [x] Streams mezclados con los de los addons instalados y los magnets
+        pasando por la resolución de debrid
+
 ## Siguiente
 
 - [ ] **Plugins estilo Nuvio** — repositorios de plugins y CloudStream.

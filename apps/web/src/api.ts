@@ -2,6 +2,8 @@ import type {
   AppSettings,
   Catalog,
   DebridStatus,
+  ProviderConfig,
+  ScraperStatus,
   Decade,
   Genre,
   OpenSubtitleEntry,
@@ -333,6 +335,29 @@ export const api = {
   async debridStatus(): Promise<DebridStatus> {
     const body = await request<{ debrid: DebridStatus }>('/api/debrid');
     return body.debrid;
+  },
+
+  /** Estado de los scrapers nativos (addon de streams del servidor). */
+  async scrapers(): Promise<ScraperStatus> {
+    return request<ScraperStatus>('/api/scrapers');
+  },
+
+  /** Activa/desactiva los scrapers nativos y sus proveedores. */
+  async saveScrapers(payload: {
+    enabled: boolean;
+    providers: string[];
+    configs: ProviderConfig[];
+  }): Promise<void> {
+    await request('/api/scrapers', { method: 'PUT', body: JSON.stringify(payload) });
+  },
+
+  /** Prueba un proveedor de scrapers con un titulo. */
+  async testScraper(payload: {
+    config?: ProviderConfig;
+    title: string;
+    year?: number;
+  }): Promise<{ provider: string; sources: Array<{ url: string; quality?: string }>; error: string | null }> {
+    return request('/api/scrapers/test', { method: 'POST', body: JSON.stringify(payload) });
   },
 
   /** Comprueba las credenciales del proveedor de debrid. */

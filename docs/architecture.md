@@ -164,6 +164,48 @@ streams agregados  ->  candidatos (infoHash / externalUrl)
 - `service.ts`: caché, concurrencia, degradación elegante (si la resolución
   falla se conserva el stream original) y etiquetado `[RD]`/`[AL]`/`[TB]`/`[PM]`.
 
+## 5.1 bis Scrapers nativos (`packages/scrapers/`)
+
+Addon de streams que vive **dentro** del servidor y se registra en el mismo
+`AddonRegistry` que los addons instalados, de modo que el fan-out, la caché y
+la fusión de respuestas no necesitan ningún caso especial.
+
+```
+petición /stream/movie/tt0111161.json
+   ->  AddonRegistry.streams()  (fan-out paralelo)
+        ->  addon remoto A        ->  streams
+        ->  addon remoto B        ->  streams
+        ->  NativeScrapersAddon   ->  ScraperRegistry.resolve()
+                                          ->  proveedor 1 (timeout propio)
+                                          ->  proveedor 2
+                                          ->  proveedor N
+                                   ->  merge + orden por calidad
+   ->  debrid (magnets)  ->  respuesta única
+```
+
+Piezas del paquete:
+
+| Fichero | Responsabilidad |
+| --- | --- |
+| `src/types.ts` | Contrato: `ScrapeProvider`, `ScrapeRequest`, `ScrapeContext`, `ScrapedSource`, `ProviderConfig`. |
+| `src/embed.ts` | Extractores de player (`hls`, `file`, `sources[]`, `<video>`, `$.get`), `resolveEmbed`, `detectQuality` y **desempaquetador de JavaScript** (`unpackPacker`/`unbase`, decodificado, nunca ejecutado). |
+| `src/normalize.ts` | `normalizeTitle`/`titleMatches` (comparación con acentos y artículos), `qualityRank`, `toStremioStream` (convierte a stream Stremio con `behaviorHints` y subtítulos) y `mergeSources` (dedupe + orden). |
+| `src/providers/registry.ts` | `ScraperRegistry`: fan-out paralelo, **timeout por proveedor** y aislamiento de fallos (`runProvider` nunca lanza). |
+| `src/providers/config.ts` | Proveedor descrito por configuración: `fillTemplate` (`{title}`, `{year}`, `{season}`, `{episode}`, `{imdbId}`, `{tmdbId}`, `{id}`) + extracción con expresiones regulares. |
+| `src/providers/archive.ts` | Proveedor legítimo de referencia: Internet Archive (dominio público) con `advancedsearch` + `metadata` + elección del archivo mayor. |
+| `src/addon.ts` | `NativeScrapersAddon`: manifest sintético (`com.vibeflix.native-scrapers`), resolución del título (el protocolo Stremio solo da el id), caché de 5 min por título y conversión a streams Stremio. |
+
+En el servidor (`apps/server/src/app.ts`) se crea el `ScraperRegistry`, se
+resuelve el `NativeScrapersAddon` y se registra con
+`registry.registerSource(...)`; `applyScrapers(data)` reconstruye los
+proveedores según los ajustes (`enabled`, `providers`, `configs`) y invalida las
+cachés. La API (`apps/server/src/routes/scrapers.ts`) expone el estado, la
+configuración y una prueba de proveedor (`POST /api/scrapers/test`).
+
+Criterio: **el addon no incluye extractores de sitios pirateados**; la
+arquitectura está lista para que cada usuario añada sus propios proveedores
+(legales) por configuración, igual que hace con los addons.
+
 ## 5.2 PWA y vinculación
 
 - `apps/web/public/sw.js`: service worker con tres estrategias (shell en caché,

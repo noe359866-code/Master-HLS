@@ -8,6 +8,7 @@
  */
 
 import type { DebridProviderId, MetaPreview } from '@vibeflix/addon-engine';
+import type { ProviderConfig } from '@vibeflix/scrapers';
 
 export interface InstalledAddonRecord {
   id: string;
@@ -188,6 +189,22 @@ export interface AppSettings {
     hideAdult: boolean;
   };
   /**
+   * Scrapers nativos (addon de streams resuelto en el servidor).
+   *
+   * Siguen el patron de StreamFlix Reborn: varios proveedores que resuelven
+   * el titulo por su cuenta. Cada proveedor se consulta en paralelo, se
+   * aisan los fallos y el resultado se fusiona con los streams de los addons
+   * instalados.
+   */
+  scrapers: {
+    /** Activar el addon nativo de scrapers. */
+    enabled: boolean;
+    /** Ids de los proveedores ACTIVOS (vacio = todos). */
+    providers: string[];
+    /** Proveedores propios descritos por configuracion (sin codigo). */
+    configs: ProviderConfig[];
+  };
+  /**
    * Menu de navegacion personalizable (WuPlay: "manage sidebar items").
    *
    * Guarda el orden y la visibilidad de cada seccion; es compartido por
@@ -240,6 +257,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   debrid: { provider: '', apiKey: '' },
   opensubtitles: { apiKey: '' },
   skipIntro: { enabled: true, offsetSeconds: 90 },
+  scrapers: {
+    enabled: true,
+    providers: [],
+    configs: [],
+  },
   filters: {
     includeGenres: [],
     excludeGenres: [],
@@ -307,6 +329,12 @@ export function normalizeData(data: AppData): AppData {
     filters: {
       ...DEFAULT_SETTINGS.filters,
       ...(settings.filters ?? {}),
+    },
+    scrapers: {
+      ...DEFAULT_SETTINGS.scrapers,
+      ...(settings.scrapers ?? {}),
+      providers: settings.scrapers?.providers ?? DEFAULT_SETTINGS.scrapers.providers,
+      configs: Array.isArray(settings.scrapers?.configs) ? settings.scrapers.configs : [],
     },
     sidebar: settings.sidebar?.length ? settings.sidebar : DEFAULT_SETTINGS.sidebar,
   };

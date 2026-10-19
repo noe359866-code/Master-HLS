@@ -6,7 +6,7 @@ import { NAV_ITEMS, DEFAULT_NAV_ORDER } from '../navigation-items';
 import { canInstall, isInstalled, onInstallChange, promptInstall } from '../pwa';
 import { api } from '../api';
 import { Button, EmptyState, ErrorState, Loader } from '../components/ui';
-import type { AppSettings, Genre } from '../types';
+import type { AppSettings, Genre, ProviderConfig, ScraperStatus } from '../types';
 
 /** Gestor de addons: instalar, actualizar y quitar. */
 export function AddonsScreen() {
@@ -163,6 +163,10 @@ export function SettingsScreen() {
   const [installable, setInstallable] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [genres, setGenres] = useState<Genre[]>([]);
+  const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
+  const [scraperConfigs, setScraperConfigs] = useState('');
+  const [scraperMessage, setScraperMessage] = useState<string | null>(null);
+  const [scraperError, setScraperError] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -179,6 +183,17 @@ export function SettingsScreen() {
       .genres()
       .then((result) => setGenres(result.genres))
       .catch(() => setGenres([]));
+  }, []);
+
+  // Estado de los scrapers nativos (addon de streams del servidor).
+  useEffect(() => {
+    void api
+      .scrapers()
+      .then((status) => {
+        setScraperStatus(status);
+        setScraperConfigs(JSON.stringify(status.configs ?? [], null, 2));
+      })
+      .catch(() => setScraperStatus(null));
   }, []);
 
   if (!settings) return <Loader />;
@@ -242,6 +257,62 @@ export function SettingsScreen() {
     await promptInstall();
     setInstallable(canInstall());
     setInstalled(isInstalled());
+  };
+
+  /** Guarda la configuracion de los scrapers nativos. */
+  const saveScrapers = async (patch: {
+    enabled?: boolean;
+    providers?: string[];
+    configs?: ProviderConfig[];
+  }) => {
+    setScraperError(null);
+    try {
+      const current = scraperStatus;
+      await api.saveScrapers({
+        enabled: patch.enabled ?? current?.enabled ?? true,
+        providers: patch.providers ?? current?.selected ?? [],
+        configs: patch.configs ?? current?.configs ?? [],
+      });
+      const status = await api.scrapers();
+      setScraperStatus(status);
+      setScraperConfigs(JSON.stringify(status.configs ?? [], null, 2));
+      setScraperMessage('Scrapers nativos actualizados.');
+    } catch (cause) {
+      setScraperError((cause as Error).message);
+    }
+  };
+
+  /** Prueba la configuracion de proveedores escrita por el usuario. */
+  const testScrapers = async () => {
+    setScraperError(null);
+    setScraperMessage(null);
+    let configs: ProviderConfig[] = [];
+    try {
+      const parsed = JSON.parse(scraperConfigs || '[]');
+      configs = Array.isArray(parsed) ? (parsed as ProviderConfig[]) : [];
+    } catch (cause) {
+      setScraperError(`JSON invalido: ${(cause as Error).message}`);
+      return;
+    }
+    const config = configs[0];
+    if (!config) {
+      setScraperError('Escribe al menos un proveedor en JSON para probarlo.');
+      return;
+    }
+    try {
+      const result = await api.testScraper({ config, title: 'El viaje' });
+      if (result.error) {
+        setScraperError(result.error);
+      } else {
+        setScraperMessage(
+          `${result.provider}: ${result.sources.length} fuente(s) encontrada(s)${
+            result.sources[0] ? ` (${result.sources[0].url})` : ''
+          }.`,
+        );
+      }
+    } catch (cause) {
+      setScraperError((cause as Error).message);
+    }
   };
 
   const testDebrid = async () => {
@@ -350,6 +421,81 @@ export function SettingsScreen() {
             }
           />
         </label>
+      </section>
+
+      <section className="panel">
+        <h2>Scrapers nativos</h2>
+        <p className="panel__hint">
+          Addon de streams resuelto en el propio servidor (patrón de StreamFlix Reborn): varios
+          proveedores se consultan en paralelo, se aíslan los fallos y el resultado se fusiona con
+          los streams de los addons instalados. Los magnets siguen pasando por la resolución de
+          debrid.
+        </p>
+        <label className="setting">
+          <span>Activar los scrapers nativos</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={scraperStatus?.enabled ?? settings.scrapers?.enabled ?? true}
+            onChange={(event) => void saveScrapers({ enabled: event.target.checked })}
+          />
+        </label>
+        {(scraperStatus?.providers ?? []).map((provider) => {
+          const selected = scraperStatus?.selected ?? [];
+          const active = selected.length === 0 || selected.includes(provider.id);
+          return (
+            <label className="setting" key={provider.id}>
+              <span>
+                {provider.name}
+                {provider.region ? ` · ${provider.region}` : ''}
+              </span>
+              <input
+                type="checkbox"
+                data-focusable="true"
+                checked={active}
+                onChange={(event) => {
+                  const next = event.target.checked
+                    ? [...selected.filter((id) => id !== provider.id), provider.id]
+                    : selected.filter((id) => id !== provider.id);
+                  void saveScrapers({ providers: next });
+                }}
+              />
+            </label>
+          );
+        })}
+        <label className="setting setting--stack">
+          <span>Proveedores propios (JSON)</span>
+          <textarea
+            data-focusable="true"
+            rows={6}
+            spellCheck={false}
+            value={scraperConfigs}
+            placeholder='[{"id":"mio","name":"Mi proveedor","types":["movie"],"searchUrl":"https://sitio/buscar?q={title}","itemUrl":"https://sitio/pelicula/{id}","itemPattern":"href=\"\\/pelicula\\/(\\w+)\"","streamPatterns":["src=\"(https?:\\/\\/[^\"]+\\.mp4)\""]}]'
+            onChange={(event) => setScraperConfigs(event.target.value)}
+          />
+        </label>
+        <div className="addons__install">
+          <Button variant="ghost" onClick={() => void testScrapers()}>
+            Probar proveedor
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              try {
+                const parsed = JSON.parse(scraperConfigs || '[]');
+                void saveScrapers({
+                  configs: Array.isArray(parsed) ? (parsed as ProviderConfig[]) : [],
+                });
+              } catch (cause) {
+                setScraperError(`JSON invalido: ${(cause as Error).message}`);
+              }
+            }}
+          >
+            Guardar proveedores
+          </Button>
+        </div>
+        {scraperMessage ? <p className="panel__ok">{scraperMessage}</p> : null}
+        {scraperError ? <ErrorState message={scraperError} /> : null}
       </section>
 
       <section className="panel">

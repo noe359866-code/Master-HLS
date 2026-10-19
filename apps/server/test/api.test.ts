@@ -257,6 +257,14 @@ describe('servidor Vibe Flix', () => {
   });
 
   it('puede desactivar la metadata integrada', async () => {
+    // El addon nativo de scrapers tambien es un addon del registro: se
+    // desactiva para comprobar solo el efecto de la metadata integrada.
+    await fetch(`${base}/api/scrapers`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: false, providers: [], configs: [] }),
+    });
+
     const update = await fetch(`${base}/api/settings`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -272,6 +280,11 @@ describe('servidor Vibe Flix', () => {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ builtInMetadata: true }),
+    });
+    await fetch(`${base}/api/scrapers`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true, providers: [], configs: [] }),
     });
   });
 
@@ -397,8 +410,8 @@ describe('servidor Vibe Flix', () => {
     const response = await fetch(`${base}/api/health`);
     const body = (await response.json()) as { ok: boolean; addons: number };
     assert.equal(body.ok, true);
-    // 2 addons instalados + el addon de metadata integrada.
-    assert.equal(body.addons, 3);
+    // 2 addons instalados + el de metadata integrada + el nativo de scrapers.
+    assert.equal(body.addons, 4);
   });
 
   it('configura el proveedor de debrid desde los ajustes', async () => {

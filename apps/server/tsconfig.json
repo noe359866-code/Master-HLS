@@ -4,12 +4,26 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "composite": true,
-    "lib": ["ES2023", "DOM"],
-    "types": ["node"]
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
-    { "path": "../../packages/addon-engine" },
-    { "path": "../../packages/hls-master" }
+    {
+      "path": "../../packages/addon-engine"
+    },
+    {
+      "path": "../../packages/hls-master"
+    },
+    {
+      "path": "../../packages/scrapers"
+    }
   ]
 }

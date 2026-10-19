@@ -175,6 +175,29 @@ export class AddonRegistry {
     this.resourceCache.clear();
   }
 
+  /**
+   * Registra una fuente integrada en el servidor (por ejemplo los scrapers
+   * nativos). Se comporta como un addon mas: participa en el fan-out, en la
+   * cache y en la fusion de respuestas.
+   */
+  registerSource(source: AddonSource & { manifest: AddonManifest }): void {
+    this.clients.set(source.id, source);
+    this.manifests.set(source.id, source.manifest);
+    this.resourceCache.clear();
+  }
+
+  /** Quita una fuente integrada. */
+  unregisterSource(id: string): void {
+    this.clients.delete(id);
+    this.manifests.delete(id);
+    this.resourceCache.clear();
+  }
+
+  /** ¿Esta registrada la fuente indicada? */
+  hasSource(id: string): boolean {
+    return this.clients.has(id);
+  }
+
   disableBuiltinMetadata(): void {
     this.clients.delete(BUILTIN_METADATA_ID);
     this.manifests.delete(BUILTIN_METADATA_ID);

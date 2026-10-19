@@ -21,6 +21,7 @@ Revisión hecha contra el código real de las dos bases:
 | Biblioteca | Perfiles, listas, historial, sync | Colecciones, Trakt, sync Supabase | Perfiles, listas, historial, progreso |
 | Multi-dispositivo | Sí (sync proprietary) | Sí (Supabase) | Sí (código de vinculación) |
 | Búsqueda / géneros / décadas | Nativas (cliente) | ⚠️ addons | ✅ **En el servidor** (web + TV + addon) |
+| Scrapers de streams | ❌ (solo addons) | ⚠️ plugins externos | ✅ **Nativos en el servidor** (patrón StreamFlix Reborn) |
 
 **Conclusión**: Vibe Flix no es un clon de ninguna de las dos, es la
 convergencia de ambas con un núcleo que las dos tienen duplicado en cliente
@@ -134,7 +135,7 @@ in web configurator"):
 
 | Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
-| Plugins / repos de scrapers | ❌ | ✅ | ❌ **pendiente** |
+| Plugins / repos de scrapers | ❌ | ✅ | ⚠️ **scrapers nativos** (por configuración, no plugins) |
 | Watch parties | ❌ | ✅ | ❌ **pendiente** |
 | Chromecast | ❌ | ✅ | ❌ **pendiente** |
 | Debrid nativo | ⚠️ (solo HTTP) | ✅ (RD, Premiumize, TorBox) | ✅ (RD, AllDebrid, TorBox, Premiumize) |
@@ -146,6 +147,37 @@ in web configurator"):
 | **PWA instalable (sin APK)** | ❌ | ❌ | ✅ (manifest + service worker) |
 
 ---
+
+### 2.8 Scrapers nativos de streams — *ventaja de Vibe Flix*
+
+| | WuPlay | NuvioTV | **Vibe Flix** |
+| --- | --- | --- | --- |
+| Origen de las fuentes | Solo addons Stremio | Addons + plugins/CloudStream | **Addons + scrapers nativos del servidor** |
+| Dónde se ejecuta | — | En el cliente (o en un servicio externo) | **En el servidor**, junto al resto del motor |
+| Coste | — | Servicio de terceros o plugin | **0 €**: código propio, sin servicio de pago |
+| Extensible sin código | ❌ | ❌ (hay que escribir el plugin) | ✅ **JSON en los ajustes** |
+| Aislamiento de fallos | — | Depende del plugin | ✅ **Timeout y captura de errores por proveedor** |
+| Reparto con los addons | — | Manual | ✅ **Fan-out único**: todo se mezcla y ordena por calidad |
+
+El modelo es el de **StreamFlix Reborn** (un proveedor por sitio, una capa de
+embeds que extrae la URL directa y un desempaquetador de JavaScript), pero
+implementado desde cero en TypeScript dentro de `packages/scrapers/`:
+
+- `ScraperRegistry` consulta **todos los proveedores en paralelo**, cada uno
+  con su propio timeout, y aísla los errores: un proveedor caído no rompe la
+  respuesta.
+- La capa de embeds extrae la URL real de un player (`hls`, `file`,
+  `sources[]`, `<video>`, `$.get`) y **desempaqueta** el JavaScript empaquetado
+  de Dean Edwards **decodificándolo, sin ejecutarlo**.
+- Los proveedores se añaden **por configuración** (búsqueda + expresiones
+  regulares del item y del stream) y se pueden probar antes de activarlos.
+- Se incluye un proveedor legítimo de referencia: **Internet Archive**
+  (dominio público).
+- El addon se registra en el mismo `AddonRegistry` que el resto: los streams
+  resueltos se mezclan con los de los addons instalados, los magnets siguen
+  pasando por debrid y el cliente no distingue de dónde salió cada fuente.
+- **No se incluyen extractores de sitios pirateados**: la arquitectura queda
+  documentada para que cada usuario añada sus propios proveedores legales.
 
 ## 3. Decisiones de diseño que difieren
 
@@ -225,6 +257,8 @@ Android TV y en el propio addon instalado en Stremio, WuPlay o NuvioTV.
 
 - [x] Sincronización multi-dispositivo (token por dispositivo, sin cuenta)
 - [x] Debrid nativo (RealDebrid / AllDebrid / TorBox / Premiumize)
+- [x] Scrapers nativos en el servidor (patrón StreamFlix Reborn, proveedores
+      por configuración)
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [x] Catálogos predefinidos (Populares, Mejor valorados, Estrenos)
 - [x] Valoraciones y recomendaciones personalizadas
