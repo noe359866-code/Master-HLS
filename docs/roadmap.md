@@ -132,12 +132,19 @@
   - [x] **Modo esencial / avanzado** (`settings.uiMode`, spec de
         `docs/essential-mode.md` de NuvioTV): ajustes simplificados y
         reproductor sin controles avanzados; solo cambia visibilidad.
+  - [x] **Preferencias de pista por vídeo** (Nuvio: `TrackPreferenceDataStore`,
+        #1063): audio, subtítulo («apagados a propósito»), desfase y velocidad
+        **por videoId** y perfil, con tope de 200 entradas
+        (`library/track-prefs.ts`, `/api/track-prefs/:videoId`, reproductor).
+- [x] **Test preexistente de scrapers alineado con el diseño vigente**
+      («prioriza la variante exacta…»): la prioridad de idioma ordena, no
+      oculta — las alternativas del mismo idioma se conservan como fallback
+      real. Suite completa en verde.
 
 ## Siguiente
 
-- [ ] **Persistencia de pistas y desfase por videoId** (Nuvio:
-      `TrackPreferenceDataStore`): recordar audio/subtítulo/desfase por
-      episodio, y retardo de audio (`AudioDelayMediaSource`).
+- [ ] **Retardo de audio** (Nuvio: `AudioDelayMediaSource`) en el reproductor
+      web y el shell Android.
 - [ ] **Plugins estilo Nuvio** — repositorios de plugins y CloudStream.
 - [ ] **Más proveedores de debrid** (Offcloud, debrid.link) y descarga en
       segundo plano con aviso de "listo" en la UI.

@@ -78,6 +78,7 @@ instalable como addon en las tres apps existentes.
 | **Proxy con cabeceras (Referer/UA/Cookie)** | ❌ | ❌ | ✅ |
 | **Reescritura de playlists (segmentos, claves AES)** | ❌ | ❌ | ✅ |
 | Pistas de audio y subtítulos seleccionables | ✅ | ✅ | ✅ (hls.js + `<track>` externo) |
+| **Recordar pistas/desfase por episodio** | ✅ | ✅ | ✅ (`/api/track-prefs`, por videoId) |
 | Subtítulos solo para audio extranjero | ✅ | ✅ | ✅ (`onlyForForeignAudio`) |
 | Subtítulos SDH limpios / opacidad / colores | ✅ | ✅ | ✅ (Clean SDH + estilo completo) |
 | **Reproducción automática (siguiente episodio)** | ✅ | ✅ | ✅ (tarjeta con cuenta atrás y cancelación) |

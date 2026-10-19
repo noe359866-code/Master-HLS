@@ -102,7 +102,7 @@ describe('registro de scrapers', () => {
     assert.equal(spanish.length, 1);
   });
 
-  it('elige variante exacta y cae al idioma genérico si falla', async () => {
+  it('prioriza la variante exacta y cae al idioma genérico si falla', async () => {
     const registry = new ScraperRegistry();
     for (const [id, languages] of [
       ['latino', ['es-419']], ['castellano', ['es-ES']], ['espanol', ['es']], ['ingles', ['en']],
@@ -116,11 +116,15 @@ describe('registro de scrapers', () => {
     }
     let unavailable = false;
     const request = { type: 'movie', id: 'tt1', language: 'es-419' };
+    // La variante exacta va primero; las alternativas del mismo idioma se
+    // conservan como fallback real (una fuente puede morir al abrirse) y los
+    // otros idiomas no aparecen. La prioridad ordena, no oculta.
     const exact = await registry.resolve(request, context());
-    assert.deepEqual(exact.map((source) => source.provider), ['latino']);
+    assert.deepEqual(exact.map((source) => source.provider), ['latino', 'espanol', 'castellano']);
     unavailable = true;
+    // Sin la variante exacta, el idioma genérico pasa a liderar la lista.
     const fallback = await registry.resolve(request, context());
-    assert.deepEqual(fallback.map((source) => source.provider), ['espanol']);
+    assert.deepEqual(fallback.map((source) => source.provider), ['espanol', 'castellano']);
     assert.equal(languagePriority(registry.get('castellano')!, 'es-419'), 2);
     assert.equal(normalizeLanguage('ES_es'), 'es-ES');
     assert.equal(normalizeLanguage('https://malicioso'), undefined);

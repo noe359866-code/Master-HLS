@@ -68,6 +68,7 @@ import {
 
 import { api } from '../api';
 import { useApp } from '../store';
+import type { TrackPreference } from '../types';
 import { useI18n } from '../i18n';
 import type { MasterInfo, SkipSegment, Stream, Thumbnail } from '../types';
 import { Button } from '../components/ui';
@@ -200,6 +201,24 @@ export function PlayerScreen({
   const [cleanSdh, setCleanSdh] = useState(subtitleSettings?.cleanSdh ?? false);
   const [audioOptions, setAudioOptions] = useState<Array<{ index: number; label: string; lang: string }>>([]);
   const [activeAudio, setActiveAudio] = useState(-1);
+
+  // Preferencias de pista por vídeo (NuvioTV: `TrackPreferenceDataStore`).
+  // `undefined` = aún cargando: no se decide ni se sobrescribe hasta que llegue.
+  const [trackPref, setTrackPref] = useState<TrackPreference | null | undefined>(undefined);
+  const savePrefTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** true cuando ya se decidió/apagó un subtítulo para este vídeo. */
+  const subtitleChosenRef = useRef(false);
+  /** Instantánea fresca de lo que hay que guardar (se lee al disparar el debounce). */
+  const latestPrefRef = useRef<Partial<Omit<TrackPreference, 'updatedAt'>>>({});
+  latestPrefRef.current = {
+    audioLanguage: audioOptions.find((track) => track.index === activeAudio)?.lang,
+    // Solo se recuerda el subtítulo si ya hubo decisión (o el usuario eligió):
+    // un `null` significa «apagados a propósito», no «aún no elegidos».
+    ...(subtitleChosenRef.current ? { subtitleKey: activeSubtitle } : {}),
+    subtitleLanguage: subtitleOptions.find((option) => option.key === activeSubtitle)?.lang,
+    delayMs: subtitleDelay,
+    speed,
+  };
 
   // Omitir intro y autoplay
   const [skipSegment, setSkipSegment] = useState<SkipSegment | null>(null);
@@ -479,10 +498,72 @@ export function PlayerScreen({
     setSubtitleOptions((previous) => [...native, ...previous.filter((option) => option.native === undefined)]);
   }, [levels, quality]);
 
+  // Cargar las preferencias guardadas para este vídeo (audio, subtítulo,
+  // desfase y velocidad). El desfase es **por vídeo**: un valor calibrado para
+  // un episodio no sirve para el siguiente (NuvioTV #1063).
+  useEffect(() => {
+    let cancelled = false;
+    setTrackPref(undefined);
+    void api.trackPref(id, activeProfileId || undefined)
+      .then((pref) => {
+        if (cancelled) return;
+        setTrackPref(pref);
+        if (typeof pref?.delayMs === 'number') setSubtitleDelay(pref.delayMs);
+        else setSubtitleDelay(subtitleSettings?.delayMs ?? 0);
+        const rememberedSpeed = pref?.speed && pref.speed !== 1 ? pref.speed : 1;
+        setSpeed(rememberedSpeed);
+        if (videoRef.current) videoRef.current.playbackRate = rememberedSpeed;
+      })
+      .catch(() => { if (!cancelled) setTrackPref(null); });
+    return () => {
+      cancelled = true;
+      if (savePrefTimer.current) clearTimeout(savePrefTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, activeProfileId]);
+
+  // Restaurar la pista de audio recordada cuando aparezcan las pistas (solo
+  // si el usuario no ha elegido todavía en esta sesión).
+  useEffect(() => {
+    if (trackPref === undefined || !audioOptions.length || activeAudio !== -1) return;
+    const wanted = trackPref?.audioLanguage;
+    if (!wanted) return;
+    const match =
+      audioOptions.find((track) => track.lang && track.lang === wanted) ??
+      audioOptions.find((track) => track.lang && track.lang.startsWith(wanted.slice(0, 2)));
+    if (match) {
+      controllerRef.current?.setAudioTrack(match.index);
+      setActiveAudio(match.index);
+    }
+  }, [trackPref, audioOptions, activeAudio]);
+
   // Decision inicial: subtitulos activos solo si el ajuste lo pide (y, con
   // «solo para audio extranjero», solo si el audio no es el del perfil).
   useEffect(() => {
     if (!subtitleOptions.length || activeSubtitle !== null) return;
+    if (trackPref === undefined) return;
+    // A partir de aquí hay decisión (aunque sea «dejarlos apagados»).
+    subtitleChosenRef.current = true;
+    // La preferencia guardada para este vídeo manda sobre el idioma del
+    // perfil: `null` significa que el usuario los apagó a propósito.
+    const remembered = trackPref;
+    if (remembered && remembered.subtitleKey === null) return;
+    if (remembered) {
+      const match =
+        (remembered.subtitleKey
+          ? subtitleOptions.find((option) => option.key === remembered.subtitleKey)
+          : undefined) ??
+        (remembered.subtitleLanguage
+          ? subtitleOptions.find((option) =>
+              option.lang &&
+              option.lang.toLowerCase().startsWith(remembered.subtitleLanguage!.toLowerCase().slice(0, 2)),
+            )
+          : undefined);
+      if (match) {
+        setActiveSubtitle(match.key);
+        return;
+      }
+    }
     if (subtitleSettings?.enabled === false) return;
     const wanted = activeProfile?.subtitleLanguage ?? activeProfile?.contentLanguage ?? settings?.language;
     const enable = shouldEnableSubtitles({
@@ -497,7 +578,7 @@ export function PlayerScreen({
       subtitleOptions.find((option) => option.native !== undefined) ??
       subtitleOptions[0];
     if (match) setActiveSubtitle(match.key);
-  }, [subtitleOptions, activeSubtitle, subtitleSettings, activeProfile, settings?.language, audioOptions, activeAudio]);
+  }, [subtitleOptions, activeSubtitle, subtitleSettings, activeProfile, settings?.language, audioOptions, activeAudio, trackPref]);
 
   // ---------------------------------------------- carga de subtitulos
   useEffect(() => {
@@ -806,6 +887,25 @@ export function PlayerScreen({
     });
   }, [notify, t]);
 
+  /**
+   * Guarda las pistas/desfase/velocidad de este vídeo (debounce corto: el
+   * desfase se ajusta a golpes de ±250 ms). Nunca se guarda antes de cargar
+   * la preferencia previa, para no sobrescribirla con los valores iniciales.
+   * Los valores se leen de `latestPrefRef` al dispararse: así el debounce no
+   * congela estados viejos.
+   */
+  const persistTrackPref = useCallback(() => {
+    if (trackPref === undefined) return;
+    if (savePrefTimer.current) clearTimeout(savePrefTimer.current);
+    const videoId = id;
+    const profileId = activeProfileId || undefined;
+    savePrefTimer.current = setTimeout(() => {
+      void api
+        .saveTrackPref(videoId, { profileId, ...latestPrefRef.current })
+        .catch(() => { /* sin red: se conserva el estado local */ });
+    }, 800);
+  }, [id, activeProfileId, trackPref]);
+
   const changeSpeed = useCallback(
     (direction: 1 | -1) => {
       setSpeed((current) => {
@@ -814,8 +914,9 @@ export function PlayerScreen({
         notify(`${t('PLAYER_PLAYBACK_SPEED')}: ${speedLabel(next)}`);
         return next;
       });
+      persistTrackPref();
     },
-    [notify, t],
+    [notify, t, persistTrackPref],
   );
 
   /** Salto de fotograma a fotograma (`,` y `.` en teclado; util para ajustar). */
@@ -850,9 +951,11 @@ export function PlayerScreen({
   );
 
   const selectSubtitle = useCallback((key: string | null) => {
+    subtitleChosenRef.current = true;
     setActiveSubtitle(key);
     setMenu(null);
-  }, []);
+    persistTrackPref();
+  }, [persistTrackPref]);
 
   const selectAudio = useCallback(
     (index: number) => {
@@ -861,8 +964,9 @@ export function PlayerScreen({
       setMenu(null);
       const chosen = audioOptions.find((track) => track.index === index);
       if (chosen) notify(chosen.label);
+      persistTrackPref();
     },
-    [audioOptions, notify],
+    [audioOptions, notify, persistTrackPref],
   );
 
   const changeSubtitleDelay = useCallback(
@@ -872,8 +976,9 @@ export function PlayerScreen({
         notify(`${t('PLAYER_SUBTITLES_DELAY')} ${formatDelay(next)}`);
         return next;
       });
+      persistTrackPref();
     },
-    [notify, t],
+    [notify, t, persistTrackPref],
   );
 
   const changeSubtitleSize = useCallback(
@@ -1402,6 +1507,7 @@ export function PlayerScreen({
                       if (videoRef.current) videoRef.current.playbackRate = value;
                       setMenu(null);
                       notify(speedLabel(value));
+                      persistTrackPref();
                     }}>
                     {speedLabel(value)}
                   </button>

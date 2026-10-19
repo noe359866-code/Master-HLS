@@ -8,6 +8,7 @@ import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import { hashProfilePin, PIN_PLACEHOLDER, publicProfile, verifyProfilePin } from '../library/profile-pin.js';
 import { normalizeParental } from '../library/parental.js';
+import { saveTrackPreference, sanitizeTrackPreferencePatch } from '../library/track-prefs.js';
 import { maskSecret, restoreSecret } from '../http/security.js';
 import {
   DEFAULT_PROFILE,
@@ -590,6 +591,48 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       data.progress[profileId] = (data.progress[profileId] ?? []).filter(
         (entry) => entry.id !== id,
       );
+    });
+    sendJson(res, 200, { deleted: true });
+  });
+
+  // --------------------------------------------- preferencias de pista (Nuvio)
+  // Audio, subtítulo, desfase y velocidad por videoId (NuvioTV:
+  // `TrackPreferenceDataStore`): un desfase calibrado para un episodio no
+  // sirve para el siguiente, así que cada vídeo guarda lo suyo.
+
+  router.get('/api/track-prefs/:videoId', ({ res, params, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const videoId = params['videoId'] ?? '';
+    const pref = getData().trackPrefs[profileId]?.[videoId] ?? null;
+    sendJson(res, 200, { pref });
+  });
+
+  router.put('/api/track-prefs/:videoId', async ({ res, params, body: rawBody, query }) => {
+    const videoId = params['videoId'] ?? '';
+    if (!videoId || videoId.length > 128) {
+      sendJson(res, 400, { error: 'videoId no válido' });
+      return;
+    }
+    const body = (rawBody ?? {}) as Record<string, unknown> & { profileId?: string };
+    const profileId = body.profileId ?? query.get('profileId') ?? getData().activeProfileId;
+    const patch = sanitizeTrackPreferencePatch(body);
+    if (!Object.keys(patch).length) {
+      sendJson(res, 400, { error: 'Preferencia de pista sin campos válidos' });
+      return;
+    }
+    let saved: ReturnType<typeof saveTrackPreference> = null;
+    await save((data) => {
+      data.trackPrefs ??= {};
+      saved = saveTrackPreference(data.trackPrefs, profileId, videoId, patch);
+    });
+    sendJson(res, 200, { pref: saved });
+  });
+
+  router.delete('/api/track-prefs/:videoId', async ({ res, params, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const videoId = params['videoId'] ?? '';
+    await save((data) => {
+      delete data.trackPrefs[profileId]?.[videoId];
     });
     sendJson(res, 200, { deleted: true });
   });

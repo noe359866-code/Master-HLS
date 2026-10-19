@@ -23,6 +23,7 @@ import type {
   Rating,
   Stream,
   Subtitle,
+  TrackPreference,
   Watchlist,
   WatchlistItem,
 } from './types';
@@ -280,6 +281,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(entry),
     });
+  },
+
+  // ------------------------------------------ preferencias de pista (Nuvio)
+  /** Pistas/desfase/velocidad recordados para este vídeo. */
+  async trackPref(videoId: string, profileId?: string): Promise<TrackPreference | null> {
+    const body = await request<{ pref: TrackPreference | null }>(
+      `/api/track-prefs/${encodeURIComponent(videoId)}${query({ profileId })}`,
+    );
+    return body.pref;
+  },
+
+  async saveTrackPref(
+    videoId: string,
+    patch: Partial<Omit<TrackPreference, 'updatedAt'>> & { profileId?: string },
+  ): Promise<TrackPreference | null> {
+    const body = await request<{ pref: TrackPreference | null }>(
+      `/api/track-prefs/${encodeURIComponent(videoId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      },
+    );
+    return body.pref;
   },
 
   // ------------------------------------------------------------------ ajustes

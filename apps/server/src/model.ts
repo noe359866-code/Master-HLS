@@ -11,6 +11,7 @@ import type { DebridProviderId, MetaPreview } from '@vibeflix/addon-engine';
 import type { ProviderConfig } from '@vibeflix/scrapers';
 
 import { normalizeParental, type ParentalSettings } from './library/parental.js';
+import type { TrackPreference } from './library/track-prefs.js';
 
 export interface InstalledAddonRecord {
   id: string;
@@ -322,6 +323,13 @@ export interface AppData {
   catalogPreferences: CatalogPreference[];
   /** Historial de busquedas por id de perfil. */
   searchHistory: Record<string, Array<{ term: string; at: number }>>;
+  /**
+   * Preferencias de pista por perfil y vídeo (NuvioTV:
+   * `TrackPreferenceDataStore`): audio, subtítulo, desfase y velocidad
+   * **por videoId**, porque un desfase calibrado para un episodio no sirve
+   * para el siguiente.
+   */
+  trackPrefs: Record<string, Record<string, TrackPreference>>;
   settings: AppSettings;
 }
 
@@ -470,6 +478,7 @@ export function normalizeData(data: AppData): AppData {
   data.pairings ??= [];
   data.catalogPreferences ??= [];
   data.searchHistory ??= {};
+  data.trackPrefs ??= {};
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
 }
@@ -488,6 +497,7 @@ export function emptyData(): AppData {
     pairings: [],
     catalogPreferences: [],
     searchHistory: {},
+    trackPrefs: {},
     settings: { ...DEFAULT_SETTINGS },
   };
 }

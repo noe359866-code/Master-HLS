@@ -48,8 +48,8 @@ Mapa de módulos relevante (`com.nuvio.tv`):
 | Perfiles con PIN | Hash scrypt + bloqueo por intentos | ✅ |
 | Reproducción automática con cuenta atrás | `binge` + tarjeta cancelable | ✅ |
 | Pistas de audio/subtítulos seleccionables | Reproductor web + Media3 (APK) | ✅ |
-| Persistencia de pistas por contenido | La selección se guarda en el perfil (idioma); el desfase, en ajustes | ⚠️ parcial |
-| Desfase de subtítulos por videoId (ellos, #1063) | Desfase global configurable + en el reproductor | ⚠️ parcial |
+| Persistencia de pistas por contenido | `library/track-prefs.ts` por videoId y perfil | ✅ |
+| Desfase de subtítulos por videoId (ellos, #1063) | Idem: desfase guardado por vídeo, no global | ✅ |
 | Resincronización automática de subtítulos | ❌ | pendiente |
 | Retardo de audio (`AudioDelayMediaSource`) | ❌ | pendiente |
 | Frame-rate matching (`PlayerFrameRateHeuristics`, 23.976↔24) | ❌ (solo el APK podría) | pendiente |
@@ -119,22 +119,33 @@ desactiva nada ni borra datos. Implementado tal cual:
   blanca infantil, vocabulario adulto, géneros bloqueados, filtros de
   catálogo y PIN con bloqueo temporal (bug encontrado y corregido durante las
   pruebas: el contador de intentos se borraba al comprobar el bloqueo).
-- `normalizeData`: `uiMode` por defecto/rechazo de valores desconocidos y
-  completado de reglas parentales.
-- Suite completa: 117/117 en `@vibeflix/server`; el resto de suites en verde
-  salvo el fallo preexistente de scrapers.
+- `apps/server/test/track-prefs.test.ts`: sanitizado, fusión, `subtitleKey`
+  null, poda por tope y borrado de entradas vacías.
+- `normalizeData`: `uiMode` por defecto/rechazo de valores desconocidos,
+  completado de reglas parentales y `trackPrefs` en datos antiguos.
+- Suite completa: **502 pruebas en verde** (incluido el test preexistente de
+  scrapers realineado con el diseño de prioridad que documenta `registry.ts`:
+  la variante exacta encabeza la lista y las alternativas del mismo idioma se
+  conservan como fallback real).
 
 ## 5. Siguiente (priorizado, según lo que hace NuvioTV)
 
-1. **Persistencia de pistas y desfase por videoId** (su `TrackPreferenceDataStore`):
-   recordar audio/subtítulo/desfase **por episodio**, no global.
-2. **Retardo de audio** (`AudioDelayMediaSource`) en el reproductor web y APK.
-3. **Trakt / MDBList** (su `data/trakt`, `data/mdblist`): listas y progreso
+1. **Retardo de audio** (`AudioDelayMediaSource`) en el reproductor web y APK.
+2. **Trakt / MDBList** (su `data/trakt`, `data/mdblist`): listas y progreso
    externos; Vibe Flix ya tiene el modelo de listas para mapearlos.
-4. **Resincronización de subtítulos** (su `AutomaticSubtitleSync`): como fase
+3. **Resincronización de subtítulos** (su `AutomaticSubtitleSync`): como fase
    posterior al desfase manual; sin servicios externos (correlación con el
    audio no es viable en web, quizá con pistas de referencia del propio HLS).
-5. **Frame-rate matching** solo en el shell Android (`DisplayModeOverlay` +
+4. **Frame-rate matching** solo en el shell Android (`DisplayModeOverlay` +
    `PlayerFrameRateHeuristics` resuelven 23.976↔24).
-6. **Watch parties** (`core/party/`): su `PartyClock`/`PartySync` es un buen
+5. **Watch parties** (`core/party/`): su `PartyClock`/`PartySync` es un buen
    mapa de implementación, pero requiere servidor de presencia.
+
+### Ya cerrado en esta revisión
+
+- **Persistencia de pistas y desfase por videoId** (su
+  `TrackPreferenceDataStore`, incluido el matiz de #1063): cada vídeo guarda
+  audio, subtítulo (`null` = apagados a propósito), desfase y velocidad por
+  perfil, con tope de 200 entradas y poda de las más antiguas
+  (`library/track-prefs.ts`, `/api/track-prefs/:videoId`, reproductor web).
+- **Control parental** y **modo esencial** (sección 3).

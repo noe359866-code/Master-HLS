@@ -134,6 +134,20 @@ export type ProfilePatch = Omit<Partial<Profile>, 'parental'> & {
   parental?: ParentalSettings | null;
 };
 
+/**
+ * Preferencia de pista de un vídeo (NuvioTV: `TrackPreferenceDataStore`):
+ * audio, subtítulo, desfase y velocidad **por videoId**.
+ */
+export interface TrackPreference {
+  audioLanguage?: string;
+  /** Clave de subtítulo elegida; `null` = el usuario los apagó. */
+  subtitleKey?: string | null;
+  subtitleLanguage?: string;
+  delayMs?: number;
+  speed?: number;
+  updatedAt: number;
+}
+
 export interface Profile {
   id: string;
   name: string;
