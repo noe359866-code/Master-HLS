@@ -109,6 +109,20 @@ function publicSettings(settings: AppSettings): AppSettings {
   };
 }
 
+/** Enmascara credenciales en la configuración de addons al exportar datos. */
+export function sanitizeExportAddons(addons: InstalledAddonRecord[]): InstalledAddonRecord[] {
+  return addons.map((addon) => {
+    if (!addon.config) return { ...addon };
+    const config: Record<string, string> = {};
+    for (const [key, value] of Object.entries(addon.config)) {
+      config[key] = /api.?key|token|secret|password|authorization|credential|private.?key/i.test(key)
+        ? maskSecret(value)
+        : value;
+    }
+    return { ...addon, config };
+  });
+}
+
 export function registerLibraryRoutes(router: Router, options: LibraryRouteOptions): void {
   const { getData, save, onSettingsChanged, onProfileChanged } = options;
 
@@ -657,6 +671,8 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       app: 'vibe-flix',
       exportedAt: new Date().toISOString(),
       ...data,
+      // Configuraciones de addons también pueden contener tokens o claves.
+      addons: sanitizeExportAddons(data.addons),
       // `publicProfile` sustituye el PIN por un marcador; `publicSettings`
       // hace lo propio con las claves de API (debrid, OpenSubtitles...).
       profiles: data.profiles.map(publicProfile),
