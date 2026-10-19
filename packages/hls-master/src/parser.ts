@@ -7,6 +7,10 @@
  *  - Playlist *media* (univariant) para saber si hay que escalar o no.
  *  - Tags de media: RESOLUTION, BANDWIDTH, AVERAGE-BANDWIDTH, CODECS,
  *    FRAME-RATE, VIDEO-RANGE, AUDIO, SUBTITLES, NAME, DEFAULT, AUTOSELECT.
+ *  - `#EXT-X-IMAGE-STREAM-INF`: las hojas de sprites que algunos debrid y CDN
+ *    sirven para previsualizar el salto (WuPlay las usa en la barra de
+ *    progreso). No se pueden ignorar sin mas: sin ellas el cliente no sabe que
+ *    existen las miniaturas.
  */
 
 export type RenditionType = 'AUDIO' | 'SUBTITLES' | 'VIDEO' | 'CLOSED-CAPTIONS';
@@ -38,6 +42,33 @@ export interface Variant {
   index: number;
 }
 
+/**
+ * Pista de imagenes (`#EXT-X-IMAGE-STREAM-INF`).
+ *
+ * Apple la define para «trick play»: el master apunta a un playlist de imagenes
+ * donde cada entrada es una hoja de sprites con `TILES` miniaturas por hoja y
+ * `DURATION` segundos cubiertos por cada una.
+ */
+export interface ImageStream {
+  /** URI absoluta del playlist de imagenes. */
+  uri: string;
+  /** Ancho de cada miniatura dentro de la hoja. */
+  width?: number;
+  /** Alto de cada miniatura dentro de la hoja. */
+  height?: number;
+  /** Columnas y filas de la hoja de sprites. */
+  tilesX?: number;
+  tilesY?: number;
+  /** Segundos que cubre cada hoja. */
+  durationSeconds?: number;
+  /** Bitrate declarado (bps). */
+  bandwidth?: number;
+  /** Nombre legible (atributo NAME). */
+  name?: string;
+  /** Indice dentro del master. */
+  index: number;
+}
+
 export interface MediaRendition {
   type: RenditionType;
   groupId: string;
@@ -59,6 +90,8 @@ export interface MasterPlaylist {
   isMaster: boolean;
   variants: Variant[];
   renditions: MediaRendition[];
+  /** Hojas de sprites para previsualizar el salto (si el master las trae). */
+  imageStreams: ImageStream[];
   targetDuration?: number;
   mediaSequence?: number;
   version?: number;
@@ -70,6 +103,18 @@ export interface MasterPlaylist {
 const MEDIA_TAG = /^#EXT-X-MEDIA:(.+)$/;
 const STREAM_INF_TAG = /^#EXT-X-STREAM-INF:(.+)$/;
 const I_FRAME_TAG = /^#EXT-X-I-FRAME-STREAM-INF:(.+)$/;
+const IMAGE_STREAM_TAG = /^#EXT-X-IMAGE-STREAM-INF:(.*)$/;
+
+/** Parsea `TILES=5x5` en columnas y filas. */
+function parseTiles(value: string | undefined): { x?: number; y?: number } {
+  if (!value) return {};
+  const match = /^(\d+)\s*[x,]\s*(\d+)$/i.exec(value.trim());
+  if (!match) {
+    const single = Number(value);
+    return Number.isFinite(single) && single > 0 ? { x: single, y: 1 } : {};
+  }
+  return { x: Number(match[1]), y: Number(match[2]) };
+}
 
 export function isHlsUrl(url: string): boolean {
   const lower = url.toLowerCase();
@@ -157,6 +202,7 @@ export function parsePlaylist(text: string, baseUrl: string): MasterPlaylist {
   const lines = text.split(/\r?\n/);
   const variants: Variant[] = [];
   const renditions: MediaRendition[] = [];
+  const imageStreams: ImageStream[] = [];
 
   let targetDuration: number | undefined;
   let mediaSequence: number | undefined;
@@ -240,12 +286,44 @@ export function parsePlaylist(text: string, baseUrl: string): MasterPlaylist {
       // Los I-frame playlists no se reproducen como variante principal.
       continue;
     }
+
+    const imageMatch = IMAGE_STREAM_TAG.exec(line);
+    if (imageMatch) {
+      const attributes = parseAttributes(imageMatch[1] ?? '');
+      // La URI puede venir como atributo o en la siguiente linea no comentada.
+      let uri = attributes['URI'] ?? '';
+      if (!uri) {
+        for (let next = index + 1; next < lines.length; next += 1) {
+          const candidate = lines[next]!.trim();
+          if (!candidate || candidate.startsWith('#')) continue;
+          uri = candidate;
+          index = next;
+          break;
+        }
+      }
+      if (!uri) continue;
+      const resolution = parseResolution(attributes['RESOLUTION']);
+      const tiles = parseTiles(attributes['TILES']);
+      imageStreams.push({
+        uri: resolveUrl(uri, baseUrl),
+        width: resolution.width,
+        height: resolution.height,
+        tilesX: tiles.x,
+        tilesY: tiles.y,
+        durationSeconds: attributes['DURATION'] ? Number(attributes['DURATION']) : undefined,
+        bandwidth: attributes['BANDWIDTH'] ? Number(attributes['BANDWIDTH']) : undefined,
+        name: attributes['NAME'],
+        index: imageStreams.length,
+      });
+      continue;
+    }
   }
 
   return {
     isMaster: variants.length > 0,
     variants,
     renditions,
+    imageStreams,
     targetDuration,
     mediaSequence,
     version,

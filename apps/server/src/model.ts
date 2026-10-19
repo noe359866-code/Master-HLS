@@ -220,6 +220,66 @@ export interface AppSettings {
     supportsHdr: boolean;
     supportsDolbyVision: boolean;
     preferredCodecs: string[];
+    /** Ancho de banda maximo estimado en Mbps (0 = sin estimar). */
+    maxBandwidthMbps: number;
+  };
+  /**
+   * Ajustes de reproduccion.
+   *
+   * Equivalen a los ajustes que WuPlay expone en Settings > Playback y NuvioTV
+   * en su pantalla de reproductor, pero guardados en el servidor: se aplican
+   * igual en la web, en el APK y cuando Vibe Flix se usa como addon.
+   */
+  playback: {
+    /** Techo de bitrate en Mbps (0 = sin limite). */
+    maxBitrateMbps: number;
+    /** Segundos de buffer deseados (0 = automatico segun dispositivo). */
+    bufferSeconds: number;
+    /** Segundos de la cuenta atras del siguiente episodio (0 = desactivado). */
+    autoplayCountdown: number;
+    /** Continuar donde lo dejaste. */
+    resume: boolean;
+    /** Modo de imagen por defecto (`contain`, `cover`, `fill`, `zoom`). */
+    videoScale: 'contain' | 'cover' | 'fill' | 'zoom';
+    /** Mostrar miniaturas de previsualizacion al desplazar (si el HLS las trae). */
+    thumbnails: boolean;
+    /** Velocidad de reproduccion por defecto. */
+    speed: number;
+    /** Guardar el progreso cada N segundos (0 = solo al pausar/salir). */
+    progressIntervalSeconds: number;
+  };
+  /**
+   * Apariencia y comportamiento de los subtitulos.
+   *
+   * Cubre los ajustes que la comparativa marcaba como pendientes: tamano,
+   * colores (incluidos verde y gris, como WuPlay v0.8.3), opacidad, fondo,
+   * contorno, posicion vertical, **Clean SDH** y desfase.
+   */
+  subtitles: {
+    /** Activados por defecto. */
+    enabled: boolean;
+    /** Tamano (multiplicador). */
+    size: number;
+    /** Color del texto (id o valor CSS). */
+    color: string;
+    /** Opacidad del texto (0-1). */
+    opacity: number;
+    /** Opacidad del fondo de la caja (0 = sin caja). */
+    backgroundOpacity: number;
+    /** Contorno del texto. */
+    edge: 'none' | 'outline' | 'shadow' | 'raised';
+    /** Posicion vertical en % desde abajo. */
+    verticalPosition: number;
+    /** Texto en negrita. */
+    bold: boolean;
+    /** Clean SDH: quita hablantes y anotaciones de sonido. */
+    cleanSdh: boolean;
+    /** Desfase por defecto en milisegundos. */
+    delayMs: number;
+    /** Mostrar subtitulos solo cuando el audio es extranjero. */
+    onlyForForeignAudio: boolean;
+    /** Renderizar las cues en el cliente (permite desfase, SDH y SRT). */
+    customRenderer: boolean;
   };
 }
 
@@ -288,6 +348,31 @@ export const DEFAULT_SETTINGS: AppSettings = {
     supportsHdr: false,
     supportsDolbyVision: false,
     preferredCodecs: ['h264', 'hevc', 'av1'],
+    maxBandwidthMbps: 0,
+  },
+  playback: {
+    maxBitrateMbps: 0,
+    bufferSeconds: 0,
+    autoplayCountdown: 5,
+    resume: true,
+    videoScale: 'contain',
+    thumbnails: true,
+    speed: 1,
+    progressIntervalSeconds: 15,
+  },
+  subtitles: {
+    enabled: true,
+    size: 1,
+    color: 'white',
+    opacity: 1,
+    backgroundOpacity: 0.35,
+    edge: 'outline',
+    verticalPosition: 8,
+    bold: false,
+    cleanSdh: false,
+    delayMs: 0,
+    onlyForForeignAudio: false,
+    customRenderer: true,
   },
 };
 
@@ -319,6 +404,14 @@ export function normalizeData(data: AppData): AppData {
     device: {
       ...DEFAULT_SETTINGS.device,
       ...(settings.device ?? {}),
+    },
+    playback: {
+      ...DEFAULT_SETTINGS.playback,
+      ...(settings.playback ?? {}),
+    },
+    subtitles: {
+      ...DEFAULT_SETTINGS.subtitles,
+      ...(settings.subtitles ?? {}),
     },
     opensubtitles: {
       ...DEFAULT_SETTINGS.opensubtitles,

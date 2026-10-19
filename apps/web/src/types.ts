@@ -195,6 +195,33 @@ export interface AppSettings {
     supportsHdr: boolean;
     supportsDolbyVision: boolean;
     preferredCodecs: string[];
+    maxBandwidthMbps: number;
+  };
+  /** Reproduccion: techo de bitrate, buffer, cuenta atras, reanudacion... */
+  playback: {
+    maxBitrateMbps: number;
+    bufferSeconds: number;
+    autoplayCountdown: number;
+    resume: boolean;
+    videoScale: 'contain' | 'cover' | 'fill' | 'zoom';
+    thumbnails: boolean;
+    speed: number;
+    progressIntervalSeconds: number;
+  };
+  /** Apariencia y comportamiento de los subtitulos. */
+  subtitles: {
+    enabled: boolean;
+    size: number;
+    color: string;
+    opacity: number;
+    backgroundOpacity: number;
+    edge: 'none' | 'outline' | 'shadow' | 'raised';
+    verticalPosition: number;
+    bold: boolean;
+    cleanSdh: boolean;
+    delayMs: number;
+    onlyForForeignAudio: boolean;
+    customRenderer: boolean;
   };
   /** OpenSubtitles nativo (busqueda y descarga desde el servidor). */
   opensubtitles: {
@@ -397,6 +424,15 @@ export interface MasterInfo {
     isDefault: boolean;
     channels?: string;
   }>;
+  /** Hojas de sprites para previsualizar el salto (`EXT-X-IMAGE-STREAM-INF`). */
+  imageStreams: Array<{
+    uri: string;
+    width?: number;
+    height?: number;
+    tilesX?: number;
+    tilesY?: number;
+    durationSeconds?: number;
+  }>;
   selected: {
     variant: { uri: string; height?: number; name?: string };
     audio?: { name: string; language?: string; uri?: string };
@@ -404,4 +440,40 @@ export interface MasterInfo {
     reason: string;
   } | null;
   url: string;
+}
+
+/** Recorte de una hoja de sprites (lo que devuelve `/hls/thumbnails`). */
+export interface Thumbnail {
+  url: string;
+  startMs: number;
+  endMs: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sheetWidth?: number;
+  sheetHeight?: number;
+}
+
+/** Cueva de subtitulo ya normalizada por el proxy (`/api/subtitles/proxy`). */
+export interface ProxyCue {
+  id?: string;
+  startMs: number;
+  endMs: number;
+  lines: string[];
+  settings?: string;
+}
+
+/** Respuesta del proxy de subtitulos en modo JSON. */
+export interface ProxySubtitleResult {
+  cues: ProxyCue[];
+  count: number;
+  encoding: string;
+  guessedEncoding: boolean;
+  sourceFormat: 'vtt' | 'srt' | 'ass' | 'ssa' | 'unknown';
+  sdh: boolean;
+  repaired: boolean;
+  language?: string;
+  offsetMs?: number;
+  cleanSdh?: boolean;
 }

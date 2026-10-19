@@ -20,6 +20,7 @@ export function HomeScreen() {
   const [recommended, setRecommended] = useState<Meta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   const catalogs = useMemo(
     () =>
@@ -101,12 +102,49 @@ export function HomeScreen() {
 
   const openDetail = (meta: Meta) => navigate({ name: 'detail', id: meta.id, type: meta.type ?? 'movie' });
 
+  /** Indice id → meta para resolver el titulo que tiene el foco. */
+  const metaIndex = useMemo(() => {
+    const index = new Map<string, Meta>();
+    for (const row of rows) for (const meta of row.metas) if (meta?.id) index.set(meta.id, meta);
+    for (const meta of recommended) if (meta?.id) index.set(meta.id, meta);
+    return index;
+  }, [rows, recommended]);
+
   /**
-   * Portada: el título destacado es el primero de "continuar viendo", o la
-   * primera recomendación, o el primer elemento del catálogo. Una sola
-   * decisión: la pantalla dice qué ver, sin listas de decisiones.
+   * El destacado sigue al foco, pero solo cuando el foco **se asienta**.
+   *
+   * WuPlay lo afino en la v0.9.3: si el hero cambia en cada pulsacion del mando,
+   * la portada parpadea al recorrer una fila rapida. Aqui se espera 400 ms sin
+   * movimiento de foco antes de cambiar, y se usa un unico listener de
+   * `focusin` delegado en el documento (cero handlers por tarjeta).
+   */
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const onFocusIn = (event: FocusEvent): void => {
+      const element = event.target as HTMLElement | null;
+      const id = element?.closest?.('[data-meta-id]')?.getAttribute('data-meta-id') ?? null;
+      if (timer) clearTimeout(timer);
+      if (!id) return;
+      timer = setTimeout(() => setFocusedId(id), 400);
+    };
+
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('focusin', onFocusIn);
+    };
+  }, []);
+
+  /**
+   * Portada: el titulo con el foco asentado; si no, el primero de "continuar
+   * viendo", la primera recomendacion o el primer elemento del catalogo. Una
+   * sola decision: la pantalla dice que ver, sin listas de decisiones.
    */
   const hero = useMemo<Meta | null>(() => {
+    const focused = focusedId ? metaIndex.get(focusedId) : undefined;
+    if (focused) return focused;
+
     const fromProgress = continueWatching[0];
     if (fromProgress) {
       return {
@@ -122,7 +160,7 @@ export function HomeScreen() {
       if (first) return first;
     }
     return null;
-  }, [continueWatching, recommended, rows]);
+  }, [continueWatching, focusedId, metaIndex, recommended, rows]);
 
   //while the catalogs arrive the home shows the skeleton of the final
   //layout: no spinners, no jumps.
@@ -161,7 +199,7 @@ export function HomeScreen() {
   return (
     <div className="screen">
       {hero ? (
-        <section className="hero">
+        <section className="hero" key={hero.id}>
           <div
             className="hero__backdrop"
             style={{
@@ -171,7 +209,12 @@ export function HomeScreen() {
           <div className="hero__scrim" />
           <div className="hero__body">
             <span className="hero__eyebrow">
-              <b>★</b> {continueWatching.length ? 'Continúa donde lo dejaste' : 'Destacado'}
+              <b>★</b>{' '}
+              {focusedId && focusedId === hero.id
+                ? 'Destacado'
+                : continueWatching.length
+                  ? 'Continúa donde lo dejaste'
+                  : 'Destacado'}
             </span>
             <h1 className="hero__title">{hero.name}</h1>
             <div className="hero__facts">

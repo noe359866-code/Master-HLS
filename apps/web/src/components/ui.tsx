@@ -27,6 +27,10 @@ export function Poster({ meta, onSelect, progress, badge, className }: PosterPro
       type="button"
       data-focusable="true"
       className={`poster ${landscape ? 'poster--landscape' : ''} ${className ?? ''}`}
+      // Identidad del titulo: la pantalla de inicio la lee con un unico
+      // listener de `focusin` para actualizar el destacado (WuPlay v0.9.3).
+      data-meta-id={meta.id}
+      data-meta-type={meta.type ?? undefined}
       onClick={() => onSelect(meta)}
       onErrorCapture={() => setFailed(true)}
       aria-label={meta.name ?? meta.id}

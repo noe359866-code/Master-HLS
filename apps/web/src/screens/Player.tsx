@@ -1,10 +1,80 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Hls from 'hls.js';
+/**
+ * Reproductor de Vibe Flix.
+ *
+ * Lo que hace y por que (todo sale de la comparativa con Stremio, WuPlay y
+ * NuvioTV):
+ *
+ *  - **ABR real**: el nivel inicial y el techo los calcula `planStartup()` con
+ *    las capacidades del panel, el ancho de banda estimado, el techo que fije el
+ *    usuario y la variante que eligio el servidor. El ABR sigue activo despues
+ *    del arranque; antes se forzaba el nivel mas alto y la reproduccion se
+ *    ahogaba en cuanto la red bajaba.
+ *  - **Recuperacion de errores**: escalera `startLoad → recoverMediaError →
+ *    swapAudioCodec → otro stream → error`, con `RecoveryPlanner`.
+ *  - **Buffer segun dispositivo**: `planBuffer()` (memoria + bitrate), la idea
+ *    del `BitrateAwareLoadControl` de NuvioTV llevada al navegador.
+ *  - **Subtitulos propios**: se sirven por `/api/subtitles/proxy` (SRT/ASS →
+ *    cues, cualquier codificacion, Clean SDH) y se pintan con `SubtitleLayer`,
+ *    asi que el desfase, el tamano, el color y el borde cambian en caliente.
+ *  - **Previsualizacion del salto**: `EXT-X-IMAGE-STREAM-INF` → `/hls/thumbnails`
+ *    (WuPlay v0.9.3).
+ *  - **Progreso fiable**: se guarda cada N segundos **y** al pausar, al ocultar
+ *    la pestaña y al salir; antes se perdia hasta un cuarto de minuto.
+ *  - **Autoplay con `bingeGroup`**: se preconsultan los streams del siguiente
+ *    episodio y se elige con `pickBingeStream()` para mantener la misma fuente.
+ *  - **Atajos completos** (`playerAction`): j/l, 0-9, `,`/`.`, `[`/`]`, G/H,
+ *    `+`/`-`, PiP, escala de imagen, velocidad, estadisticas.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+
+import {
+  FRAME_STEP_SECONDS,
+  SHORTCUTS,
+  clampSeek,
+  describeStats,
+  detectCapabilities,
+  endsAt,
+  formatBitrate,
+  formatClock,
+  formatDelay,
+  isLowEndDevice,
+  matchLevelIndex,
+  nextSpeed,
+  nextVideoScale,
+  normalizeSubtitleStyle,
+  pickBingeStream,
+  playerAction,
+  progressPercent,
+  qualityLabel,
+  rankStreams,
+  seekToPercent,
+  shouldEnableSubtitles,
+  speedLabel,
+  subtitleTrackLabel,
+  thumbnailAt,
+  thumbnailBox,
+  thumbnailCss,
+  toAsciiDigits,
+  videoScaleCss,
+  videoScaleLabel,
+  type ClientLevel,
+  type Cue,
+  type PlaybackStats,
+  type PlayerAction,
+  type SubtitleStyle,
+  type VideoScale,
+} from '@vibeflix/player-core';
 
 import { api } from '../api';
 import { useApp } from '../store';
-import type { MasterInfo, SkipSegment, Subtitle } from '../types';
-import { Button, ErrorState, Loader } from '../components/ui';
+import { useI18n } from '../i18n';
+import type { MasterInfo, SkipSegment, Stream, Thumbnail } from '../types';
+import { Button } from '../components/ui';
+import { Icon } from '../components/icons';
+import { HlsController } from '../player/hls';
+import { deviceEnvironment } from '../player/environment';
+import { SubtitleLayer } from '../player/SubtitleLayer';
 
 export interface PlayerProps {
   id: string;
@@ -21,36 +91,32 @@ export interface PlayerProps {
   nextTitle?: string;
 }
 
-interface TrackInfo {
-  id: number;
-  name: string;
+/** Pista de subtitulos visible en el selector. */
+interface SubtitleOption {
+  key: string;
+  label: string;
   lang: string;
-  isDefault: boolean;
+  /** Indice en `hls.subtitleTracks` (pistas del manifest). */
+  native?: number;
+  /** URL del fichero externo (se normaliza por el proxy). */
+  url?: string;
+  sdh?: boolean;
 }
 
-/** Tamaños de subtitulo disponibles. */
-const SUBTITLE_SIZES = [
-  { id: 'small', label: 'S', scale: 0.85 },
-  { id: 'normal', label: 'M', scale: 1 },
-  { id: 'large', label: 'L', scale: 1.25 },
-] as const;
+type MenuId =
+  | 'subtitles'
+  | 'audio'
+  | 'quality'
+  | 'speed'
+  | 'stats'
+  | 'info'
+  | 'shortcuts'
+  | 'episodes'
+  | null;
 
-/** Segundos que se muestra la cuenta atras del siguiente episodio. */
-const AUTOPLAY_COUNTDOWN = 5;
+/** Milisegundos que dura un aviso breve en pantalla. */
+const TOAST_MS = 1800;
 
-/**
- * Reproductor de Vibe Flix.
- *
- * - Reproduce el master playlist dejando que hls.js negocie la calidad, y
- *   ofrece el selector de variantes real que devuelve el servidor.
- * - Permite elegir pista de audio y de subtitulos (incluidos los externos del
- *   stream y los descargados de OpenSubtitles).
- * - **Omitir intro**: el servidor detecta el final de la intro a partir de los
- *   subtitulos y aqui aparece el boton para saltar a ese punto.
- * - **Autoplay**: al terminar, ofrece el siguiente episodio con una cuenta
- *   atras que se puede cancelar.
- * - Continua donde lo dejo (progreso guardado por el servidor).
- */
 export function PlayerScreen({
   id,
   type,
@@ -64,180 +130,144 @@ export function PlayerScreen({
   nextTitle,
 }: PlayerProps) {
   const { navigate, activeProfileId, activeProfile, settings, reloadLibrary } = useApp();
+  const { t } = useI18n();
+
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const controlsTimer = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const controllerRef = useRef<HlsController | null>(null);
+  const controlsTimer = useRef<number | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const startedAt = useRef<number>(0);
+  const stallCount = useRef(0);
+  const stallStartedAt = useRef(0);
+  const stallTotalMs = useRef(0);
+  const lastSavedAt = useRef(0);
+  const resumeKeyRef = useRef('');
+  const nextStreamsRef = useRef<Stream[] | null>(null);
 
-  const [error, setError] = useState<string | null>(null);
+  const playback = settings?.playback;
+  const subtitleSettings = settings?.subtitles;
+  const deviceSettings = settings?.device;
+  const skipEnabled = settings?.skipIntro?.enabled !== false;
+  const countdownSeconds = playback?.autoplayCountdown ?? 5;
+  const saveEveryMs = Math.max(3, playback?.progressIntervalSeconds ?? 15) * 1000;
+
+  // ------------------------------------------------------------- estado
+  const [activeUrl, setActiveUrl] = useState(streamUrl ?? '');
   const [loading, setLoading] = useState(true);
+  const [fatal, setFatal] = useState<{ message: string; detail: string } | null>(null);
+  const [recovering, setRecovering] = useState<string | null>(null);
   const [master, setMaster] = useState<MasterInfo | null>(null);
+  const [levels, setLevels] = useState<ClientLevel[]>([]);
   const [quality, setQuality] = useState('');
-  const [showInfo, setShowInfo] = useState(false);
-  const [audioTracks, setAudioTracks] = useState<TrackInfo[]>([]);
-  const [subtitleTracks, setSubtitleTracks] = useState<TrackInfo[]>([]);
-  const [activeAudio, setActiveAudio] = useState(-1);
-  const [activeSubtitle, setActiveSubtitle] = useState(-1);
-  const [subtitlesOn, setSubtitlesOn] = useState(false);
-  const [externalTracks, setExternalTracks] = useState<Array<{ name: string; lang: string; url: string }>>([]);
-  const [resumedAt, setResumedAt] = useState<number | null>(null);
+  const [pinned, setPinned] = useState(-1);
+  const [menu, setMenu] = useState<MenuId>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
-  // Reproduccion
   const [playing, setPlaying] = useState(false);
+  const [buffering, setBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [subtitleSize, setSubtitleSize] = useState(1);
+  const [speed, setSpeed] = useState(1);
+  const [videoScale, setVideoScale] = useState<VideoScale>(playback?.videoScale ?? 'contain');
+  const [bandwidth, setBandwidth] = useState(0);
+  const [frames, setFrames] = useState({ dropped: 0, decoded: 0 });
+  const [resumedAt, setResumedAt] = useState<number | null>(null);
 
-  // Omitir intro
+  // Subtitulos
+  const [subtitleOptions, setSubtitleOptions] = useState<SubtitleOption[]>([]);
+  const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null);
+  const [cues, setCues] = useState<Cue[]>([]);
+  const [subtitleDelay, setSubtitleDelay] = useState(subtitleSettings?.delayMs ?? 0);
+  const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStyle>(() =>
+    normalizeSubtitleStyle({
+      size: subtitleSettings?.size,
+      color: subtitleSettings?.color,
+      opacity: subtitleSettings?.opacity,
+      backgroundOpacity: subtitleSettings?.backgroundOpacity,
+      edge: subtitleSettings?.edge,
+      verticalPosition: subtitleSettings?.verticalPosition,
+      bold: subtitleSettings?.bold,
+    }),
+  );
+  const [cleanSdh, setCleanSdh] = useState(subtitleSettings?.cleanSdh ?? false);
+  const [audioOptions, setAudioOptions] = useState<Array<{ index: number; label: string; lang: string }>>([]);
+  const [activeAudio, setActiveAudio] = useState(-1);
+
+  // Omitir intro y autoplay
   const [skipSegment, setSkipSegment] = useState<SkipSegment | null>(null);
   const [skipped, setSkipped] = useState(false);
-
-  // Autoplay
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [detectedNext, setDetectedNext] = useState<{ id: string; title: string } | null>(null);
 
-  const device = settings?.device;
-  const maxHeight = device?.maxHeight ?? 1080;
-  const skipEnabled = settings?.skipIntro?.enabled !== false;
+  // Miniaturas de previsualizacion
+  const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
+  const [previewAt, setPreviewAt] = useState<number | null>(null);
+  const [previewX, setPreviewX] = useState(0);
 
-  // --------------------------------------------------------------- carga
-  useEffect(() => {
-    if (!streamUrl) {
-      setError('No hay URL de stream');
-      setLoading(false);
-      return;
-    }
+  const allStreams = useRef<Stream[]>([]);
 
-    const video = videoRef.current;
-    if (!video) return;
-
-    setLoading(true);
-    setError(null);
-
-    const cleanup = () => {
-      hlsRef.current?.destroy();
-      hlsRef.current = null;
-    };
-
-    const attach = (source: string) => {
-      if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          backBufferLength: 60,
-          maxBufferLength: 30,
-          startLevel: -1,
-        });
-        hlsRef.current = hls;
-
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setLoading(false);
-          const levels = hls.levels;
-          if (levels.length) {
-            const best = levels.reduce(
-              (acc, level, index) =>
-                (level.height ?? 0) > (levels[acc]?.height ?? 0) ? index : acc,
-              0,
-            );
-            hls.currentLevel = best;
-            setQuality(`${levels[best]?.height ?? ''}p`);
-          }
-          refreshTracks(hls);
-        });
-
-        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => refreshTracks(hls));
-        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => refreshTracks(hls));
-
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            setError(`Error de reproducción: ${data.details}`);
-            setLoading(false);
-          }
-        });
-
-        hls.loadSource(source);
-        hls.attachMedia(video);
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = source;
-        video.addEventListener('loadedmetadata', () => setLoading(false), { once: true });
-      } else {
-        setError('Este navegador no puede reproducir HLS');
-        setLoading(false);
-      }
-    };
-
-    attach(streamUrl);
-    return cleanup;
-  }, [streamUrl]);
-
-  const refreshTracks = useCallback((hls: Hls) => {
-    setAudioTracks(
-      hls.audioTracks.map((track, index) => ({
-        id: index,
-        name: track.name || track.lang || `Audio ${index + 1}`,
-        lang: track.lang ?? '',
-        isDefault: Boolean(track.default),
-      })),
-    );
-    setSubtitleTracks(
-      hls.subtitleTracks.map((track, index) => ({
-        id: index,
-        name: track.name || track.lang || `Subtítulos ${index + 1}`,
-        lang: track.lang ?? '',
-        isDefault: Boolean(track.default),
-      })),
-    );
+  // ------------------------------------------------------- avisos breves
+  const notify = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), TOAST_MS);
   }, []);
 
-  // ------------------------------------------- subtitulos externos del stream
-  //
-  // hls.js v1 no expone las pistas externas del stream, asi que se cargan con
-  // <track> nativo del navegador (WebVTT), que es lo que usan los clientes
-  // Stremio de escritorio.
-  useEffect(() => {
-    if (!streamUrl) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        // En Stremio, un episodio se pide como tipo `series` con el id
-        // completo (`tt123:1:2`), que es lo que entienden los addons.
-        const { streams } = await api.streams(
-          type === 'episode' ? 'series' : type,
-          id,
-        );
-        const found = streams.find((stream) => stream.url === streamUrl);
-        const subtitles: Subtitle[] = found?.subtitles ?? [];
-        const tracks = subtitles
-          .filter((subtitle) => Boolean(subtitle.url))
-          .map((subtitle) => ({
-            name: subtitle.lang ?? subtitle.language ?? 'Subtitulos',
-            lang: subtitle.lang ?? subtitle.language ?? 'und',
-            url: subtitle.url!,
-          }));
-        if (!cancelled) setExternalTracks(tracks);
-      } catch {
-        // Sin subtitulos externos: no es un error.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [streamUrl, id, type]);
+  // ------------------------------------------------------- controles UI
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+    controlsTimer.current = window.setTimeout(() => {
+      // Con un menu abierto no se ocultan: el usuario esta eligiendo algo.
+      setMenu((current) => {
+        if (current) return current;
+        setControlsVisible(false);
+        return null;
+      });
+    }, 4000);
+  }, []);
 
-  // ------------------------------------------------- analisis del master HLS
   useEffect(() => {
-    if (!streamUrl) return;
+    showControls();
+    return () => {
+      if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, [showControls]);
+
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, [activeUrl]);
+
+  // ------------------------------------------------- analisis del master
+  //
+  // Se pide antes de arrancar hls.js: la variante que elige el servidor
+  // (teniendo en cuenta el panel y el idioma) se usa como semilla del plan de
+  // arranque, y de paso llegan las hojas de sprites para el scrubbing.
+  useEffect(() => {
+    if (!activeUrl) return;
     let cancelled = false;
     void (async () => {
       try {
-        const info = await api.masterInfo(streamUrl, {
-          maxHeight,
+        const info = await api.masterInfo(activeUrl, {
+          maxHeight: deviceSettings?.maxHeight,
           audioLang: activeProfile?.audioLanguage,
         });
-        if (!cancelled) setMaster(info);
+        if (cancelled) return;
+        setMaster(info);
+        if (!info.isMaster) return;
+        if (playback?.thumbnails === false || !info.imageStreams?.length) return;
+        try {
+          const result = await api.thumbnails(activeUrl);
+          if (!cancelled) setThumbnails(result.thumbnails as Thumbnail[]);
+        } catch {
+          // Sin miniaturas: el scrubbing funciona igual, solo sin previsualizacion.
+        }
       } catch {
         // Si no es un master (o falla), se reproduce tal cual.
       }
@@ -245,11 +275,265 @@ export function PlayerScreen({
     return () => {
       cancelled = true;
     };
-  }, [streamUrl, maxHeight, activeProfile?.audioLanguage]);
+  }, [activeUrl, deviceSettings?.maxHeight, activeProfile?.audioLanguage, playback?.thumbnails]);
+
+  // ------------------------------------------------------ arranque HLS
+  useEffect(() => {
+    if (!activeUrl) {
+      setFatal({ message: t('PLAYER_ERROR'), detail: 'sin url de stream' });
+      setLoading(false);
+      return;
+    }
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    let controller: HlsController | null = null;
+    let cancelled = false;
+    setLoading(true);
+    setFatal(null);
+    setRecovering(null);
+    setResumedAt(null);
+    startedAt.current = Date.now();
+    stallCount.current = 0;
+    stallTotalMs.current = 0;
+
+    const environment = deviceEnvironment(video);
+    const detected = detectCapabilities(environment);
+    const lowEnd = isLowEndDevice(environment);
+    const capabilities = {
+      ...detected,
+      // El techo declarado en los ajustes manda sobre el detectado.
+      maxHeight: Math.min(deviceSettings?.maxHeight ?? detected.maxHeight ?? 4096, detected.maxHeight ?? 4096),
+      ...(deviceSettings?.supportsHdr === false ? { supportsHdr: false } : {}),
+    };
+
+    void (async () => {
+      try {
+        controller = new HlsController({
+          video,
+          capabilities,
+          maxBitrateMbps: playback?.maxBitrateMbps,
+          bufferSeconds: playback?.bufferSeconds,
+          device: {
+            deviceMemory: environment.deviceMemory,
+            hardwareConcurrency: environment.hardwareConcurrency,
+            lowEnd,
+          },
+          serverVariant: master?.selected?.variant ?? null,
+          live: type === 'tv' || type === 'channel',
+          hasAlternateStream: () => allStreams.current.filter((stream) => stream.url).length > 1,
+          onReady: () => {
+            if (cancelled) return;
+            setLoading(false);
+            setBuffering(false);
+          },
+          onLevels: (next) => {
+            if (cancelled) return;
+            setLevels(next);
+          },
+          onLevelSwitched: (_index, level, label) => {
+            if (cancelled) return;
+            setQuality(label);
+          },
+          onTracks: () => {
+            if (cancelled || !controller) return;
+            setAudioOptions(
+              controller.audioTracks.map((track, index) => ({
+                index,
+                label: track.name || track.lang || `${t('AUDIO')} ${index + 1}`,
+                lang: track.lang ?? '',
+              })),
+            );
+          },
+          onStats: (stats) => {
+            if (cancelled) return;
+            setBandwidth(stats.bandwidth);
+            setFrames({ dropped: stats.droppedFrames, decoded: stats.decodedFrames });
+          },
+          onRecovering: (step) => {
+            if (cancelled) return;
+            setRecovering(step.reason);
+            setLoading(true);
+          },
+          onError: (info, step, message) => {
+            if (cancelled) return;
+            if (step.action === 'giveUp' && info.fatal) {
+              setLoading(false);
+              setRecovering(null);
+              setFatal({ message: t('PLAYER_ERROR'), detail: `${message} (${info.details})` });
+              return;
+            }
+            if (info.fatal) setFatal(null);
+          },
+          onSwitchStream: () => {
+            if (cancelled) return;
+            void switchToAlternateStream();
+          },
+        });
+        controllerRef.current = controller;
+        await controller.start(activeUrl);
+        // Camino nativo (Safari/WebKit): no hay MANIFEST_PARSED que avise.
+        if (controller.native) {
+          video.addEventListener(
+            'loadedmetadata',
+            () => {
+              if (!cancelled) {
+                setLoading(false);
+                setQuality(t('PLAYER_QUALITY_AUTO'));
+              }
+            },
+            { once: true },
+          );
+          video.src = activeUrl;
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoading(false);
+          setFatal({ message: t('PLAYER_ERROR'), detail: (error as Error).message });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller?.destroy();
+      controllerRef.current = null;
+    };
+    // `master` se lee dentro pero no debe reiniciar la reproduccion: solo se
+    // usa como semilla del plan si ya llego.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUrl]);
+
+  // ------------------------------------------------- streams alternativos
+  const switchToAlternateStream = useCallback(async () => {
+    const candidates = rankStreams(allStreams.current, { maxHeight: deviceSettings?.maxHeight }).filter(
+      (stream) => stream.url && stream.url !== activeUrl,
+    );
+    const next = candidates[0];
+    if (!next?.url) {
+      setFatal({ message: t('PLAYER_ERROR'), detail: t('PLAYER_ERROR_NEXT_STREAM') });
+      setLoading(false);
+      return;
+    }
+    setActiveUrl(next.url);
+    notify(t('PLAYER_ERROR_NEXT_STREAM'));
+  }, [activeUrl, deviceSettings?.maxHeight, notify, t]);
+
+  /** Todos los streams del titulo: para el selector y para la recuperacion. */
+  useEffect(() => {
+    if (!activeUrl) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { streams } = await api.streams(type === 'episode' ? 'series' : type, id);
+        if (cancelled) return;
+        allStreams.current = streams;
+        // Subtitulos que trae el stream (el protocolo los declara ahi).
+        const found = streams.find((stream) => stream.url === activeUrl);
+        const fromStream: SubtitleOption[] = (found?.subtitles ?? [])
+          .filter((subtitle) => Boolean(subtitle.url))
+          .map((subtitle, index) => ({
+            key: `ext:${index}`,
+            label: subtitleTrackLabel({ lang: subtitle.lang ?? subtitle.language, name: subtitle.lang }),
+            lang: subtitle.lang ?? subtitle.language ?? '',
+            url: subtitle.url as string,
+          }));
+        const fromProp: SubtitleOption[] = subtitleUrl
+          ? [{
+              key: `ext:${fromStream.length}`,
+              label: subtitleLabel ?? 'OpenSubtitles',
+              lang: '',
+              url: subtitleUrl,
+            }]
+          : [];
+        setSubtitleOptions((previous) => [
+          ...previous.filter((option) => option.native !== undefined),
+          ...fromStream,
+          ...fromProp,
+        ]);
+      } catch {
+        // Sin lista de streams: se reproduce el que vino en la ruta.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUrl, id, type, subtitleUrl, subtitleLabel]);
+
+  // --------------------------------------- pistas del manifest + por defecto
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    const native = controller.subtitleTracks.map((track, index) => ({
+      key: `native:${index}`,
+      label: subtitleTrackLabel({ lang: track.lang, name: track.name }),
+      lang: track.lang ?? '',
+      native: index,
+      sdh: /sdh|cc/i.test(track.name ?? ''),
+    }));
+    if (!native.length) return;
+    setSubtitleOptions((previous) => [...native, ...previous.filter((option) => option.native === undefined)]);
+  }, [levels, quality]);
+
+  // Decision inicial: subtitulos activos solo si el ajuste lo pide (y, con
+  // «solo para audio extranjero», solo si el audio no es el del perfil).
+  useEffect(() => {
+    if (!subtitleOptions.length || activeSubtitle !== null) return;
+    if (subtitleSettings?.enabled === false) return;
+    const wanted = activeProfile?.subtitleLanguage ?? activeProfile?.contentLanguage ?? settings?.language;
+    const enable = shouldEnableSubtitles({
+      audioLanguage: audioOptions.find((track) => track.index === activeAudio)?.lang,
+      contentLanguage: wanted,
+      onlyForForeignAudio: subtitleSettings?.onlyForForeignAudio,
+      preferSubtitles: subtitleSettings?.enabled,
+    });
+    if (!enable) return;
+    const match =
+      subtitleOptions.find((option) => option.lang && wanted && option.lang.toLowerCase().startsWith(wanted.toLowerCase().slice(0, 2))) ??
+      subtitleOptions.find((option) => option.native !== undefined) ??
+      subtitleOptions[0];
+    if (match) setActiveSubtitle(match.key);
+  }, [subtitleOptions, activeSubtitle, subtitleSettings, activeProfile, settings?.language, audioOptions, activeAudio]);
+
+  // ---------------------------------------------- carga de subtitulos
+  useEffect(() => {
+    const option = subtitleOptions.find((entry) => entry.key === activeSubtitle);
+    if (!option) {
+      setCues([]);
+      controllerRef.current?.setSubtitleTrack(-1);
+      return;
+    }
+    if (option.native !== undefined) {
+      setCues([]);
+      controllerRef.current?.setSubtitleTrack(option.native);
+      return;
+    }
+    if (!option.url) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await api.subtitleProxy({
+          url: option.url as string,
+          lang: option.lang || undefined,
+          clean: cleanSdh,
+          format: 'json',
+        });
+        if (cancelled || !result.json) return;
+        setCues(result.json.cues as Cue[]);
+        controllerRef.current?.setSubtitleTrack(-1);
+      } catch {
+        // Sin subtitulos: la reproduccion sigue.
+        if (!cancelled) setCues([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSubtitle, subtitleOptions, cleanSdh]);
 
   // ------------------------------------------------------ deteccion de intro
-  //
-  // El servidor analiza los subtitulos y dice hasta donde llega la intro.
   useEffect(() => {
     if (!skipEnabled) return;
     let cancelled = false;
@@ -258,14 +542,15 @@ export function PlayerScreen({
       try {
         const result = await api.skipIntro({
           type: type === 'episode' ? 'series' : type,
-          id: imdbId,
-          imdbId,
+          id: imdbId ?? id,
+          imdbId: imdbId ?? '',
           season: season ? Number(season) : undefined,
           episode: episode ? Number(episode) : undefined,
+          duration: 0,
         });
         if (!cancelled && result.enabled && result.segment) setSkipSegment(result.segment);
       } catch {
-        // Sin deteccion: se queda el boton con el offset por defecto.
+        // Sin deteccion: no aparece el boton.
       }
     })();
     return () => {
@@ -277,74 +562,92 @@ export function PlayerScreen({
   useEffect(() => {
     if (!title) return;
     void api
-      .pushHistory(
-        { id, type, name: title, poster, streamName },
-        activeProfileId || undefined,
-      )
+      .pushHistory({ id, type, name: title, poster, streamName }, activeProfileId || undefined)
       .then(() => reloadLibrary())
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, type, title]);
 
-  const lastSaved = useRef(0);
-  const handleTimeUpdate = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    setCurrentTime(video.currentTime);
-    setDuration(video.duration || 0);
-    if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
+  /** Guarda el progreso (y lo marca como guardado para no repetir). */
+  const saveProgress = useCallback(
+    (options: { force?: boolean } = {}) => {
+      const video = videoRef.current;
+      if (!video || !title) return;
+      const now = Date.now();
+      if (!options.force && now - lastSavedAt.current < saveEveryMs) return;
+      if (!Number.isFinite(video.currentTime) || video.currentTime <= 0) return;
+      lastSavedAt.current = now;
+      void api
+        .saveProgress(
+          {
+            id,
+            type,
+            name: title,
+            poster,
+            position: Math.floor(video.currentTime),
+            duration: Math.floor(video.duration || 0),
+            mediaType: type === 'episode' ? 'episode' : type === 'series' ? 'series' : 'movie',
+          },
+          activeProfileId || undefined,
+        )
+        .catch(() => undefined);
+    },
+    [activeProfileId, id, poster, saveEveryMs, title, type],
+  );
 
-    if (!title) return;
-    const now = Date.now();
-    if (now - lastSaved.current < 15_000) return;
-    lastSaved.current = now;
-    void api
-      .saveProgress(
-        {
-          id,
-          type,
-          name: title,
-          poster,
-          position: Math.floor(video.currentTime),
-          duration: Math.floor(video.duration || 0),
-          mediaType: type === 'episode' ? 'episode' : type === 'series' ? 'series' : 'movie',
-        },
-        activeProfileId || undefined,
-      )
-      .catch(() => undefined);
-  }, [id, type, title, poster, activeProfileId]);
+  // Guardar al pausar, al ocultar la pestaña y al salir: son los tres momentos
+  // en los que se perdia el progreso (apagon, cambio de input en la TV, cerrar).
+  useEffect(() => {
+    const flush = () => saveProgress({ force: true });
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flush();
+    };
+  }, [saveProgress]);
 
   // ------------------------------------------------- continuar donde lo deje
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || resumedAt !== null) return;
+    if (!video || playback?.resume === false) return;
+    const key = `${id}:${activeUrl}`;
+    if (resumeKeyRef.current === key) return;
+
     const onLoaded = () => {
+      if (resumeKeyRef.current === key) return;
+      resumeKeyRef.current = key;
       void (async () => {
         try {
           const entries = await api.progress(activeProfileId || undefined);
           const entry = entries.find((item) => item.id === id);
-          if (entry && entry.position > 30 && entry.duration > 0) {
-            const ratio = entry.position / entry.duration;
-            if (ratio < 0.95) {
-              video.currentTime = entry.position;
-              setResumedAt(entry.position);
-            }
-          }
+          if (!entry || entry.position <= 30 || entry.duration <= 0) return;
+          const ratio = entry.position / entry.duration;
+          if (ratio >= 0.95) return;
+          video.currentTime = entry.position;
+          setResumedAt(entry.position);
+          notify(`${t('PLAYER_RESUMED')} ${toAsciiDigits(formatClock(entry.position))}`);
         } catch {
           // Sin progreso guardado: se empieza desde el principio.
         }
       })();
     };
+
     video.addEventListener('loadedmetadata', onLoaded);
-    return () => video.removeEventListener('loadedmetadata', onLoaded);
-  }, [id, activeProfileId, resumedAt]);
+    video.addEventListener('durationchange', onLoaded);
+    return () => {
+      video.removeEventListener('loadedmetadata', onLoaded);
+      video.removeEventListener('durationchange', onLoaded);
+    };
+  }, [id, activeUrl, activeProfileId, playback?.resume, notify, t]);
 
   // -------------------------------------------------- siguiente episodio
-  //
-  // Si la ruta no trae el siguiente (p.ej. se entra desde la biblioteca), se
-  // busca en la ficha de la serie.
-  const [detectedNext, setDetectedNext] = useState<{ id: string; title: string } | null>(null);
-
   useEffect(() => {
     if (type !== 'episode' || nextId) return;
     const base = id.split(':')[0] ?? id;
@@ -358,42 +661,64 @@ export function PlayerScreen({
         if (!cancelled && next) {
           setDetectedNext({
             id: next.id,
-            title: next.title ?? next.name ?? `Episodio ${next.episode ?? index + 2}`,
+            title: next.title ?? next.name ?? `${t('EPISODE')} ${next.episode ?? index + 2}`,
           });
         }
       } catch {
-        // Sin informacion de episodios: no hay autoplay siguiente.
+        // Sin informacion de episodios: no hay autoplay.
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [id, type, nextId]);
+  }, [id, type, nextId, t]);
 
   const resolvedNextId = nextId ?? detectedNext?.id ?? '';
   const resolvedNextTitle = nextTitle ?? detectedNext?.title;
 
+  // Se preconsultan los streams del siguiente episodio cuando queda poco: al
+  // terminar, el autoplay no tiene que esperar al fan-out de addons.
+  useEffect(() => {
+    if (!resolvedNextId || !duration || nextStreamsRef.current) return;
+    if (duration - currentTime > 90) return;
+    let cancelled = false;
+    void api
+      .streams('series', resolvedNextId)
+      .then(({ streams }) => {
+        if (!cancelled) nextStreamsRef.current = streams;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedNextId, currentTime, duration]);
+
   const playNext = useCallback(async () => {
     if (!resolvedNextId) return;
     try {
-      const { streams } = await api.streams('series', resolvedNextId);
-      const stream = streams[0];
-      if (!stream?.url) return;
+      const streams =
+        nextStreamsRef.current ?? (await api.streams('series', resolvedNextId)).streams;
+      nextStreamsRef.current = null;
+      const current = allStreams.current.find((stream) => stream.url === activeUrl) ?? null;
+      // `bingeGroup` primero: mantiene la misma fuente y calidad entre episodios.
+      const chosen =
+        pickBingeStream(streams, current, { maxHeight: deviceSettings?.maxHeight }) ??
+        rankStreams(streams, { maxHeight: deviceSettings?.maxHeight })[0];
+      if (!chosen?.url) return;
       navigate({
         name: 'player',
         id: resolvedNextId,
         type: 'episode',
-        streamUrl: stream.url,
-        streamName: stream.name ?? stream.title ?? 'Stream',
+        streamUrl: chosen.url,
+        streamName: chosen.name ?? chosen.title ?? t('PLAYER_STREAMS'),
         title: resolvedNextTitle ?? title,
         poster,
       });
     } catch {
       // Sin streams para el siguiente episodio.
     }
-  }, [resolvedNextId, resolvedNextTitle, navigate, title, poster]);
+  }, [resolvedNextId, resolvedNextTitle, activeUrl, deviceSettings?.maxHeight, navigate, poster, t, title]);
 
-  // Cuenta atras de autoplay al terminar el episodio.
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
@@ -405,54 +730,33 @@ export function PlayerScreen({
     return () => window.clearTimeout(timer);
   }, [countdown, playNext]);
 
-  // ------------------------------------------------------------- controles
-  /** true si el foco esta dentro de la barra de controles. */
-  const focusInControls = useCallback((target: EventTarget | null) => {
-    const element = target as HTMLElement | null;
-    return Boolean(element?.closest?.('.player__bar'));
-  }, []);
-
-  const showControls = useCallback(() => {
-    setControlsVisible(true);
-    if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
-    controlsTimer.current = window.setTimeout(() => setControlsVisible(false), 3000);
-  }, []);
-
-  useEffect(() => {
-    showControls();
-    return () => {
-      if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
-    };
-  }, [showControls]);
-
-  /** Lleva el foco al primer control de la barra (D-pad hacia arriba/abajo). */
-  const focusControls = useCallback(() => {
-    const bar = containerRef.current?.querySelector<HTMLElement>(
-      '.player__bar [data-focusable="true"]',
-    );
-    bar?.focus();
-    showControls();
-  }, [showControls]);
-
-  // Al entrar en el reproductor el foco va al video: las flechasseek y el
-  // espacio play/pausa.
-  useEffect(() => {
-    containerRef.current?.focus();
-  }, [streamUrl]);
-
+  // ------------------------------------------------------------- acciones
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) void video.play();
-    else video.pause();
-  }, []);
+    if (video.paused) void video.play().catch(() => undefined);
+    else {
+      video.pause();
+      saveProgress({ force: true });
+    }
+    showControls();
+  }, [saveProgress, showControls]);
 
-  const seekBy = useCallback((delta: number) => {
+  const seekBy = useCallback(
+    (delta: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.currentTime = clampSeek(video.currentTime + delta, video.duration || 0);
+      showControls();
+    },
+    [showControls],
+  );
+
+  const seekTo = useCallback((time: number) => {
     const video = videoRef.current;
     if (!video) return;
-    video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + delta));
-    showControls();
-  }, [showControls]);
+    video.currentTime = clampSeek(time, video.duration || 0);
+  }, []);
 
   const changeVolume = useCallback((value: number) => {
     const video = videoRef.current;
@@ -469,185 +773,324 @@ export function PlayerScreen({
     if (!video) return;
     video.muted = !video.muted;
     setMuted(video.muted);
+    notify(video.muted ? t('PLAYER_MUTE') : t('PLAYER_UNMUTE'));
+  }, [notify, t]);
+
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void container.requestFullscreen?.();
   }, []);
+
+  const togglePiP = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+      notify(t('PLAYER_PIP'));
+    } catch {
+      // PiP no disponible en este navegador.
+    }
+  }, [notify, t]);
+
+  const cycleScale = useCallback(() => {
+    setVideoScale((current) => {
+      const next = nextVideoScale(current);
+      notify(`${t('PLAYER_VIDEO_SCALE')}: ${videoScaleLabel(next)}`);
+      return next;
+    });
+  }, [notify, t]);
+
+  const changeSpeed = useCallback(
+    (direction: 1 | -1) => {
+      setSpeed((current) => {
+        const next = nextSpeed(current, direction);
+        if (videoRef.current) videoRef.current.playbackRate = next;
+        notify(`${t('PLAYER_PLAYBACK_SPEED')}: ${speedLabel(next)}`);
+        return next;
+      });
+    },
+    [notify, t],
+  );
+
+  /** Salto de fotograma a fotograma (`,` y `.` en teclado; util para ajustar). */
+  const frameStep = useCallback(
+    (deltaFrames: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.pause();
+      video.currentTime = Math.max(0, video.currentTime + deltaFrames * FRAME_STEP_SECONDS);
+      showControls();
+    },
+    [showControls],
+  );
 
   const skipIntro = useCallback(() => {
     const video = videoRef.current;
     if (!video || !skipSegment) return;
     video.currentTime = Math.max(0, skipSegment.endMs / 1000);
     setSkipped(true);
+    notify(skipSegment.kind === 'recap' ? t('PLAYER_SKIP_RECAP') : t('PLAYER_SKIP_INTRO'));
     showControls();
-  }, [skipSegment, showControls]);
+  }, [skipSegment, notify, showControls, t]);
 
-  const toggleFullscreen = useCallback(() => {
-    const container = document.querySelector('.player');
-    if (!container) return;
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void container.requestFullscreen?.();
+  const selectQuality = useCallback(
+    (index: number) => {
+      controllerRef.current?.setLevel(index);
+      setPinned(index);
+      setQuality(index < 0 ? t('PLAYER_QUALITY_AUTO') : qualityLabel(levels[index]));
+      notify(index < 0 ? t('PLAYER_QUALITY_AUTO') : qualityLabel(levels[index]));
+    },
+    [levels, notify, t],
+  );
+
+  const selectSubtitle = useCallback((key: string | null) => {
+    setActiveSubtitle(key);
+    setMenu(null);
   }, []);
 
-  // Atajos de teclado del reproductor.
-  //
-  // Se escuchan en la fase de captura y se detiene la propagacion: asi el
-  // reproductor manda en las flechas y la navegacion espacial del D-pad solo
-  // actua cuando el foco esta dentro de la barra de controles.
+  const selectAudio = useCallback(
+    (index: number) => {
+      controllerRef.current?.setAudioTrack(index);
+      setActiveAudio(index);
+      setMenu(null);
+      const chosen = audioOptions.find((track) => track.index === index);
+      if (chosen) notify(chosen.label);
+    },
+    [audioOptions, notify],
+  );
+
+  const changeSubtitleDelay = useCallback(
+    (deltaMs: number) => {
+      setSubtitleDelay((current) => {
+        const next = Math.max(-15_000, Math.min(15_000, current + deltaMs));
+        notify(`${t('PLAYER_SUBTITLES_DELAY')} ${formatDelay(next)}`);
+        return next;
+      });
+    },
+    [notify, t],
+  );
+
+  const changeSubtitleSize = useCallback(
+    (direction: 1 | -1) => {
+      setSubtitleStyle((current) => {
+        const next = Math.max(0.6, Math.min(2.4, Number((current.size + direction * 0.1).toFixed(2))));
+        notify(`${t('PLAYER_SUBTITLES_SIZE')} ${Math.round(next * 100)}%`);
+        return { ...current, size: next };
+      });
+    },
+    [notify, t],
+  );
+
+  /** Ejecuta una accion del reproductor (teclado, mando o boton). */
+  const run = useCallback(
+    (action: PlayerAction) => {
+      switch (action.type) {
+        case 'togglePlay':
+          togglePlay();
+          break;
+        case 'seek':
+          seekBy(action.deltaSeconds);
+          break;
+        case 'seekPercent':
+          seekTo(seekToPercent(action.percent, duration));
+          break;
+        case 'frameStep':
+          frameStep(action.deltaFrames);
+          break;
+        case 'volume':
+          changeVolume((muted ? 0 : volume) + action.delta);
+          break;
+        case 'toggleMute':
+          toggleMute();
+          break;
+        case 'toggleFullscreen':
+          toggleFullscreen();
+          break;
+        case 'togglePiP':
+          void togglePiP();
+          break;
+        case 'cycleVideoScale':
+          cycleScale();
+          break;
+        case 'speed':
+          changeSpeed(action.direction);
+          break;
+        case 'speedReset':
+          if (videoRef.current) videoRef.current.playbackRate = 1;
+          setSpeed(1);
+          notify(speedLabel(1));
+          break;
+        case 'subtitleDelay':
+          changeSubtitleDelay(action.deltaMs);
+          break;
+        case 'subtitleSize':
+          changeSubtitleSize(action.direction);
+          break;
+        case 'toggleSubtitles':
+          setActiveSubtitle((current) => {
+            if (current) return null;
+            return subtitleOptions[0]?.key ?? null;
+          });
+          break;
+        case 'menu':
+          setMenu((current) => (current === action.menu ? null : action.menu));
+          break;
+        case 'nextEpisode':
+          setCountdown(null);
+          void playNext();
+          break;
+        case 'previousEpisode':
+          seekTo(0);
+          break;
+        case 'skipIntro':
+          skipIntro();
+          break;
+        case 'back':
+          saveProgress({ force: true });
+          navigate({ name: 'detail', id: id.split(':')[0] ?? id, type: type === 'episode' ? 'series' : type });
+          break;
+        case 'showControls':
+          showControls();
+          break;
+        case 'shortcuts':
+          setMenu((current) => (current === 'shortcuts' ? null : 'shortcuts'));
+          break;
+        default:
+          break;
+      }
+      showControls();
+    },
+    [
+      changeSpeed, changeSubtitleDelay, changeSubtitleSize, changeVolume, cycleScale, duration, frameStep,
+      id, navigate, notify, playNext, saveProgress, seekBy, seekTo, showControls, skipIntro, subtitleOptions,
+      toggleFullscreen, toggleMute, togglePiP, togglePlay, type, volume, muted,
+    ],
+  );
+
+  // ------------------------------------------------------------- teclado
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      // Los campos (volumen, progreso) se comportan de forma nativa.
-      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
-      // Con el foco en la barra, las flechas mueven el foco entre controles y
-      // espacio/enter activan el boton enfocado.
-      if (
-        focusInControls(event.target) &&
-        (event.key.startsWith('Arrow') || event.key === ' ' || event.key === 'Enter')
-      ) {
+      const inField = Boolean(
+        target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)),
+      );
+      const inControls = Boolean(target?.closest?.('.player__bar') || target?.closest?.('.player__menu'));
+
+      // Con el foco dentro de la barra o del menu, las flechas y Enter son del
+      // navegador (navegacion espacial del D-pad).
+      if (inControls && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', ' '].includes(event.key)) {
+        showControls();
+        return;
+      }
+      // Arriba/abajo sin foco en los controles: llevan el foco a la barra.
+      if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !inControls) {
+        event.preventDefault();
+        const bar = containerRef.current?.querySelector<HTMLElement>('.player__bar [data-focusable="true"]');
+        bar?.focus();
+        showControls();
         return;
       }
 
-      let handled = true;
-      switch (event.key) {
-        case ' ':
-        case 'k':
-          togglePlay();
-          break;
-        case 'ArrowLeft':
-          seekBy(-10);
-          break;
-        case 'ArrowRight':
-          seekBy(10);
-          break;
-        case 'ArrowUp':
-        case 'ArrowDown':
-          // Arriba/abajo: el foco pasa a la barra de controles (o vuelve al
-          // video si ya estaba en ella).
-          if (focusInControls(event.target)) {
-            containerRef.current?.focus();
-          } else {
-            focusControls();
-          }
-          break;
-        case 'm':
-          toggleMute();
-          break;
-        case 'f':
-          toggleFullscreen();
-          break;
-        case 'i':
-          setShowInfo((value) => !value);
-          break;
-        case 'Escape':
-          navigate({ name: 'detail', id, type });
-          break;
-        default:
-          handled = false;
-      }
-      if (!handled) return;
+      const action = playerAction({
+        key: event.key,
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        altKey: event.altKey,
+        inField,
+      });
+      if (!action) return;
       event.preventDefault();
       event.stopPropagation();
-      showControls();
+      run(action);
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [
-    togglePlay,
-    seekBy,
-    focusControls,
-    focusInControls,
-    toggleMute,
-    toggleFullscreen,
-    showControls,
-    navigate,
-    id,
-    type,
-  ]);
+  }, [run, showControls]);
 
-  // -------------------------------------------------------------- acciones
-  const selectQuality = (level: number) => {
-    const hls = hlsRef.current;
-    if (!hls) return;
-    hls.currentLevel = level;
-    setQuality(`${hls.levels[level]?.height ?? ''}p`);
-  };
-
-  const selectExternalSubtitle = (index: number) => {
+  // -------------------------------------------------- eventos del video
+  const onTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    Array.from(video.textTracks).forEach((track, position) => {
-      track.mode = position === index ? 'showing' : 'hidden';
-    });
-    setActiveSubtitle(1000 + index);
-    setSubtitlesOn(true);
-  };
-
-  const selectAudio = (index: number) => {
-    const hls = hlsRef.current;
-    if (!hls) return;
-    hls.audioTrack = index;
-    setActiveAudio(index);
-  };
-
-  const selectSubtitle = (index: number) => {
-    const hls = hlsRef.current;
-    if (!hls) return;
-    hls.subtitleTrack = index;
-    hls.subtitleDisplay = index >= 0;
-    setActiveSubtitle(index);
-    setSubtitlesOn(index >= 0);
-  };
-
-  const turnSubtitlesOff = () => {
-    const hls = hlsRef.current;
-    if (hls) hls.subtitleDisplay = false;
-    const video = videoRef.current;
-    if (video) {
-      Array.from(video.textTracks).forEach((track) => {
-        track.mode = 'hidden';
-      });
+    setCurrentTime(video.currentTime);
+    setDuration(video.duration || 0);
+    if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
+    // Tras un minuto seguido sin fallos se reinicia la escalera de recuperacion.
+    if (controllerRef.current && controllerRef.current.attempts && !video.paused) {
+      controllerRef.current.resetRecovery();
+      setRecovering(null);
     }
-    setSubtitlesOn(false);
-    setActiveSubtitle(-1);
-  };
+    saveProgress();
+  }, [saveProgress]);
 
-  // ------------------------------------------------------------- render
-  const allExternalTracks = useMemo(() => {
-    const tracks = [...externalTracks];
-    if (subtitleUrl) {
-      tracks.push({
-        name: subtitleLabel ?? 'OpenSubtitles',
-        lang: 'os',
-        url: subtitleUrl,
-      });
-    }
-    return tracks;
-  }, [externalTracks, subtitleUrl, subtitleLabel]);
+  const stats = useMemo<PlaybackStats>(
+    () => ({
+      currentLevel: controllerRef.current?.currentLevelIndex ?? -1,
+      activeLevel: controllerRef.current?.currentLevel ?? null,
+      autoLevel: pinned < 0,
+      bandwidthEstimate: bandwidth || controllerRef.current?.bandwidthEstimate || 0,
+      bufferedAhead: Math.max(0, buffered - currentTime),
+      bufferBehind: Math.min(currentTime, controllerRef.current?.bufferPlan?.backBufferLength ?? 0),
+      droppedFrames: frames.dropped,
+      decodedFrames: frames.decoded,
+      timeToFirstFrameMs: startedAt.current ? Date.now() - startedAt.current : undefined,
+      stallCount: stallCount.current,
+      stallTotalMs: stallTotalMs.current,
+      bitrate: controllerRef.current?.currentLevel?.bitrate ?? 0,
+    }),
+    [bandwidth, buffered, currentTime, frames.decoded, frames.dropped, pinned, quality],
+  );
 
+  // ------------------------------------------------------------- derivados
   const showSkipButton =
     skipEnabled &&
     !skipped &&
     Boolean(skipSegment) &&
     currentTime < (skipSegment?.endMs ?? 0) / 1000 - 1;
 
-  if (error) {
+  const preview = useMemo(() => {
+    if (previewAt === null || !thumbnails.length) return null;
+    const thumb = thumbnailAt(thumbnails, previewAt);
+    if (!thumb) return null;
+    const box = thumbnailBox(thumbnails, 220);
+    return { thumb, box, style: thumbnailCss(thumb, box.width, box.height) };
+  }, [previewAt, thumbnails]);
+
+  const remaining = duration > 0 ? duration - currentTime : 0;
+  const endsAtLabel = duration > 0 ? toAsciiDigits(endsAt(remaining)) : '';
+
+  const scaleStyle = useMemo(() => videoScaleCss(videoScale), [videoScale]);
+
+  // ---------------------------------------------------------------- render
+  if (fatal) {
     return (
       <div className="player player--error">
-        <ErrorState message={error} />
-        <Button variant="ghost" onClick={() => navigate({ name: 'detail', id, type })}>
-          Volver al detalle
-        </Button>
+        <div className="player__error">
+          <h2>{fatal.message}</h2>
+          <p className="player__error-detail">{fatal.detail}</p>
+          <div className="player__error-actions">
+            <Button onClick={() => void controllerRef.current?.retry()}>{t('PLAYER_ERROR_RETRY')}</Button>
+            <Button variant="ghost" onClick={() => void switchToAlternateStream()}>
+              {t('PLAYER_ERROR_NEXT_STREAM')}
+            </Button>
+            <Button variant="ghost" onClick={() => navigate({ name: 'detail', id: id.split(':')[0] ?? id, type })}>
+              {t('BACK')}
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
-
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
 
   return (
     <div
       ref={containerRef}
       tabIndex={-1}
       data-focusable="true"
-      className={`player ${controlsVisible ? 'player--controls' : ''}`}
+      className={`player ${controlsVisible ? 'player--controls' : ''} ${buffering ? 'player--buffering' : ''}`}
       onMouseMove={showControls}
       onMouseLeave={() => setControlsVisible(false)}
       onFocus={showControls}
@@ -658,112 +1101,170 @@ export function PlayerScreen({
         autoPlay
         playsInline
         poster={poster}
-        onTimeUpdate={handleTimeUpdate}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
+        style={scaleStyle as CSSProperties}
+        onTimeUpdate={onTimeUpdate}
+        onPlay={() => {
+          setPlaying(true);
+          setBuffering(false);
+        }}
+        onPause={() => {
+          setPlaying(false);
+          saveProgress({ force: true });
+        }}
+        onWaiting={() => {
+          setBuffering(true);
+          if (!stallStartedAt.current) stallStartedAt.current = Date.now();
+        }}
+        onStalled={() => setBuffering(true)}
+        onPlaying={() => {
+          setBuffering(false);
+          if (stallStartedAt.current) {
+            stallCount.current += 1;
+            stallTotalMs.current += Date.now() - stallStartedAt.current;
+            stallStartedAt.current = 0;
+          }
+        }}
+        onCanPlay={() => {
+          setBuffering(false);
+          setLoading(false);
+        }}
         onVolumeChange={(event) => {
-          const video = event.currentTarget;
-          setVolume(video.volume);
-          setMuted(video.muted);
+          setVolume(event.currentTarget.volume);
+          setMuted(event.currentTarget.muted);
+        }}
+        onLoadedMetadata={(event) => {
+          setDuration(event.currentTarget.duration || 0);
+          setLoading(false);
         }}
         onEnded={() => {
-          if (resolvedNextId && activeProfile?.autoplay) setCountdown(AUTOPLAY_COUNTDOWN);
+          saveProgress({ force: true });
+          if (resolvedNextId && activeProfile?.autoplay !== false && countdownSeconds > 0) {
+            setCountdown(countdownSeconds);
+          }
         }}
-        style={{ ['--subtitle-scale' as string]: subtitleSize }}
-      >
-        {allExternalTracks.map((track) => (
-          <track
-            key={track.url}
-            kind="subtitles"
-            src={track.url}
-            srcLang={track.lang}
-            label={track.name}
-          />
-        ))}
-      </video>
+      />
 
-      {loading ? <Loader label="Preparando stream…" /> : null}
+      <SubtitleLayer
+        cues={cues}
+        timeMs={currentTime * 1000}
+        delayMs={subtitleDelay}
+        style={subtitleStyle}
+        video={videoRef.current}
+        nativeTrackIndex={
+          subtitleOptions.find((option) => option.key === activeSubtitle)?.native ?? null
+        }
+      />
 
-      {/* Boton de omitir intro */}
+      {loading ? (
+        <div className="player__loading">
+          <Icon name="spinner" className="player__spinner" />
+          <span>{recovering ?? t('PLAYER_PREPARING')}</span>
+        </div>
+      ) : null}
+
+      {buffering && !loading ? (
+        <div className="player__loading player__loading--soft" role="status">
+          <Icon name="spinner" className="player__spinner" />
+          <span>{t('PLAYER_BUFFERING')}</span>
+        </div>
+      ) : null}
+
+      {toast ? <div className="player__toast" role="status">{toast}</div> : null}
+
       {showSkipButton && skipSegment ? (
-        <button
-          type="button"
-          data-focusable="true"
-          className="player__skip"
-          onClick={skipIntro}
-        >
-          ⏭ Saltar {skipSegment.kind === 'recap' ? 'el resumen' : 'la intro'}
+        <button type="button" data-focusable="true" className="player__skip" onClick={skipIntro}>
+          <Icon name="skip" />
+          {skipSegment.kind === 'recap' ? t('PLAYER_SKIP_RECAP') : t('PLAYER_SKIP_INTRO')}
         </button>
       ) : null}
 
-      {/* Cuenta atras del siguiente episodio */}
       {countdown !== null ? (
         <div className="player__next" role="status">
           <div className="player__next-card">
-            <span className="player__next-label">Siguiente episodio</span>
-            <strong>{resolvedNextTitle ?? 'Reproduciendo…'}</strong>
+            <span className="player__next-label">{t('PLAYER_NEXT_EPISODE')}</span>
+            <strong>{resolvedNextTitle ?? t('LOADING')}</strong>
             <div className="player__next-actions">
-              <Button onClick={() => void playNext()}>Reproducir ahora</Button>
+              <Button onClick={() => void playNext()}>{t('PLAYER_NEXT_VIDEO_BUTTON_WATCH')}</Button>
               <Button variant="ghost" onClick={() => setCountdown(null)}>
-                Cancelar
+                {t('PLAYER_NEXT_VIDEO_BUTTON_DISMISS')}
               </Button>
             </div>
-            <span className="player__next-count">{countdown}s</span>
+            <span className="player__next-count">{toAsciiDigits(String(countdown))}</span>
           </div>
         </div>
       ) : null}
 
-      {/* Barra de controles nativa */}
+      {/* Barra de controles */}
       <div className="player__bar" data-focusable="true">
-        <div className="player__progress">
+        <div
+          className="player__progress"
+          onMouseMove={(event) => {
+            if (!duration) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+            setPreviewAt(ratio * duration * 1000);
+            setPreviewX(ratio * rect.width);
+          }}
+          onMouseLeave={() => setPreviewAt(null)}
+        >
           <div className="player__progress-track">
-            <div className="player__progress-buffered" style={{ width: `${bufferedPercent}%` }} />
-            <div className="player__progress-played" style={{ width: `${progressPercent}%` }} />
+            <div
+              className="player__progress-buffered"
+              style={{ width: `${progressPercent(buffered, duration)}%` }}
+            />
+            <div
+              className="player__progress-played"
+              style={{ width: `${progressPercent(currentTime, duration)}%` }}
+            />
           </div>
+          {preview ? (
+            <div className="player__preview" style={{ left: Math.max(8, previewX - preview.box.width / 2) }}>
+              <div className="player__preview-image" style={preview.style as CSSProperties} />
+              <span>{toAsciiDigits(formatClock(previewAt !== null ? previewAt / 1000 : 0))}</span>
+            </div>
+          ) : null}
           <input
             className="player__progress-input"
             type="range"
             min={0}
             max={Math.max(1, Math.floor(duration))}
             value={Math.floor(currentTime)}
-            aria-label="Progreso"
-            onChange={(event) => {
-              const video = videoRef.current;
-              if (video) video.currentTime = Number(event.target.value);
-            }}
+            aria-label={t('SEEK')}
+            onChange={(event) => seekTo(Number(event.target.value))}
           />
         </div>
 
         <div className="player__row">
-          <span className="player__time">
-            {formatClock(currentTime)} / {formatClock(duration)}
-          </span>
+          <div className="player__time">
+            <span>{toAsciiDigits(formatClock(currentTime))}</span>
+            <span className="player__time-sep">/</span>
+            <span>{toAsciiDigits(formatClock(duration))}</span>
+            {endsAtLabel ? (
+              <span className="player__ends">{t('PLAYER_CLOCK_ENDS_AT', [endsAtLabel])}</span>
+            ) : null}
+          </div>
 
           <div className="player__actions">
-            <button type="button" data-focusable="true" className="player__btn" onClick={() => seekBy(-10)}>
-              ⏪ 10s
+            <button type="button" data-focusable="true" className="player__btn" onClick={() => seekBy(-10)}
+              aria-label={t('SETTINGS_SHORTCUT_SEEK_BACKWARD')}>
+              <Icon name="back10" />
             </button>
             <button
               type="button"
               data-focusable="true"
               className="player__btn player__btn--primary"
               onClick={togglePlay}
-              aria-label={playing ? 'Pausar' : 'Reproducir'}
+              aria-label={playing ? t('PLAYER_PAUSE') : t('PLAYER_PLAY')}
             >
-              {playing ? '⏸' : '▶'}
+              <Icon name={playing ? 'pause' : 'play'} />
             </button>
-            <button type="button" data-focusable="true" className="player__btn" onClick={() => seekBy(10)}>
-              10s ⏩
+            <button type="button" data-focusable="true" className="player__btn" onClick={() => seekBy(10)}
+              aria-label={t('SETTINGS_SHORTCUT_SEEK_FORWARD')}>
+              <Icon name="forward10" />
             </button>
-
-            <button
-              type="button"
-              data-focusable="true"
-              className="player__btn"
-              onClick={toggleMute}
-              aria-label="Silenciar"
-            >
-              {muted || volume === 0 ? '🔇' : '🔊'}
+            <button type="button" data-focusable="true" className="player__btn" onClick={toggleMute}
+              aria-label={muted ? t('PLAYER_UNMUTE') : t('PLAYER_MUTE')}>
+              <Icon name={muted || volume === 0 ? 'volumeMute' : 'volume'} />
             </button>
             <input
               className="player__volume"
@@ -772,157 +1273,232 @@ export function PlayerScreen({
               max={1}
               step={0.05}
               value={muted ? 0 : volume}
-              aria-label="Volumen"
+              aria-label={t('SETTINGS_SHORTCUT_VOLUME')}
               onChange={(event) => changeVolume(Number(event.target.value))}
             />
           </div>
 
           <div className="player__meta">
-            <span className="player__title">{title ?? streamName ?? 'Reproduciendo'}</span>
+            <span className="player__title">{title ?? streamName ?? t('PLAYBACK')}</span>
             {quality ? <span className="player__badge">{quality}</span> : null}
-            {resumedAt ? <span className="player__badge">reanudado</span> : null}
+            {speed !== 1 ? <span className="player__badge">{speedLabel(speed)}</span> : null}
+            {resumedAt ? <span className="player__badge">{t('PLAYER_RESUMED')}</span> : null}
+            {type === 'tv' || type === 'channel' ? (
+              <span className="player__badge player__badge--live">{t('PLAYER_LIVE')}</span>
+            ) : null}
           </div>
 
           <div className="player__actions">
-            <button
-              type="button"
-              data-focusable="true"
-              className="player__btn"
-              onClick={() => setShowInfo((value) => !value)}
-            >
-              {showInfo ? 'Ocultar info' : 'Info HLS'}
+            <button type="button" data-focusable="true" className="player__btn"
+              onClick={() => setMenu(menu === 'subtitles' ? null : 'subtitles')}
+              aria-label={t('SUBTITLES')}>
+              <Icon name="subtitles" />
             </button>
-            <button
-              type="button"
-              data-focusable="true"
-              className="player__btn"
-              onClick={toggleFullscreen}
-              aria-label="Pantalla completa"
-            >
-              ⛶
+            <button type="button" data-focusable="true" className="player__btn"
+              onClick={() => setMenu(menu === 'audio' ? null : 'audio')} aria-label={t('AUDIO')}>
+              <Icon name="audio" />
             </button>
-            <button
-              type="button"
-              data-focusable="true"
-              className="player__btn"
-              onClick={() => navigate({ name: 'detail', id, type })}
-            >
-              Volver
+            <button type="button" data-focusable="true" className="player__btn"
+              onClick={() => setMenu(menu === 'quality' ? null : 'quality')} aria-label={t('QUALITY')}>
+              <Icon name="quality" />
+            </button>
+            <button type="button" data-focusable="true" className="player__btn"
+              onClick={() => setMenu(menu === 'stats' ? null : 'stats')} aria-label={t('PLAYER_STATS')}>
+              <Icon name="stats" />
+            </button>
+            <button type="button" data-focusable="true" className="player__btn" onClick={cycleScale}
+              aria-label={t('PLAYER_VIDEO_SCALE')}>
+              <Icon name="scale" />
+            </button>
+            <button type="button" data-focusable="true" className="player__btn" onClick={toggleFullscreen}
+              aria-label={t('PLAYER_FULLSCREEN')}>
+              <Icon name="expand" />
+            </button>
+            <button type="button" data-focusable="true" className="player__btn player__btn--back"
+              onClick={() => run({ type: 'back' })} aria-label={t('BACK')}>
+              <Icon name="back" />
             </button>
           </div>
         </div>
       </div>
 
-      {showInfo ? (
-        <aside className="player__info">
-          <h3>Variantes HLS</h3>
-          <p className="player__info-note">
-            {master?.selected
-              ? `Seleccion automatica: ${master.selected.reason}`
-              : 'El stream no es un master multivariant.'}
-          </p>
-          <div className="player__levels">
-            {(master?.variants ?? []).map((variant, index) => (
-              <button
-                key={`${variant.uri}-${index}`}
-                type="button"
-                data-focusable="true"
-                className="chip"
-                onClick={() => selectQuality(index)}
-              >
-                {variant.height ? `${variant.height}p` : 'auto'}
-                {variant.codecs?.length ? ` · ${variant.codecs[0]?.split('.')[0]}` : ''}
-                {variant.videoRange ? ` · ${variant.videoRange}` : ''}
-              </button>
-            ))}
-          </div>
-
-          {audioTracks.length ? (
+      {menu ? (
+        <aside className="player__menu" data-focusable="true">
+          {menu === 'subtitles' ? (
             <>
-              <h3>Audio</h3>
+              <h3>{t('PLAYER_SUBTITLE_TRACKS')}</h3>
               <div className="player__levels">
-                {audioTracks.map((track) => (
-                  <button
-                    key={`audio-${track.id}`}
-                    type="button"
-                    data-focusable="true"
-                    className={`chip ${activeAudio === track.id ? 'chip--active' : ''}`}
-                    onClick={() => selectAudio(track.id)}
-                  >
-                    {track.name}
-                    {track.lang ? ` (${track.lang})` : ''}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : null}
-
-          {subtitleTracks.length || allExternalTracks.length ? (
-            <>
-              <h3>Subtítulos</h3>
-              <div className="player__levels">
-                <button
-                  type="button"
-                  data-focusable="true"
-                  className={`chip ${!subtitlesOn ? 'chip--active' : ''}`}
-                  onClick={turnSubtitlesOff}
-                >
-                  Off
+                <button type="button" data-focusable="true"
+                  className={`chip ${activeSubtitle === null ? 'chip--active' : ''}`}
+                  onClick={() => selectSubtitle(null)}>
+                  {t('OFF')}
                 </button>
-                {subtitleTracks.map((track) => (
-                  <button
-                    key={`sub-${track.id}`}
-                    type="button"
-                    data-focusable="true"
-                    className={`chip ${activeSubtitle === track.id ? 'chip--active' : ''}`}
-                    onClick={() => selectSubtitle(track.id)}
-                  >
-                    {track.name}
-                    {track.lang ? ` (${track.lang})` : ''}
-                  </button>
-                ))}
-                {allExternalTracks.map((track, index) => (
-                  <button
-                    key={`ext-${track.url}`}
-                    type="button"
-                    data-focusable="true"
-                    className={`chip ${activeSubtitle === 1000 + index ? 'chip--active' : ''}`}
-                    onClick={() => selectExternalSubtitle(index)}
-                  >
-                    {track.name}
-                    {track.lang ? ` (${track.lang})` : ''}
+                {subtitleOptions.map((option) => (
+                  <button key={option.key} type="button" data-focusable="true"
+                    className={`chip ${activeSubtitle === option.key ? 'chip--active' : ''}`}
+                    onClick={() => selectSubtitle(option.key)}>
+                    {option.label}
+                    {option.sdh ? ' · SDH' : ''}
                   </button>
                 ))}
               </div>
-              <h3>Tamaño de los subtítulos</h3>
+
+              <h3>{t('PLAYER_SUBTITLES_SETTINGS')}</h3>
               <div className="player__levels">
-                {SUBTITLE_SIZES.map((size) => (
-                  <button
-                    key={size.id}
-                    type="button"
-                    data-focusable="true"
-                    className={`chip ${subtitleSize === size.scale ? 'chip--active' : ''}`}
-                    onClick={() => setSubtitleSize(size.scale)}
-                  >
-                    {size.label}
+                <button type="button" data-focusable="true" className="chip" onClick={() => changeSubtitleDelay(-250)}>
+                  {t('PLAYER_SUBTITLES_DELAY')} −250 ms
+                </button>
+                <button type="button" data-focusable="true" className="chip" onClick={() => changeSubtitleDelay(250)}>
+                  {t('PLAYER_SUBTITLES_DELAY')} +250 ms
+                </button>
+                <button type="button" data-focusable="true" className="chip chip--value">
+                  {formatDelay(subtitleDelay)}
+                </button>
+                <button type="button" data-focusable="true" className="chip" onClick={() => changeSubtitleSize(-1)}>
+                  {t('PLAYER_SUBTITLES_SIZE')} −
+                </button>
+                <button type="button" data-focusable="true" className="chip" onClick={() => changeSubtitleSize(1)}>
+                  {t('PLAYER_SUBTITLES_SIZE')} +
+                </button>
+                <button type="button" data-focusable="true"
+                  className={`chip ${cleanSdh ? 'chip--active' : ''}`}
+                  onClick={() => setCleanSdh((value) => !value)}>
+                  {t('SETTINGS_CLEAN_SDH')}: {cleanSdh ? t('ON') : t('OFF')}
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {menu === 'audio' ? (
+            <>
+              <h3>{t('PLAYER_AUDIO_TRACKS')}</h3>
+              <div className="player__levels">
+                {audioOptions.length ? (
+                  audioOptions.map((track) => (
+                    <button key={track.index} type="button" data-focusable="true"
+                      className={`chip ${activeAudio === track.index ? 'chip--active' : ''}`}
+                      onClick={() => selectAudio(track.index)}>
+                      {track.label}
+                    </button>
+                  ))
+                ) : (
+                  <span className="player__empty">{t('AUDIO')}</span>
+                )}
+              </div>
+              <h3>{t('PLAYER_PLAYBACK_SPEED')}</h3>
+              <div className="player__levels">
+                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => (
+                  <button key={value} type="button" data-focusable="true"
+                    className={`chip ${speed === value ? 'chip--active' : ''}`}
+                    onClick={() => {
+                      setSpeed(value);
+                      if (videoRef.current) videoRef.current.playbackRate = value;
+                      setMenu(null);
+                      notify(speedLabel(value));
+                    }}>
+                    {speedLabel(value)}
                   </button>
                 ))}
               </div>
             </>
           ) : null}
+
+          {menu === 'quality' ? (
+            <>
+              <h3>{t('PLAYER_QUALITY_LEVELS')}</h3>
+              <div className="player__levels">
+                <button type="button" data-focusable="true"
+                  className={`chip ${pinned < 0 ? 'chip--active' : ''}`} onClick={() => selectQuality(-1)}>
+                  {t('PLAYER_QUALITY_AUTO')}
+                  {controllerRef.current?.plan ? ` · ${controllerRef.current.plan.reason}` : ''}
+                </button>
+                {levels.map((level, index) => (
+                  <button key={`${level.height ?? index}-${index}`} type="button" data-focusable="true"
+                    className={`chip ${pinned === index ? 'chip--active' : ''}`} onClick={() => selectQuality(index)}>
+                    {qualityLabel(level)}
+                    {level.bitrate ? ` · ${formatBitrate(level.bitrate)}` : ''}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {menu === 'stats' ? (
+            <>
+              <h3>{t('PLAYER_STATS')}</h3>
+              <dl className="player__stats">
+                {describeStats(stats).map((row) => (
+                  <div key={row.label}>
+                    <dt>{row.label}</dt>
+                    <dd>{toAsciiDigits(row.value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </>
+          ) : null}
+
+          {menu === 'info' ? (
+            <>
+              <h3>{t('PLAYER_INFO_HLS')}</h3>
+              <p className="player__info-note">
+                {master?.selected ? master.selected.reason : t('VIBE_NOT_MASTER')}
+              </p>
+              <div className="player__levels">
+                {(master?.variants ?? []).map((variant, index) => (
+                  <button key={`${variant.uri}-${index}`} type="button" data-focusable="true" className="chip"
+                    onClick={() => {
+                      // El indice del master del servidor no tiene por que
+                      // coincidir con el de hls.js: se emparejan por URI/altura.
+                      const mapped = matchLevelIndex(levels, variant);
+                      selectQuality(mapped >= 0 ? mapped : index);
+                    }}>
+                    {variant.height ? `${variant.height}p` : t('PLAYER_QUALITY_AUTO')}
+                    {variant.codecs?.length ? ` · ${variant.codecs[0]?.split('.')[0]}` : ''}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {menu === 'episodes' ? (
+            <>
+              <h3>{t('PLAYER_NEXT_EPISODE')}</h3>
+              {resolvedNextId ? (
+                <div className="player__levels">
+                  <span className="player__empty">{resolvedNextTitle ?? resolvedNextId}</span>
+                  <button type="button" data-focusable="true" className="chip chip--active"
+                    onClick={() => {
+                      setMenu(null);
+                      void playNext();
+                    }}>
+                    {t('PLAYER_NEXT_VIDEO_BUTTON_WATCH')}
+                  </button>
+                </div>
+              ) : (
+                <p className="player__info-note">{t('NO_RESULTS')}</p>
+              )}
+            </>
+          ) : null}
+
+          {menu === 'shortcuts' ? (
+            <>
+              <h3>{t('PLAYER_SHORTCUTS')}</h3>
+              <dl className="player__stats">
+                {SHORTCUTS.map((entry) => (
+                  <div key={entry.keys}>
+                    <dt>{entry.keys}</dt>
+                    <dd>{t(entry.labelKey)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </>
+          ) : null}
+
+          <button type="button" data-focusable="true" className="player__menu-close" onClick={() => setMenu(null)}>
+            {t('CLOSE')}
+          </button>
         </aside>
       ) : null}
     </div>
   );
-}
-
-/** Formatea segundos como `h:mm:ss` o `mm:ss`. */
-function formatClock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
-  const total = Math.floor(seconds);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${minutes}:${pad(secs)}`;
 }

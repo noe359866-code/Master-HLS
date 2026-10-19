@@ -196,12 +196,31 @@ export interface Stream {
   [key: string]: unknown;
 }
 
+/**
+ * Directiva de cacheo que el propio addon puede pedir en su respuesta.
+ *
+ * El SDK de Stremio define exactamente estos tres campos (`maxAge`,
+ * `staleRevalidate`, `staleError`) y los traduce a cabeceras `Cache-Control`
+ * (`max-age`, `stale-while-revalidate`, `stale-if-error`). Vibe Flix los
+ * respeta al reexponer el recurso, igual que hace `getRouter` del SDK.
+ */
+export interface CacheDirective {
+  /** Segundos durante los que la respuesta es valida. */
+  maxAge?: number;
+  /** Segundos extra sirviendo datos caducados mientras se revalida. */
+  staleRevalidate?: number;
+  /** Segundos extra sirviendo datos caducados si el origen falla. */
+  staleError?: number;
+}
+
 export interface CatalogResponse {
   metas: MetaPreview[];
+  cache?: CacheDirective;
 }
 
 export interface MetaResponse {
   meta: MetaDetail | null;
+  cache?: CacheDirective;
 }
 
 export interface MetaDetail extends MetaPreview {
@@ -216,10 +235,12 @@ export interface MetaDetail extends MetaPreview {
 
 export interface StreamResponse {
   streams: Stream[];
+  cache?: CacheDirective;
 }
 
 export interface SubtitleResponse {
   subtitles: Subtitle[];
+  cache?: CacheDirective;
 }
 
 export interface AddonCatalogRequest {

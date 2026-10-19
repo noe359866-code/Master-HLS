@@ -9,9 +9,13 @@
  *     el playlist se reescribe, por eso aqui se reescriben las URIs para que
  *     vuelvan a pasar por el proxy.
  *
- * `/hls/master` expone el master playlist ya parseado (variantes y pistas) y
- * la mejor variante segun las capacidades del dispositivo: es el nucleo
- * "HLS master" de la app.
+ * `/hls/master` expone el master playlist ya parseado (variantes, pistas y
+ * hojas de sprites) y la mejor variante segun las capacidades del dispositivo:
+ * es el nucleo "HLS master" de la app.
+ *
+ * `/hls/thumbnails` resuelve la previsualizacion del salto (WuPlay v0.9.3):
+ * sigue `#EXT-X-IMAGE-STREAM-INF` del master, descarga el playlist de imagenes
+ * y devuelve los recortes ya calculados, listos para pintar con CSS.
  */
 
 import {
@@ -28,8 +32,9 @@ import {
   type DeviceCapabilities,
   type SelectionPreferences,
 } from '@vibeflix/hls-master';
+import { parseHlsImagePlaylist } from '@vibeflix/player-core';
 import type { Router } from '../http/router.js';
-import { sendJson, sendText } from '../http/router.js';
+import { DEFAULT_CACHE_POLICIES, sendJson, sendText } from '../http/router.js';
 
 export interface HlsRouteOptions {
   /** Cabeceras por defecto que se anaden a las peticiones salientes. */
@@ -149,7 +154,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
     }
   });
 
-  router.get('/hls/master', async ({ res, query }) => {
+  router.get('/hls/master', async ({ req, res, query }) => {
     const target = query.get('url');
     if (!target) {
       sendJson(res, 400, { error: 'Falta url' });
@@ -173,9 +178,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
           isMaster: false,
           variants: [],
           renditions: [],
+          imageStreams: [],
           selected: null,
           url: target,
-        });
+        }, { req, cache: DEFAULT_CACHE_POLICIES.api });
         return;
       }
 
@@ -184,6 +190,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         isMaster: true,
         variants: listVariants(master, capabilities),
         renditions: master.renditions,
+        imageStreams: master.imageStreams,
         selected: selection
           ? {
               variant: selection.variant,
@@ -193,7 +200,67 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
             }
           : null,
         url: target,
+      }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+    } catch (error) {
+      sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
+        error: (error as Error).message,
       });
+    }
+  });
+
+  /**
+   * Miniaturas para previsualizar el salto.
+   *
+   * Acepta la URL del master (busca `#EXT-X-IMAGE-STREAM-INF`) o directamente la
+   * del playlist de imagenes. Devuelve la lista de recortes con su instante, que
+   * es lo que consume el renderizador de la barra de progreso.
+   */
+  router.get('/hls/thumbnails', async ({ req, res, query }) => {
+    const target = query.get('url');
+    if (!target) {
+      sendJson(res, 400, { error: 'Falta url' });
+      return;
+    }
+    const headers = decodeHeaders(query.get('h'));
+
+    try {
+      const response = await fetchRemote(target, headers);
+      if (!response.ok) {
+        sendJson(res, response.status, { error: `HTTP ${response.status}` });
+        return;
+      }
+      const text = await response.text();
+      const master = parsePlaylist(text, target);
+      const declared = master.imageStreams[0];
+
+      // Si el master no declara imagenes, se prueba a interpretar la propia URL
+      // como playlist de imagenes (algunos debrid la dan directamente).
+      let playlistUrl = target;
+      let playlistText = text;
+      if (declared) {
+        playlistUrl = declared.uri;
+        const imageResponse = await fetchRemote(declared.uri, headers);
+        if (!imageResponse.ok) {
+          sendJson(res, 200, { thumbnails: [], imageStreams: master.imageStreams, url: target });
+          return;
+        }
+        playlistText = await imageResponse.text();
+      }
+
+      const thumbnails = parseHlsImagePlaylist(playlistText, {
+        baseUrl: playlistUrl,
+        tileWidth: declared?.width,
+        tileHeight: declared?.height,
+        tilesX: declared?.tilesX,
+        tilesY: declared?.tilesY,
+        sheetSeconds: declared?.durationSeconds,
+      });
+
+      sendJson(res, 200, {
+        thumbnails,
+        imageStreams: master.imageStreams,
+        url: target,
+      }, { req, cache: DEFAULT_CACHE_POLICIES.subtitles });
     } catch (error) {
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,

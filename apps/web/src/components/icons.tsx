@@ -19,8 +19,28 @@ export type IconName =
   | 'settings'
   | 'profile'
   | 'play'
+  | 'pause'
   | 'info'
-  | 'sparkle';
+  | 'sparkle'
+  // Reproductor
+  | 'back10'
+  | 'forward10'
+  | 'volume'
+  | 'volumeMute'
+  | 'expand'
+  | 'collapse'
+  | 'subtitles'
+  | 'audio'
+  | 'quality'
+  | 'back'
+  | 'next'
+  | 'pip'
+  | 'speed'
+  | 'stats'
+  | 'skip'
+  | 'frame'
+  | 'scale'
+  | 'spinner';
 
 const PATHS: Record<IconName, ReactNode> = {
   home: <path d="M3.5 10.6 12 3.8l8.5 6.8V20a1 1 0 0 1-1 1h-4.8v-6.2H9.3V21H4.5a1 1 0 0 1-1-1z" />,
@@ -89,6 +109,104 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M12 3.2 13.8 9 19.6 10.8 13.8 12.6 12 18.4 10.2 12.6 4.4 10.8 10.2 9z" />
       <path d="M18.4 3.4v3M16.9 4.9h3" />
+    </>
+  ),
+  pause: <path d="M8.4 5.2h3v13.6h-3zM12.6 5.2h3v13.6h-3z" />,
+  back10: (
+    <>
+      <path d="M11.4 5.6 8.2 8.4l3.2 2.8" />
+      <path d="M8.6 8.4h5.2a5.6 5.6 0 1 1-5.6 5.6" />
+      <path d="M10.8 17.4h2.6" />
+    </>
+  ),
+  forward10: (
+    <>
+      <path d="M12.6 5.6 15.8 8.4l-3.2 2.8" />
+      <path d="M15.4 8.4h-5.2A5.6 5.6 0 1 0 15.8 14" />
+      <path d="M10.6 17.4h2.6" />
+    </>
+  ),
+  volume: (
+    <>
+      <path d="M4.6 9.4h2.8L11.4 6v12l-4-3.4H4.6z" />
+      <path d="M14.8 9.2a4 4 0 0 1 0 5.6M17.2 7a7.2 7.2 0 0 1 0 10" />
+    </>
+  ),
+  volumeMute: (
+    <>
+      <path d="M4.6 9.4h2.8L11.4 6v12l-4-3.4H4.6z" />
+      <path d="m15.2 9.8 4.4 4.4M19.6 9.8l-4.4 4.4" />
+    </>
+  ),
+  expand: <path d="M4.4 9.2V4.4h4.8M19.6 9.2V4.4h-4.8M4.4 14.8v4.8h4.8M19.6 14.8v4.8h-4.8" />,
+  collapse: <path d="M9.2 4.4v4.8H4.4M14.8 4.4v4.8h4.8M9.2 19.6v-4.8H4.4M14.8 19.6v-4.8h4.8" />,
+  subtitles: (
+    <>
+      <rect x="3.2" y="5.4" width="17.6" height="13.2" rx="2.4" />
+      <path d="M7 11.2a2.4 2.4 0 1 1 0 2.6M14.4 11.2a2.4 2.4 0 1 1 0 2.6" />
+    </>
+  ),
+  audio: (
+    <>
+      <path d="M9.4 17.6V7.2l8-1.8v10.2" />
+      <circle cx="7.2" cy="17.8" r="2.2" />
+      <circle cx="15.2" cy="15.8" r="2.2" />
+    </>
+  ),
+  quality: (
+    <>
+      <rect x="3.4" y="5.6" width="17.2" height="12.8" rx="2.2" />
+      <path d="M7.4 14.4 9.8 9.6l2.4 4.8M14.6 9.6v4.8M14.6 12h2.8" />
+    </>
+  ),
+  back: <path d="M14.6 5.4 8 12l6.6 6.6" />,
+  next: (
+    <>
+      <path d="M6.4 5.6 14 12l-7.6 6.4z" />
+      <path d="M17.2 5.6v12.8" />
+    </>
+  ),
+  pip: (
+    <>
+      <rect x="3.4" y="5.2" width="17.2" height="13.6" rx="2.2" />
+      <rect x="12" y="11.6" width="6.6" height="5.2" rx="1.2" />
+    </>
+  ),
+  speed: (
+    <>
+      <path d="M4.4 16.4a8.4 8.4 0 1 1 15.2 0" />
+      <path d="M12 12.4 15.6 9" />
+      <circle cx="12" cy="13" r="1.4" />
+    </>
+  ),
+  stats: (
+    <>
+      <path d="M4.4 19.6h15.2" />
+      <path d="M7.2 19.4v-5.2M12 19.4V8.2M16.8 19.4v-8" />
+    </>
+  ),
+  skip: (
+    <>
+      <path d="M5.4 5.8 12.6 12l-7.2 6.2z" />
+      <path d="M13.4 5.8 20.6 12l-7.2 6.2z" />
+    </>
+  ),
+  frame: (
+    <>
+      <rect x="3.4" y="6.4" width="17.2" height="11.2" rx="2" />
+      <path d="M8.4 6.6v10.8M15.6 6.6v10.8" />
+    </>
+  ),
+  scale: (
+    <>
+      <rect x="3.4" y="5.4" width="17.2" height="13.2" rx="2.2" />
+      <rect x="7" y="8.6" width="10" height="6.8" rx="1.2" />
+    </>
+  ),
+  spinner: (
+    <>
+      <circle cx="12" cy="12" r="8.4" opacity=".25" />
+      <path d="M20.4 12a8.4 8.4 0 0 0-8.4-8.4" />
     </>
   ),
 };

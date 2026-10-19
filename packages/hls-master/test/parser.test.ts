@@ -86,6 +86,53 @@ describe('parsePlaylist', () => {
   });
 });
 
+describe('pistas de imagenes (previsualizacion del salto)', () => {
+  it('parsea EXT-X-IMAGE-STREAM-INF con la URI en el atributo', () => {
+    const master = parsePlaylist(
+      [
+        '#EXTM3U',
+        '#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1920x1080',
+        'https://cdn.tld/1080p/index.m3u8',
+        '#EXT-X-IMAGE-STREAM-INF:URI="thumbs/sprites.m3u8",RESOLUTION=320x180,TILES=5x5,DURATION=4.0,BANDWIDTH=48000',
+        '',
+      ].join('\n'),
+      'https://base.tld/master.m3u8',
+    );
+    assert.equal(master.imageStreams.length, 1);
+    const images = master.imageStreams[0]!;
+    assert.equal(images.uri, 'https://base.tld/thumbs/sprites.m3u8');
+    assert.equal(images.width, 320);
+    assert.equal(images.height, 180);
+    assert.equal(images.tilesX, 5);
+    assert.equal(images.tilesY, 5);
+    assert.equal(images.durationSeconds, 4);
+    assert.equal(images.bandwidth, 48_000);
+    // Las imagenes no cuentan como variante reproducible.
+    assert.equal(master.variants.length, 1);
+  });
+
+  it('parsea la URI en la linea siguiente y TILES con una sola cifra', () => {
+    const master = parsePlaylist(
+      [
+        '#EXTM3U',
+        '#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=640x360',
+        'low/index.m3u8',
+        '#EXT-X-IMAGE-STREAM-INF:RESOLUTION=160x90,TILES=10,DURATION=2',
+        'images/preview.m3u8',
+        '',
+      ].join('\n'),
+      'https://base.tld/master.m3u8',
+    );
+    assert.equal(master.imageStreams[0]?.uri, 'https://base.tld/images/preview.m3u8');
+    assert.equal(master.imageStreams[0]?.tilesX, 10);
+    assert.equal(master.imageStreams[0]?.tilesY, 1);
+  });
+
+  it('devuelve una lista vacia cuando el master no trae imagenes', () => {
+    assert.deepEqual(parsePlaylist(MASTER, 'https://base.tld/master.m3u8').imageStreams, []);
+  });
+});
+
 describe('isHlsUrl', () => {
   it('detecta playlists por extension', () => {
     assert.equal(isHlsUrl('https://cdn.tld/master.m3u8'), true);
