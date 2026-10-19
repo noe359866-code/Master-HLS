@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import type { Meta, SearchHistoryEntry, WatchlistItem } from '../types';
 import { Button, ErrorState, Loader, Poster } from '../components/ui';
 import { Keyboard } from '../components/Keyboard';
@@ -76,12 +77,10 @@ export function SearchScreen() {
 
   return (
     <div className="screen search-screen">
-      <header className="search-screen__header">
-        <h1>Buscar</h1>
-        <p className="search-screen__hint">
-          Escribe con el mando: el teclado de la pantalla es navegable con el D-pad.
-        </p>
-      </header>
+      <PageHeader
+        title="Buscar"
+        hint="Escribe con el mando: el teclado de la pantalla se recorre con el D-pad."
+      />
 
       {history.length && !submitted ? (
         <section className="search-screen__history">

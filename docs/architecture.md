@@ -273,6 +273,35 @@ web y la TV se comportan igual:
   atrás (`AUTOPLAY_COUNTDOWN = 5`); al llegar a cero se navega a la ruta del
   reproductor del episodio siguiente.
 
+### 5.5 Sistema de diseño del cliente web
+
+La hoja de estilos está troceada para que el cambio sea fácil de revisar:
+
+| Fichero | Contenido |
+| --- | --- |
+| `styles/base.css` | Tokens (paleta, formas, sombras), reset, layout, rail, portada, filas, pósters, detalle, paneles, botones, chips, teclado, géneros y Utility classes |
+| `styles/player.css` | Reproductor (barra de control, progreso, volumen, «saltar intro», autoplay). Va aparte porque es un bloque grande y autocontenido |
+| `styles.css` | Sólo importa los dos anteriores y las utilidades transversales |
+
+Piezas de React del diseño:
+
+- **`components/SideRail.tsx`**: rail de navegación (marca, secciones y
+  perfil). Lee `settings.sidebar` del servidor, así que la personalización del
+  menú se respeta aquí.
+- **`components/icons.tsx`**: set de iconos SVG en línea (`IconName`), sin
+  dependencias ni peticiones extra.
+- **`components/PageHeader.tsx`**: encabezado común de pantalla.
+- **`components/ui.tsx`**: `Poster`, `Row`, `Button`, `Modal`, `Loader` y los
+  nuevos `Skeleton` / `SkeletonRow` (carga sin spinners).
+
+Decisiones de rendimiento:
+
+- `content-visibility: auto` + `contain-intrinsic-size` en cada fila: el
+  navegador no pinta las filas fuera de pantalla.
+- Las animaciones sólo usan `transform` y `opacity`.
+- `prefers-reduced-motion` desactiva el aura de fondo y las transiciones.
+- Las imágenes usan `loading="lazy"` y `decoding="async"`.
+
 ### 6.4 Teclado, buscador, géneros y décadas (Android TV)
 
 El shell Android TV replica el comportamiento de la web:

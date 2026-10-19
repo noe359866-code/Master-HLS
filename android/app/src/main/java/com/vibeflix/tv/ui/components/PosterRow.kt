@@ -58,7 +58,7 @@ fun PosterRow(
                             .fillMaxWidth()
                             .aspectRatio(2f / 3f)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF1A2030)),
+                            .background(Color(0xFF151C2C)),
                     )
                 }
             }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import type { Meta } from '../types';
 import { ErrorState, Loader, Poster, Row } from '../components/ui';
 
@@ -38,12 +39,10 @@ export function PersonScreen({ person }: { person: string }) {
 
   return (
     <div className="screen person">
-      <header className="person__header">
-        <h1>{person}</h1>
-        <p className="person__subtitle">
-          {loading ? 'Buscando filmografía…' : `${titles.length} títulos`}
-        </p>
-      </header>
+      <PageHeader
+        title={person}
+        hint={loading ? 'Buscando filmografía…' : `${titles.length} títulos`}
+      />
 
       {loading ? <Loader /> : null}
       {error ? <ErrorState message={error} /> : null}

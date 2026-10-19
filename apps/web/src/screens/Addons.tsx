@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import { NAV_ITEMS, DEFAULT_NAV_ORDER } from '../navigation-items';
 import { canInstall, isInstalled, onInstallChange, promptInstall } from '../pwa';
 import { api } from '../api';
@@ -48,6 +49,10 @@ export function AddonsScreen() {
 
   return (
     <div className="screen addons">
+      <PageHeader
+        title="Addons"
+        hint="Instala, actualiza y organiza los addons Stremio que alimentan Vibe Flix."
+      />
       <section className="panel">
         <h2>Instalar addon</h2>
         <p className="panel__hint">
@@ -256,6 +261,7 @@ export function SettingsScreen() {
 
   return (
     <div className="screen settings">
+      <PageHeader title="Ajustes" hint="Preferencias del servidor: valen para todos tus dispositivos." />
       <section className="panel">
         <h2>Metadata integrada</h2>
         <p className="panel__hint">

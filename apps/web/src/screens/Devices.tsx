@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { api } from '../api';
 import { Button, ErrorState, Loader } from '../components/ui';
+import { PageHeader } from '../components/PageHeader';
 
 interface DeviceInfo {
   id: string;
@@ -82,6 +83,10 @@ export function DevicesScreen({ onLinked }: { onLinked?: () => void }) {
 
   return (
     <div className="screen devices">
+      <PageHeader
+        title="Dispositivos"
+        hint="Comparte la biblioteca entre la TV, el móvil y el navegador sin crear cuentas."
+      />
       <section className="panel">
         <h2>Vincular otro dispositivo</h2>
         <p className="panel__hint">

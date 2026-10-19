@@ -68,7 +68,7 @@ fun OnScreenKeyboard(
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF141926))
+                .background(Color(0xFF111726))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.Center,
@@ -91,7 +91,7 @@ fun OnScreenKeyboard(
                             onChange(value + if (uppercase) char.uppercase() else char)
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.colors(containerColor = Color(0xFF1B2233)),
+                        colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
                     ) {
                         Text(
                             text = if (uppercase) char.uppercase() else char,
@@ -112,21 +112,21 @@ fun OnScreenKeyboard(
                     uppercase = false
                 },
                 modifier = Modifier.weight(1.4f),
-                colors = ButtonDefaults.colors(containerColor = Color(0xFF1B2233)),
+                colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
             ) {
                 Text(if (symbols) "ABC" else "123")
             }
             Button(
                 onClick = { uppercase = !uppercase },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.colors(containerColor = Color(0xFF1B2233)),
+                colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
             ) {
                 Text("⇧")
             }
             Button(
                 onClick = { onChange(value + " ") },
                 modifier = Modifier.weight(1.6f),
-                colors = ButtonDefaults.colors(containerColor = Color(0xFF1B2233)),
+                colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
             ) {
                 Text("espacio")
             }
@@ -142,7 +142,7 @@ fun OnScreenKeyboard(
                     }
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.colors(containerColor = Color(0xFF1B2233)),
+                colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
             ) {
                 Text("⌫")
             }
@@ -171,7 +171,7 @@ fun ChipRow(
         items.take(6).forEach { item ->
             Button(
                 onClick = { onClick(item) },
-                colors = ButtonDefaults.colors(containerColor = Color(0xFF1B2233)),
+                colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
             ) {
                 Text(item)
             }

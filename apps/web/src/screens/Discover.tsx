@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import type { Meta } from '../types';
 import { Button, Loader, Poster, Row } from '../components/ui';
 
@@ -48,6 +49,10 @@ export function DiscoverScreen() {
 
   return (
     <div className="screen">
+      <PageHeader
+        title="Descubrir"
+        hint="Todo el catálogo agregado, filtrado por género."
+      />
       {genres.length ? (
         <div className="genre-bar">
           <button

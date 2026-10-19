@@ -63,7 +63,7 @@ fun DetailScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0B0E14)),
+            .background(Color(0xFF06080F)),
     ) {
         item {
             Column {
@@ -81,7 +81,7 @@ fun DetailScreen(
                             .width(180.dp)
                             .aspectRatio(2f / 3f)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF1A2030)),
+                            .background(Color(0xFF151C2C)),
                     )
                     Column(modifier = Modifier.width(560.dp)) {
                         Text(
@@ -187,7 +187,7 @@ private fun SubtitlesDialog(
             modifier = Modifier
                 .fillMaxWidth(0.8f)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF141926))
+                .background(Color(0xFF111726))
                 .padding(24.dp),
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
@@ -284,7 +284,7 @@ private fun BoxBackground(background: String?) {
                 Brush.verticalGradient(
                     listOf(
                         Color(0xFF16203A),
-                        Color(0xFF0B0E14),
+                        Color(0xFF06080F),
                     ),
                 ),
             ),

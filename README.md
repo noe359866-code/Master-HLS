@@ -38,7 +38,7 @@ consumen exactamente la misma lógica.
 | `@vibe-flix/hls-master` | Núcleo HLS: parser de master playlist (variantes, pistas de audio/subtítulos, `CODECS`, `VIDEO-RANGE`), política de selección por capacidades del dispositivo, y reescritura de playlists para hacerlas pasar por el proxy. |
 | `@vibe-flix/skip-intro` | Núcleo de **omitir intro**: parser de subtítulos (SRT/WebVTT), detección de intro y de «anteriormente en…» sobre los propios subtítulos, conversión entre formatos y valor por defecto configurable. Sin servicios externos. |
 | `@vibe-flix/server` | Servidor: expone Vibe Flix **como addon Stremio** (`/manifest.json`, `/catalog/…`, `/meta/…`, `/stream/…`, `/subtitles/…`), API de biblioteca/perfiles, proxy HLS y hosting del cliente web. |
-| `@vibe-flix/web` | Cliente de TV en React + Vite + hls.js: navegación espacial con D-pad, inicio, descubrir, búsqueda, detalle, reproductor, listas, historial, addons, ajustes y perfiles. |
+| `@vibe-flix/web` | Cliente de TV en React + Vite + hls.js: navegación espacial con D-pad, rail lateral, portada, descubrir, búsqueda con teclado, detalle, reproductor, listas, historial, addons, ajustes y perfiles. |
 | `android/` | Shell Android TV (Kotlin, Compose for TV, Media3, Hilt, Retrofit/Moshi) que consume los mismos motores a través del servidor. |
 
 ---
@@ -314,6 +314,43 @@ el addon de subtítulos**:
 
 ---
 
+## Diseño de la interfaz (híbrido WuPlay + NuvioTV)
+
+La interfaz de TV es un **híbrido**: toma de WuPlay la navegación lateral por
+secciones y las tarjetas de género, y de NuvioTV la portada con fondo, las
+filas horizontales y el foco grande; pero se simplifica para que sea **fácil**
+de recorrer con el mando, **rápida** de pintar y **moderna** de ver.
+
+| Pieza | De dónde viene | Qué aporta |
+| --- | --- | --- |
+| **Rail lateral** | WuPlay | Menú fijo de 92 px con icono + etiqueta: la sección activa se marca con una barra de gradiente. Deja todo el ancho a la contenido y sustituye a la barra superior (que duplicaba la navegación). |
+| **Portada (hero)** | NuvioTV | Fondo de la película, título grande, año/puntuación/géneros, sinopsis y dos acciones. Responde «¿qué veo?» sin hacer scroll. |
+| **Acciones rápidas** | — | Buscar · Géneros · Décadas · Mis listas · Addons: las cinco acciones de siempre a un clic. |
+| **Encabezado de página** | — | Todas las pantallas empiezan igual (título, subtítulo y acciones): nunca se pregunta dónde se está. |
+| **Foco de TV** | ambas | Anillo de luz + escala 1,05 con transición suave: el elemento enfocado siempre se ve de un vistazo a tres metros. |
+
+### Moderno
+
+- **Paleta**: fondo azul-noche (`#06080f`), superficies de cristal
+  (`backdrop-filter`), y una marca con degradado azul → violeta → turquesa que
+  se repite en botones,_carteles y en el propio logo.
+- **Aura de fondo**: dos manchas de luz muy lentas, animadas sólo con
+  `transform` (sin repintados) y desactivadas con `prefers-reduced-motion`.
+- **Iconos SVG en línea**: sin fuentes de iconos ni peticiones extra.
+- **Esqueletos de carga**: la pantalla de inicio se dibuja con la forma del
+  contenido final mientras llegan los catálogos, sin spinners ni saltos.
+
+### Rápido
+
+- Cero dependencias nuevas: el diseño es CSS puro.
+- `content-visibility: auto` en las filas: el navegador no pinta lo que está
+  fuera de pantalla.
+- Imágenes con `loading="lazy"` y `decoding="async"`.
+- Animaciones sólo de `transform` y `opacity` (60 fps en un TV de gama media).
+- Los catálogos se piden en paralelo y con caché en el servidor.
+
+---
+
 ## Teclado, buscador, géneros, décadas y personalización (estilo WuPlay)
 
 La Fase 3/4 replica el diseño de WuPlay (v0.7.0 → v0.7.4 de su CHANGELOG) en
@@ -425,6 +462,10 @@ búsqueda clásico:
       mínima, ocultar adultos) aplicados en el servidor
 - [x] **Personalización del menú**: mostrar, ocultar y reordenar las secciones
       desde los ajustes, con el mismo orden en todos los dispositivos
+- [x] **Diseño de interfaz híbrido** (WuPlay + NuvioTV): rail lateral, portada
+      con fondo, acciones rápidas, encabezados de página, foco de TV con
+      anillo de luz, paleta de cristal y degradado de marca, iconos SVG
+      propios y esqueletos de carga
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [ ] Watch parties y Chromecast
 

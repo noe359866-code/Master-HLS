@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import { Button, EmptyState, Modal } from '../components/ui';
 
 const AVATARS = ['👤', '🧑', '👩', '👨', '🧒', '🐱', '🐼', '🚀', '🎬', '⚽'];
@@ -28,7 +29,7 @@ export function ProfilesScreen() {
 
   return (
     <div className="screen profiles">
-      <h1>¿Quién está viendo?</h1>
+      <PageHeader title="¿Quién está viendo?" hint="Elige un perfil o crea uno nuevo." />
 
       {profiles.length === 0 ? (
         <EmptyState title="No hay perfiles" hint="Crea uno para empezar." />

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import type { Decade, Genre, Meta } from '../types';
 import { Button, ErrorState, Loader, Poster } from '../components/ui';
 
@@ -40,13 +41,10 @@ export function GenresScreen() {
 
   return (
     <div className="screen browse-screen">
-      <header className="browse-screen__header">
-        <h1>Géneros</h1>
-        <p className="browse-screen__hint">
-          Explora el catálogo por género. El contenido lo traen los addons que tengas
-          instalados.
-        </p>
-      </header>
+      <PageHeader
+        title="Géneros"
+        hint="Explora el catálogo por género. El contenido lo traen los addons instalados."
+      />
 
       <div className="genre-grid">
         {genres.map((genre) => (
@@ -96,12 +94,14 @@ export function GenreScreen({ genre, label }: { genre: string; label?: string })
 
   return (
     <div className="screen browse-screen">
-      <header className="browse-screen__header">
-        <h1>{label ?? genre}</h1>
-        <Button variant="ghost" onClick={() => navigate({ name: 'genres' })}>
-          ← Géneros
-        </Button>
-      </header>
+      <PageHeader
+        title={label ?? genre}
+        actions={
+          <Button variant="ghost" onClick={() => navigate({ name: 'genres' })}>
+            ← Géneros
+          </Button>
+        }
+      />
 
       {loading ? <Loader /> : null}
       {error ? <ErrorState message={error} /> : null}
@@ -153,12 +153,10 @@ export function DecadesScreen() {
 
   return (
     <div className="screen browse-screen">
-      <header className="browse-screen__header">
-        <h1>Décadas</h1>
-        <p className="browse-screen__hint">
-          Los clásicos de cada época, ordenados por puntuación.
-        </p>
-      </header>
+      <PageHeader
+        title="Décadas"
+        hint="Los clásicos de cada época, ordenados por puntuación."
+      />
 
       <div className="decade-grid">
         {decades.map((decade) => (
@@ -207,12 +205,14 @@ export function DecadeScreen({ decade, label }: { decade: string; label?: string
 
   return (
     <div className="screen browse-screen">
-      <header className="browse-screen__header">
-        <h1>{title}</h1>
-        <Button variant="ghost" onClick={() => navigate({ name: 'decades' })}>
-          ← Décadas
-        </Button>
-      </header>
+      <PageHeader
+        title={title}
+        actions={
+          <Button variant="ghost" onClick={() => navigate({ name: 'decades' })}>
+            ← Décadas
+          </Button>
+        }
+      />
 
       {loading ? <Loader /> : null}
       {error ? <ErrorState message={error} /> : null}

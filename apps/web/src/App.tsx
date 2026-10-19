@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { api } from './api';
 import { useSpatialNavigation } from './navigation';
@@ -21,7 +21,7 @@ import { ProfilesScreen } from './screens/Profiles';
 import { PersonScreen } from './screens/Person';
 import { DevicesScreen } from './screens/Devices';
 
-import { NAV_ITEMS } from './navigation-items';
+import { SideRail } from './components/SideRail';
 
 interface SessionState {
   pairingRequired: boolean;
@@ -29,7 +29,7 @@ interface SessionState {
 }
 
 export function App() {
-  const { route, navigate, loading, error, activeProfile, refreshAll, settings } = useApp();
+  const { route, navigate, loading, error, refreshAll } = useApp();
   const [session, setSession] = useState<SessionState | null>(null);
 
   useSpatialNavigation();
@@ -62,23 +62,12 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [navigate]);
 
-  // Menu visible: se respeta la personalizacion del servidor.
-  const tabs = useMemo(() => {
-    const preferences = settings?.sidebar ?? [];
-    const byId = new Map(preferences.map((item) => [item.id, item]));
-    return NAV_ITEMS.filter((item) => !byId.get(item.id)?.hidden).sort((a, b) => {
-      const orderA = byId.get(a.id)?.order ?? NAV_ITEMS.indexOf(a);
-      const orderB = byId.get(b.id)?.order ?? NAV_ITEMS.indexOf(b);
-      return orderA - orderB;
-    });
-  }, [settings?.sidebar]);
-
   const isPlayer = route.name === 'player';
   const needsPairing = Boolean(session?.pairingRequired) && !session?.authenticated;
 
   if (needsPairing) {
     return (
-      <div className="app">
+      <div className="app app--norail">
         <main className="content">
           <DevicesScreen
             onLinked={() => {
@@ -93,40 +82,9 @@ export function App() {
 
   return (
     <div className={`app ${isPlayer ? 'app--player' : ''}`}>
-      {!isPlayer ? (
-        <header className="topbar">
-          <div className="topbar__brand">
-            <span className="topbar__logo">M</span>
-            <span className="topbar__name">Vibe Flix</span>
-          </div>
-
-          <nav className="topbar__nav">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                data-focusable="true"
-                className={`topbar__tab ${route.name === tab.route.name ? 'topbar__tab--active' : ''}`}
-                onClick={() => navigate(tab.route)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-
-          <button
-            type="button"
-            data-focusable="true"
-            className="topbar__profile"
-            onClick={() => navigate({ name: 'profiles' })}
-          >
-            <span className="topbar__avatar" style={{ background: activeProfile?.color ?? '#5b8cff' }}>
-              {activeProfile?.avatar ?? '👤'}
-            </span>
-            <span>{activeProfile?.name ?? 'Perfil'}</span>
-          </button>
-        </header>
-      ) : null}
+      {/* Navegación: rail lateral fijo (estilo WuPlay) con la marca, las
+          secciones y el perfil. El contenido usa todo el ancho restante. */}
+      {!isPlayer ? <SideRail /> : null}
 
       <main className="content">
         {loading && !isPlayer ? <Loader label="Arrancando Vibe Flix…" /> : null}

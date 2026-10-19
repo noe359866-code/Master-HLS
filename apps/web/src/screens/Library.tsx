@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
+import { PageHeader } from '../components/PageHeader';
 import type { Meta } from '../types';
 import { Button, EmptyState, Poster, Row } from '../components/ui';
 
@@ -23,6 +24,10 @@ export function ListsScreen() {
 
   return (
     <div className="screen">
+      <PageHeader
+        title="Mis listas"
+        hint="Watchlists del perfil: guarda lo que quieras ver más tarde."
+      />
       <div className="lists__create">
         <input
           className="lists__input"
@@ -72,6 +77,7 @@ export function HistoryScreen() {
 
   return (
     <div className="screen">
+      <PageHeader title="Historial" hint="Todo lo que has visto, con dónde lo dejaste." />
       <div className="history__actions">
         <Button variant="danger" onClick={() => void clear()}>
           Borrar historial

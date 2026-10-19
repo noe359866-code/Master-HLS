@@ -6,17 +6,32 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+/**
+ * Paleta hibrida Vibe Flix (misma que el cliente web).
+ *
+ * Fondo azul-noche casi negro, superficies translucidas y una marca con
+ * degradado (azul -> violeta -> turquesa). Los colores planos se evitan:
+ * el contraste lo pone el degradado y las superficies translucidas.
+ */
 private val VibeFlixColors = darkColorScheme(
-    primary = Color(0xFF5B8CFF),
-    onPrimary = Color(0xFF08101F),
-    secondary = Color(0xFF9D7BFF),
-    background = Color(0xFF0B0E14),
-    onBackground = Color(0xFFE9EDF6),
-    surface = Color(0xFF141924),
-    onSurface = Color(0xFFE9EDF6),
-    surfaceVariant = Color(0xFF1A2030),
-    onSurfaceVariant = Color(0xFF98A2B8),
-    error = Color(0xFFFF5B6E),
+    primary = Color(0xFF6E8BFF),
+    onPrimary = Color(0xFF06080F),
+    primaryContainer = Color(0xFF1B2542),
+    onPrimaryContainer = Color(0xFFDDE4FF),
+    secondary = Color(0xFFA06BFF),
+    onSecondary = Color(0xFF06080F),
+    secondaryContainer = Color(0xFF2A1F45),
+    onSecondaryContainer = Color(0xFFEADCFF),
+    tertiary = Color(0xFF35D6C4),
+    onTertiary = Color(0xFF04201D),
+    background = Color(0xFF06080F),
+    onBackground = Color(0xFFF3F6FD),
+    surface = Color(0xFF111726),
+    onSurface = Color(0xFFF3F6FD),
+    surfaceVariant = Color(0xFF151C2C),
+    onSurfaceVariant = Color(0xFF8E99B3),
+    outline = Color(0xFF2A3348),
+    error = Color(0xFFFF6B7D),
 )
 
 /** Tema oscuro por defecto: el cliente se usa en el salon. */

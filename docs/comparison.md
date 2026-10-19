@@ -117,7 +117,20 @@ in web configurator"):
 | **Personalizar el menú** (mostrar/ocultar/ordenar) | ✅ (configurador web) | ❌ | ✅ (misma opción en web y Android TV, guardada en el servidor) |
 | Filtros aplicados en el **servidor** (todos los clientes) | ❌ | ❌ | ✅ |
 
-### 2.6 Extras de plataforma
+### 2.6 Interfaz y navegación (TV)
+
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
+| --- | --- | --- | --- |
+| Navegación lateral por secciones | ✅ | ❌ (barra superior) | ✅ **rail fijo con icono + etiqueta** |
+| Portada con fondo del título | ✅ | ✅ | ✅ (fondo + año + puntuación + sinopsis) |
+| Foco grande para el mando | ✅ | ✅ | ✅ (anillo de luz + escala 1,05) |
+| Tarjetas de género con color | ✅ | ❌ | ✅ (21 con emoji y degradado) |
+| Pantalla de décadas | ✅ | ❌ | ✅ |
+| Esqueletos de carga (sin spinners) | ❌ | ❌ | ✅ |
+| Iconos propios sin dependencias | ❌ (APK) | ✅ | ✅ (SVG en línea) |
+| Tamaño de la interfaz configurable | parcial | ✅ | ⚠️ tipografía y espaciado fijos |
+
+### 2.7 Extras de plataforma
 
 | Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |

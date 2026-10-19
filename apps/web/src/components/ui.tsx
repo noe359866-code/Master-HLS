@@ -32,7 +32,12 @@ export function Poster({ meta, onSelect, progress, badge, className }: PosterPro
       aria-label={meta.name ?? meta.id}
     >
       {image ? (
-        <img src={posterUrl(image)} alt={meta.name ?? ''} loading="lazy" />
+        <img
+          src={posterUrl(image)}
+          alt={meta.name ?? ''}
+          loading="lazy"
+          decoding="async"
+        />
       ) : (
         <div className="poster__fallback" aria-hidden="true">
           <span>{meta.name?.slice(0, 2).toUpperCase() ?? '—'}</span>
@@ -67,6 +72,49 @@ export function Row({ title, subtitle, children, emptyLabel }: RowProps) {
       ) : (
         <div className="row__items">{children}</div>
       )}
+    </section>
+  );
+}
+
+/**
+ * Bloque de esqueleto (shimmer).
+ *
+ * Mientras llegan los catálogos se muestran formas en lugar de un spinner:
+ * la pantalla parece llena desde el primer frame y el contenido entra
+ * en su sitio sin saltos.
+ */
+export function Skeleton({
+  width,
+  height,
+  radius,
+  className,
+}: {
+  width?: number | string;
+  height?: number | string;
+  radius?: number;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`skeleton ${className ?? ''}`}
+      style={{ width, height, borderRadius: radius }}
+      aria-hidden="true"
+    />
+  );
+}
+
+/** Fila de esqueletos con el aspecto de una fila de posters. */
+export function SkeletonRow({ count = 8 }: { count?: number }) {
+  return (
+    <section className="row">
+      <header className="row__header">
+        <Skeleton width={180} height={18} radius={8} />
+      </header>
+      <div className="row__items">
+        {Array.from({ length: count }, (_, index) => (
+          <Skeleton key={index} height={252} radius={16} />
+        ))}
+      </div>
     </section>
   );
 }

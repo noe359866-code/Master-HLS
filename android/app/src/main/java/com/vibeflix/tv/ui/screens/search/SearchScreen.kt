@@ -41,7 +41,7 @@ fun SearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0B0E14))
+            .background(Color(0xFF06080F))
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
