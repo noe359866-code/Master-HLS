@@ -46,6 +46,10 @@ export interface HlsRouteOptions {
   lookup?: HostLookup;
   /** Solo LAN de confianza: permite HLS servido desde IP privadas. */
   allowPrivateHosts?: boolean;
+  /** Limite para segmentos/recursos binarios (por defecto 32 MiB). */
+  maxResourceBytes?: number;
+  /** Limite para playlists HLS (por defecto 2 MiB). */
+  maxPlaylistBytes?: number;
 }
 
 function decodeHeaders(raw: string | null): Record<string, string> {
@@ -67,8 +71,67 @@ function encodeHeaders(headers: Record<string, string>): string {
   return Buffer.from(JSON.stringify(headers), 'utf8').toString('base64url');
 }
 
+class PayloadTooLargeError extends Error {
+  constructor(readonly limitBytes: number) {
+    super(`El recurso remoto supera el limite permitido de ${limitBytes} bytes`);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
+/**
+ * Lee cuerpos remotos con un techo explícito. response.arrayBuffer()/text()
+ * sin límite permite que una URL de proxy consuma toda la memoria del proceso.
+ */
+async function readLimitedBody(response: Response, limitBytes: number, timeoutMs = 15_000): Promise<Buffer> {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > limitBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new PayloadTooLargeError(limitBytes);
+  }
+
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await Promise.race([
+          reader.read(),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Tiempo de espera agotado leyendo el recurso remoto')), timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > limitBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new PayloadTooLargeError(limitBytes);
+      }
+      chunks.push(Buffer.from(result.value));
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total);
+}
+
+async function readLimitedText(response: Response, limitBytes: number, timeoutMs = 15_000): Promise<string> {
+  return new TextDecoder('utf-8').decode(await readLimitedBody(response, limitBytes, timeoutMs));
+}
+
 export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {}): void {
   const timeoutMs = options.timeoutMs ?? 15_000;
+  const maxResourceBytes = options.maxResourceBytes ?? 32 * 1024 * 1024;
+  const maxPlaylistBytes = options.maxPlaylistBytes ?? 2 * 1024 * 1024;
   const defaultHeaders = options.defaultHeaders ?? {};
   // El proxy acepta cualquier URL del query: sin este guardia sería un SSRF
   // directo contra la red interna del servidor.
@@ -121,7 +184,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
 
       if (!isPlaylist) {
         // Segmento (o cualquier recurso binario): se reenvia tal cual.
-        const buffer = Buffer.from(await response.arrayBuffer());
+        const buffer = await readLimitedBody(response, maxResourceBytes, timeoutMs);
         res.writeHead(200, {
           'content-type': contentType || 'application/octet-stream',
           'content-length': buffer.length,
@@ -132,7 +195,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         return;
       }
 
-      const text = await response.text();
+      const text = await readLimitedText(response, maxPlaylistBytes, timeoutMs);
       const rewritten = rewritePlaylist(text, target, (absolute) => {
         const proxied = new URL('/hls/proxy', publicBase());
         proxied.searchParams.set('url', absolute);
@@ -146,6 +209,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
       });
       res.end(rewritten);
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       if (error instanceof BlockedDestinationError) {
         sendText(res, 400, error.message);
         return;
@@ -170,7 +237,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         sendJson(res, response.status, { error: `HTTP ${response.status}` });
         return;
       }
-      const text = await response.text();
+      const text = await readLimitedText(response, maxPlaylistBytes, timeoutMs);
       const master = parsePlaylist(text, target);
 
       if (!master.isMaster) {
@@ -202,6 +269,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         url: target,
       }, { req, cache: DEFAULT_CACHE_POLICIES.api });
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,
       });
@@ -229,7 +300,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         sendJson(res, response.status, { error: `HTTP ${response.status}` });
         return;
       }
-      const text = await response.text();
+      const text = await readLimitedText(response, maxPlaylistBytes, timeoutMs);
       const master = parsePlaylist(text, target);
       const declared = master.imageStreams[0];
 
@@ -244,7 +315,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
           sendJson(res, 200, { thumbnails: [], imageStreams: master.imageStreams, url: target });
           return;
         }
-        playlistText = await imageResponse.text();
+        playlistText = await readLimitedText(imageResponse, maxPlaylistBytes, timeoutMs);
       }
 
       const thumbnails = parseHlsImagePlaylist(playlistText, {
@@ -262,6 +333,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         url: target,
       }, { req, cache: DEFAULT_CACHE_POLICIES.subtitles });
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,
       });
@@ -280,7 +355,11 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
 
     try {
       const response = await fetchRemote(target, headers);
-      const text = await response.text();
+      if (!response.ok) {
+        sendJson(res, response.status, { error: `HTTP ${response.status}` });
+        return;
+      }
+      const text = await readLimitedText(response, maxPlaylistBytes, timeoutMs);
       const master = parsePlaylist(text, target);
       if (!isMasterPlaylist(text)) {
         sendJson(res, 200, { url: target, variant: null });
@@ -293,6 +372,10 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         reason: selection?.reason,
       });
     } catch (error) {
+      if (error instanceof PayloadTooLargeError) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
       sendJson(res, error instanceof BlockedDestinationError ? 400 : 502, {
         error: (error as Error).message,
       });
