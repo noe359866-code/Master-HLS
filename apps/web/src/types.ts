@@ -205,6 +205,15 @@ export interface AppSettings {
   };
 }
 
+/** Respuesta del servidor con el segmento saltable. */
+export interface SkipIntroResult {
+  /** false si el usuario desactivó la función en los ajustes. */
+  enabled: boolean;
+  segment: SkipSegment;
+  source: string;
+  cues: number;
+}
+
 /** Segmento saltable (intro o recap) detectado por el servidor. */
 export interface SkipSegment {
   startMs: number;

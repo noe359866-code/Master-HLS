@@ -3,7 +3,7 @@ import type {
   Catalog,
   DebridStatus,
   OpenSubtitleEntry,
-  SkipSegment,
+  SkipIntroResult,
   HistoryEntry,
   InstalledAddon,
   Manifest,
@@ -338,10 +338,8 @@ export const api = {
     season?: number;
     episode?: number;
     duration?: number;
-  }): Promise<{ segment: SkipSegment; source: string; cues: number }> {
-    return request<{ segment: SkipSegment; source: string; cues: number }>(
-      `/api/skip-intro${query({ ...params })}`,
-    );
+  }): Promise<SkipIntroResult> {
+    return request<SkipIntroResult>(`/api/skip-intro${query({ ...params })}`);
   },
 
   /** Busca subtitulos en OpenSubtitles (nativo, sin addon). */

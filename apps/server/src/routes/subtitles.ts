@@ -173,6 +173,9 @@ export function registerSubtitleRoutes(
       : fallbackSkipSegment(durationMs, options);
 
     sendJson(res, 200, {
+      // El cliente usa esta marca para no mostrar el boton si el usuario lo
+      // ha desactivado en los ajustes.
+      enabled: settings.enabled !== false,
       segment,
       source: segment.source,
       cues: cues.length,

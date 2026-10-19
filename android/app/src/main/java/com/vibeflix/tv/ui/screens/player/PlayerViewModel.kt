@@ -104,13 +104,15 @@ class PlayerViewModel @Inject constructor(
                 val season = id.substringAfter(':', "").toIntOrNull()
                 val episode = id.substringAfter(':', "").substringAfter(':', "").toIntOrNull()
                 val segment = runCatching {
-                    repository.skipIntro(
+                    val result = repository.skipIntro(
                         type = type.ifBlank { null },
                         id = imdbId.ifBlank { null },
                         imdbId = imdbId.ifBlank { null },
                         season = season,
                         episode = episode,
-                    ).segment
+                    )
+                    // Si el usuario lo desactivo en los ajustes, no hay boton.
+                    if (result.enabled) result.segment else null
                 }.getOrNull()
                 val next = if (type == "episode") findNextEpisode(id, imdbId) else null
 

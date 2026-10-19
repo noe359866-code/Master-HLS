@@ -248,6 +248,26 @@ describe('subtitulos nativos y omitir intro', () => {
     assert.equal(body.source, 'subtitles');
   });
 
+  it('marca la funcion como desactivada si el usuario la apaga', async () => {
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ skipIntro: { enabled: false } }),
+    });
+    const response = await fetch(`${base}/api/skip-intro?type=movie&id=tt1`);
+    const body = (await response.json()) as { enabled: boolean };
+    assert.equal(body.enabled, false);
+
+    await fetch(`${base}/api/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ skipIntro: { enabled: true } }),
+    });
+    const again = await fetch(`${base}/api/skip-intro?type=movie&id=tt1`);
+    const restored = (await again.json()) as { enabled: boolean };
+    assert.equal(restored.enabled, true);
+  });
+
   it('usa el offset por defecto cuando no hay subtitulos', async () => {
     const response = await fetch(`${base}/api/skip-intro?type=movie&id=tt-desconocido`);
     const body = (await response.json()) as {

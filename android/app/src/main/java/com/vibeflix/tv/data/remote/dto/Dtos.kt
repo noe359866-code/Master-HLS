@@ -230,6 +230,8 @@ data class SkipSegmentDto(
 )
 
 data class SkipIntroResponseDto(
+    /** false si el usuario desactivo la funcion en los ajustes del servidor. */
+    @Json(name = "enabled") val enabled: Boolean = true,
     @Json(name = "segment") val segment: SkipSegmentDto? = null,
     @Json(name = "source") val source: String = "fallback",
     @Json(name = "cues") val cues: Int = 0,

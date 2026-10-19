@@ -263,7 +263,7 @@ export function PlayerScreen({
           season: season ? Number(season) : undefined,
           episode: episode ? Number(episode) : undefined,
         });
-        if (!cancelled && result.segment) setSkipSegment(result.segment);
+        if (!cancelled && result.enabled && result.segment) setSkipSegment(result.segment);
       } catch {
         // Sin deteccion: se queda el boton con el offset por defecto.
       }
