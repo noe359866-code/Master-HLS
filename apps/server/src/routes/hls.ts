@@ -223,7 +223,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         sendJson(res, response.status, { error: `HTTP ${response.status}` });
         return;
       }
-      const text = await response.text();
+      const text = await readLimitedText(response, maxPlaylistBytes);
       const master = parsePlaylist(text, target);
 
       if (!master.isMaster) {
@@ -282,7 +282,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
         sendJson(res, response.status, { error: `HTTP ${response.status}` });
         return;
       }
-      const text = await response.text();
+      const text = await readLimitedText(response, maxPlaylistBytes);
       const master = parsePlaylist(text, target);
       const declared = master.imageStreams[0];
 
@@ -333,7 +333,11 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
 
     try {
       const response = await fetchRemote(target, headers);
-      const text = await response.text();
+      if (!response.ok) {
+        sendJson(res, response.status, { error: `HTTP ${response.status}` });
+        return;
+      }
+      const text = await readLimitedText(response, maxPlaylistBytes);
       const master = parsePlaylist(text, target);
       if (!isMasterPlaylist(text)) {
         sendJson(res, 200, { url: target, variant: null });
