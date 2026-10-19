@@ -140,9 +140,11 @@ describe('servidor Vibe Flix', () => {
 
   it('devuelve los streams ordenados por calidad', async () => {
     const response = await fetch(`${base}/stream/movie/tt1.json`);
-    const body = (await response.json()) as { streams: Array<{ name: string }> };
+    const body = (await response.json()) as { streams: Array<{ name: string; title: string; url: string; description?: string }> };
     assert.equal(body.streams.length, 2);
-    assert.match(body.streams[0]?.name ?? '', /1080p/);
+    assert.equal(body.streams[0]?.url, 'https://cdn.tld/1080.m3u8'); // calidad interna intacta
+    assert.ok(body.streams.every((stream) => stream.name === 'Pelicula Uno' &&
+      stream.title === 'Pelicula Uno' && !stream.description));
   });
 
   it('devuelve los subtitulos', async () => {
@@ -236,7 +238,23 @@ describe('servidor Vibe Flix', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Protegido', pin: '1234' }),
     });
-    const { profile } = (await created.json()) as { profile: { id: string } };
+    const { profile } = (await created.json()) as { profile: { id: string; pin?: string } };
+    assert.equal(profile.pin, '••••');
+    const listed = (await (await fetch(`${base}/api/profiles`)).json()) as {
+      profiles: Array<{ id: string; pin?: string }>;
+    };
+    assert.equal(listed.profiles.find((item) => item.id === profile.id)?.pin, '••••');
+    const saved = JSON.parse(await fs.readFile(path.join(dataDir, 'vibe-flix.json'), 'utf8')) as {
+      profiles: Array<{ id: string; pin?: string }>;
+    };
+    const stored = saved.profiles.find((item) => item.id === profile.id)?.pin ?? '';
+    assert.ok(stored.startsWith('scrypt$') && !stored.includes('1234'));
+    const edited = await fetch(`${base}/api/profiles/${profile.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Actualizado', pin: profile.pin }),
+    });
+    assert.equal((await edited.json() as { profile: { pin: string } }).profile.pin, '••••');
 
     const sinPin = await fetch(`${base}/api/profiles/${profile.id}/activate`, { method: 'POST' });
     assert.equal(sinPin.status, 401);

@@ -116,7 +116,7 @@ quiere parsear en el dispositivo.
 ```ts
 AppData {
   addons: InstalledAddonRecord[]      // manifestUrl + config por addon
-  profiles: Profile[]                  // nombre, avatar, PIN, idiomas, autoplay
+  profiles: Profile[]                  // nombre, avatar, PIN, contentLanguage, audio/subtítulos, autoplay
   activeProfileId: string
   watchlists: Record<profileId, Watchlist[]>
   history:    Record<profileId, HistoryEntry[]>
@@ -131,9 +131,13 @@ AppData {
 }
 ```
 
-Persistencia en un único JSON (`data/vibe-flix.json`) con escritura atómica
-(temporal + `rename`). Se evita una base de datos nativa para que el proyecto
-sea `clone & run` sin compilación nativa.
+Persistencia en un único JSON (`data/vibe-flix.json`, o `DATA_DIR/vibe-flix.json`)
+con escritura atómica (temporal + `rename`) y permisos de fichero `0600` en
+POSIX. Los PIN se guardan con `scrypt` y sal aleatoria; los datos antiguos con
+PIN en claro se migran al arrancar. Las respuestas de perfiles solo devuelven
+un indicador de PIN, no el hash. Se evita una base de datos nativa para que el
+proyecto sea `clone & run` sin compilación nativa. El servidor mantiene un
+**perfil activo global**: otros clientes del mismo servidor ven el cambio.
 
 ## 5. Cliente web
 
@@ -144,6 +148,8 @@ sea `clone & run` sin compilación nativa.
   cambio manual de calidad; el panel "Info HLS" muestra las variantes reales
   que el servidor ha analizado.
 - **Estado**: un único `AppProvider` con los datos de la app y de la biblioteca.
+  `ProfilePreferences` solicita nombre e idioma en el primer uso del perfil y
+  permite editarlos después; la fuente de verdad es `/api/profiles/:id`.
 
 ## 5.1 Debrid nativo (`packages/addon-engine/src/debrid/`)
 
@@ -166,21 +172,27 @@ streams agregados  ->  candidatos (infoHash / externalUrl)
 
 ## 5.1 bis Scrapers nativos (`packages/scrapers/`)
 
-Addon de streams que vive **dentro** del servidor y se registra en el mismo
-`AddonRegistry` que los addons instalados, de modo que el fan-out, la caché y
-la fusión de respuestas no necesitan ningún caso especial.
+Addon de streams **Vibe Flix** que vive dentro del servidor y se registra en
+el mismo `AddonRegistry` que los addons instalados. Su selección por idioma y
+tipo sigue el modelo de proveedores de
+[StreamFlix Reborn](https://git.gay/streamflix-reborn2/streamflix/src/branch/main):
+referencia de arquitectura (licencia Apache-2.0) y nueve adaptadores
+TypeScript independientes basados en los flujos de sus proveedores. El
+[inventario detallado](streamflix-reborn-inventory.md) distingue VOD, IPTV y
+archivos sin instancia; no promete que los sitios estén disponibles.
 
 ```
-petición /stream/movie/tt0111161.json
-   ->  AddonRegistry.streams()  (fan-out paralelo)
-        ->  addon remoto A        ->  streams
-        ->  addon remoto B        ->  streams
-        ->  NativeScrapersAddon   ->  ScraperRegistry.resolve()
-                                          ->  proveedor 1 (timeout propio)
-                                          ->  proveedor 2
-                                          ->  proveedor N
-                                   ->  merge + orden por calidad
-   ->  debrid (magnets)  ->  respuesta única
+petición /stream/series/tt0123456:2:4.json
+   ->  perfil activo: idioma, ID y categoría desde la meta (anime/dorama/serie)
+   ->  AddonRegistry.streams(cacheScope = perfil:idioma)  (fan-out paralelo)
+        ->  addon remoto A          ->  streams (alternativas)
+        ->  addon remoto B          ->  streams (alternativas)
+        ->  NativeScrapersAddon     ->  ScraperRegistry.resolve()
+                                       ->  proveedor del idioma y tipo preferidos
+                                       ->  fallback idioma base/serie genérica
+                                       ->  cada proveedor con timeout propio
+                                   ->  fuentes nativas preferidas, calidad interna
+   ->  debrid (magnets)  ->  presentStreams(título · T2 E4)
 ```
 
 Piezas del paquete:
@@ -190,21 +202,37 @@ Piezas del paquete:
 | `src/types.ts` | Contrato: `ScrapeProvider`, `ScrapeRequest`, `ScrapeContext`, `ScrapedSource`, `ProviderConfig`. |
 | `src/embed.ts` | Extractores de player (`hls`, `file`, `sources[]`, `<video>`, `$.get`), `resolveEmbed`, `detectQuality` y **desempaquetador de JavaScript** (`unpackPacker`/`unbase`, decodificado, nunca ejecutado). |
 | `src/normalize.ts` | `normalizeTitle`/`titleMatches` (comparación con acentos y artículos), `qualityRank`, `toStremioStream` (convierte a stream Stremio con `behaviorHints` y subtítulos) y `mergeSources` (dedupe + orden). |
-| `src/providers/registry.ts` | `ScraperRegistry`: fan-out paralelo, **timeout por proveedor** y aislamiento de fallos (`runProvider` nunca lanza). |
-| `src/providers/config.ts` | Proveedor descrito por configuración: `fillTemplate` (`{title}`, `{year}`, `{season}`, `{episode}`, `{imdbId}`, `{tmdbId}`, `{id}`) + extracción con expresiones regulares. |
-| `src/providers/archive.ts` | Proveedor legítimo de referencia: Internet Archive (dominio público) con `advancedsearch` + `metadata` + elección del archivo mayor. |
-| `src/addon.ts` | `NativeScrapersAddon`: manifest sintético (`com.vibeflix.native-scrapers`), resolución del título (el protocolo Stremio solo da el id), caché de 5 min por título y conversión a streams Stremio. |
+| `src/language.ts` | Idiomas `es-419`, `es-ES`, `en`…, preferencia exacta → idioma base → otra región → sin idioma declarado. |
+| `src/providers/registry.ts` | `ScraperRegistry`: fan-out paralelo, **timeout por proveedor**, aislamiento de fallos y selección por idioma + categoría (`movie`/`series`/`anime`/`dorama`). |
+| `src/providers/config.ts` | Proveedor descrito por configuración: `fillTemplate` (`{title}`, `{titleId}`, `{year}`, `{season}`, `{episode}`, `{imdbId}`, `{tmdbId}`, `{id}`) + `episodeUrl`/`episodePattern`, comprobación opcional del título y extracción con expresiones regulares. |
+| `src/providers/archive.ts` | Respaldo Internet Archive (dominio público) con `advancedsearch` + `metadata` + elección del archivo mayor; idioma del audio no declarado. |
+| `src/providers/{cinehax,fanpelis,doramasflix,tioanime,frembed,ridomovies,mstream,guardaflix,zaluknij}.ts` | Puertos nativos VOD de flujos concretos upstream (es/en/de/fr/it/pl); filtros de título/episodio/audio y retorno solo de URL multimedia o vacío. Probados con HTTP simulado, no en vivo. |
+| `src/providers/site-tools.ts` | Comparación conservadora de títulos, extracción de arrays JSON y rechazo de IP privadas/loopback literales en embeds (no reemplaza aislamiento de red frente a DNS rebinding). |
+| `src/providers/upstream-catalog.ts` | Inventario de 76 archivos Kotlin y sus estados: **referencia**, no se registra como fuentes activas. |
+| `src/addon.ts` | `NativeScrapersAddon`: manifest sintético **Vibe Flix** (`com.vibeflix.native-scrapers`), separa `id:temporada:episodio` para resolver meta del título y episodio real, caché de 5 min por título/idioma, y conversión a streams Stremio. |
 
 En el servidor (`apps/server/src/app.ts`) se crea el `ScraperRegistry`, se
 resuelve el `NativeScrapersAddon` y se registra con
 `registry.registerSource(...)`; `applyScrapers(data)` reconstruye los
 proveedores según los ajustes (`enabled`, `providers`, `configs`) y invalida las
 cachés. La API (`apps/server/src/routes/scrapers.ts`) expone el estado, la
-configuración y una prueba de proveedor (`POST /api/scrapers/test`).
+configuración, el inventario upstream separado (`GET /api/scrapers/upstream`)
+y una prueba de proveedor (`POST /api/scrapers/test`). En
+`/stream/...`, `presentStreams` se ejecuta **después** de ordenar y debrid:
+solo exporta el título (y temporada/episodio) en etiquetas, pero conserva
+URLs y cabeceras de playback. La prioridad de fuentes nativas corresponde al
+idioma del perfil; los addons externos siguen como alternativas sin un idioma
+verificable. El cache compartido se particiona por ID de perfil e idioma.
 
-Criterio: **el addon no incluye extractores de sitios pirateados**; la
-arquitectura está lista para que cada usuario añada sus propios proveedores
-(legales) por configuración, igual que hace con los addons.
+Límite: nueve puertos de StreamFlix Reborn y Archive están integrados (42
+archivos VOD registrados siguen sin portar; el port polaco es parcial), pero
+ninguno tiene reproducción **verificada en vivo** en este entorno. Los demás
+archivos del upstream (incluidos canales IPTV y clases no registradas) no son
+fuentes activas en Vibe Flix. La selección se hace por idioma de catálogo y
+etiquetas de audio cuando existen, no por una garantía de doblaje. Los
+embeds no resolubles se descartan. El usuario puede añadir fuentes propias
+que esté autorizado a reproducir; el proyecto no garantiza los derechos de
+contenido de terceros. Consulta [el inventario](streamflix-reborn-inventory.md).
 
 ## 5.2 PWA y vinculación
 
@@ -254,6 +282,11 @@ arquitectura está lista para que cada usuario añada sus propios proveedores
   variante elegida, en lugar de dejar que ExoPlayer elija a ciegas.
 - El cliente Android habla con el servidor usando el protocolo Stremio, igual
   que cualquier otro cliente de addons.
+- El arranque presenta `ProfilesScreen`: seleccionar/crear perfil, nombre,
+  idioma y PIN si procede antes de entrar; desde Home se puede cambiar de
+  perfil e idioma. El cambio se persiste mediante la API, y la preferencia
+  local de audio en `SettingsStore` se sincroniza con el idioma elegido.
+  **Compilación Android pendiente**: este entorno no tiene Gradle/`gradlew`.
 
 ### 6.1 Reproductor Media3 (`android/app/src/main/java/com/vibeflix/tv/data/player/`)
 

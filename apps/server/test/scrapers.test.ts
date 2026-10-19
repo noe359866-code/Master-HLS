@@ -24,6 +24,8 @@ const MANIFEST = {
  * configurado, de modo que el flujo completo (buscar -> item -> stream) se
  * puede comprobar sin red.
  */
+let exposeCineHax = false;
+
 function createFetch(): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -44,6 +46,17 @@ function createFetch(): typeof fetch {
         }),
         { status: 200 },
       );
+    }
+    if (exposeCineHax && url === 'https://cinehax.com') {
+      return new Response('<script>var config={"nonce":"test-nonce"}</script>', { status: 200 });
+    }
+    if (exposeCineHax && url.startsWith('https://cinehax.com/wp-admin/admin-ajax.php')) {
+      return new Response(JSON.stringify({ success: true, data: [
+        { id: 501, title: 'Pelicula Uno', media_type: 'movie' },
+      ] }), { status: 200 });
+    }
+    if (exposeCineHax && url === 'https://unlimplay.com/f/embed/movie/501') {
+      return new Response('<script>finalizePlayer({"latino":{"remux":"https://remux.unlimplay.com/501.mp4"},"subtitulado":{"remux":"https://remux.unlimplay.com/en.mp4"}})</script>', { status: 200 });
     }
     if (url.startsWith('https://site.example/search')) {
       return new Response('<a href="/movie/abc123">Pelicula Uno</a>', { status: 200 });
@@ -106,10 +119,42 @@ describe('scrapers nativos', () => {
     const body = (await response.json()) as {
       enabled: boolean;
       providers: Array<{ id: string }>;
-      available: Array<{ id: string }>;
+      available: Array<{ id: string; liveVerified?: boolean }>;
     };
     assert.equal(typeof body.enabled, 'boolean');
     assert.ok(body.available.some((provider) => provider.id === 'internet-archive'));
+    assert.ok(body.available.some((provider) => provider.id === 'cinehax'));
+    for (const id of ['ridomovies', 'mstream', 'guardaflix', 'zaluknij']) {
+      assert.ok(body.available.some((provider) => provider.id === id));
+    }
+    assert.ok(body.available.every((provider) => provider.liveVerified === false));
+    assert.ok(!body.available.some((provider) => provider.id === 'vavoo'));
+    const inventory = await fetch(`${base}/api/scrapers/upstream`);
+    assert.equal(inventory.status, 200);
+    const catalog = (await inventory.json()) as {
+      counts: { vod: number; iptv: number; unregistered: number; native: number };
+      providers: Array<{ file: string; nativeId?: string; state: string }>;
+    };
+    assert.deepEqual(catalog.counts, { vod: 51, iptv: 15, unregistered: 10, native: 9 });
+    assert.equal(catalog.providers.length, 76);
+    assert.equal(catalog.providers.find((provider) => provider.file === 'VavooProvider.kt')?.nativeId, undefined);
+    assert.equal(catalog.providers.find((provider) => provider.file === 'RidomoviesProvider.kt')?.nativeId, 'ridomovies');
+    assert.equal(catalog.providers.find((provider) => provider.file === 'MStreamProvider.kt')?.nativeId, 'mstream');
+    assert.equal(catalog.providers.find((provider) => provider.file === 'GuardaFlixProvider.kt')?.nativeId, 'guardaflix');
+    assert.equal(catalog.providers.find((provider) => provider.file === 'ZaluknijProvider.kt')?.nativeId, 'zaluknij');
+  });
+
+  it('no confunde el inventario upstream con adaptadores seleccionables', async () => {
+    const response = await fetch(`${base}/api/scrapers`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true, providers: ['vavoo'], configs: [] }),
+    });
+    assert.equal(response.status, 400);
+    const override = await fetch(`${base}/api/scrapers`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true, configs: [{ ...DEMO_CONFIG, id: 'cinehax' }] }),
+    });
+    assert.equal(override.status, 400);
   });
 
   it('configura un proveedor y lo añade a los streams del addon', async () => {
@@ -126,7 +171,8 @@ describe('scrapers nativos', () => {
     const body = (await streams.json()) as { streams: Array<{ url?: string; name?: string }> };
     const scraped = body.streams.find((stream) => stream.url?.includes('cdn.example.com'));
     assert.ok(scraped, 'el stream raspeado deberia estar en la respuesta');
-    assert.match(scraped!.name ?? '', /Demo/);
+    assert.equal(scraped!.name, 'Pelicula Uno');
+    assert.equal((scraped as { description?: string }).description, undefined);
   });
 
   it('invalida la cache cuando cambian los proveedores', async () => {
@@ -157,6 +203,34 @@ describe('scrapers nativos', () => {
     const body = (await response.json()) as { sources: Array<{ url: string }> };
     assert.equal(body.sources.length, 1);
     assert.equal(body.sources[0]!.url, 'https://cdn.example.com/pelicula-1080p.mp4');
+  });
+
+  it('selecciona el adaptador nativo con el idioma del perfil sin mostrar el proveedor en el stream', async () => {
+    exposeCineHax = true;
+    await fetch(`${base}/api/scrapers`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true, providers: ['cinehax'], configs: [] }),
+    });
+    const update = await fetch(`${base}/api/profiles/default`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ contentLanguage: 'es-NI' }),
+    });
+    assert.equal(update.status, 200);
+    const response = await fetch(`${base}/stream/movie/tt1.json`);
+    const body = (await response.json()) as { streams: Array<{ url?: string; name?: string; description?: string }> };
+    assert.equal(response.status, 200);
+    const stream = body.streams.find((item) => item.url?.includes('remux.unlimplay.com'));
+    assert.ok(stream, 'el adaptador nativo debe resolver la fuente del sitio simulado');
+    assert.equal(stream.name, 'Pelicula Uno');
+    assert.equal(stream.description, undefined);
+    assert.ok(!body.streams.some((item) => item.url?.endsWith('/en.mp4')));
+
+    const debug = await fetch(`${base}/api/scrapers/test`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'cinehax', type: 'movie', title: 'Pelicula Uno', id: 'tmdb:501' }),
+    });
+    const result = (await debug.json()) as { sources: Array<{ url: string }> };
+    assert.equal(result.sources[0]?.url, 'https://remux.unlimplay.com/501.mp4');
   });
 
   it('desactivar los scrapers los quita del registro de addons', async () => {

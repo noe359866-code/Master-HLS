@@ -367,8 +367,14 @@ export class AddonRegistry {
   }
 
   /** Streams agregados: fan-out a todos los addons de streams, ordenados por calidad. */
-  async streams(request: { type: string; id: string }): Promise<AggregatedResult<StreamResponse>> {
-    const key = `streams:${request.type}:${request.id}`;
+  async streams(request: {
+    type: string;
+    id: string;
+    cacheScope?: string;
+    /** Prioriza fuentes nativas del idioma del perfil; los otros addons son fallback. */
+    preferredAddonIds?: string[];
+  }): Promise<AggregatedResult<StreamResponse>> {
+    const key = `streams:${request.type}:${request.id}:${request.cacheScope ?? ''}:${(request.preferredAddonIds ?? []).join(',')}`;
     const cached = this.resourceCache.get(key) as AggregatedResult<StreamResponse> | undefined;
     if (cached) return cached;
 
@@ -379,21 +385,30 @@ export class AddonRegistry {
         (addonId) => this.clientFor(addonId).streams(request),
       );
 
-      const byKey = new Map<string, Stream>();
-      for (const { value } of responses.ok) {
+      const byKey = new Map<string, { stream: Stream; preferred: boolean }>();
+      for (const { addonId, value } of responses.ok) {
+        const preferred = request.preferredAddonIds?.includes(addonId) ?? false;
         for (const stream of value.streams) {
           const dedupeKey = streamDedupeKey(stream);
           const existing = byKey.get(dedupeKey);
           if (!existing) {
-            byKey.set(dedupeKey, stream);
+            byKey.set(dedupeKey, { stream, preferred });
             continue;
           }
-          // Se conserva el que trae mas informacion (titulo, subtitulos, hints).
-          byKey.set(dedupeKey, mergeStream(existing, stream));
+          // Se conserva la información más completa y la prioridad nativa si
+          // el mismo enlace llega también de otro addon.
+          byKey.set(dedupeKey, {
+            stream: mergeStream(existing.stream, stream),
+            preferred: existing.preferred || preferred,
+          });
         }
       }
 
-      const streams = sortStreamsByQuality([...byKey.values()]);
+      const entries = [...byKey.values()];
+      const streams = [
+        ...sortStreamsByQuality(entries.filter((entry) => entry.preferred).map((entry) => entry.stream)),
+        ...sortStreamsByQuality(entries.filter((entry) => !entry.preferred).map((entry) => entry.stream)),
+      ];
       return {
         value: { streams },
         sources: responses.ok.map((entry) => entry.addonId),

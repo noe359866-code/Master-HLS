@@ -157,7 +157,7 @@ export function AddonsScreen() {
 }
 
 export function SettingsScreen() {
-  const { settings, saveSettings, navigate } = useApp();
+  const { settings, activeProfile, saveSettings, navigate } = useApp();
   const [debridMessage, setDebridMessage] = useState<string | null>(null);
   const [debridError, setDebridError] = useState<string | null>(null);
   const [installable, setInstallable] = useState(false);
@@ -304,11 +304,7 @@ export function SettingsScreen() {
       if (result.error) {
         setScraperError(result.error);
       } else {
-        setScraperMessage(
-          `${result.provider}: ${result.sources.length} fuente(s) encontrada(s)${
-            result.sources[0] ? ` (${result.sources[0].url})` : ''
-          }.`,
-        );
+        setScraperMessage(`${result.sources.length} fuente(s) encontrada(s).`);
       }
     } catch (cause) {
       setScraperError((cause as Error).message);
@@ -361,15 +357,10 @@ export function SettingsScreen() {
             onChange={(event) => void saveSettings({ autoplayTrailers: event.target.checked })}
           />
         </label>
-        <label className="setting">
-          <span>Mostrar el prefijo del addon en los streams</span>
-          <input
-            type="checkbox"
-            data-focusable="true"
-            checked={settings.showAddonPrefix}
-            onChange={(event) => void saveSettings({ showAddonPrefix: event.target.checked })}
-          />
-        </label>
+        <p className="panel__hint">
+          Los streams se muestran con el título y, si corresponde, la temporada y el episodio.
+          No se muestran nombres de proveedores ni enlaces en las fichas.
+        </p>
       </section>
 
       <section className="panel">
@@ -424,15 +415,16 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
-        <h2>Scrapers nativos</h2>
+        <h2>Vibe Flix · fuentes nativas</h2>
         <p className="panel__hint">
-          Addon de streams resuelto en el propio servidor (patrón de StreamFlix Reborn): varios
-          proveedores se consultan en paralelo, se aíslan los fallos y el resultado se fusiona con
-          los streams de los addons instalados. Los magnets siguen pasando por la resolución de
-          debrid.
+          Vibe Flix consulta automáticamente las fuentes compatibles con el idioma de cada perfil.
+          Incluye adaptadores nativos para películas, series, anime y doramas, además de Internet Archive como
+          último recurso (audio no declarado). Las pruebas son simuladas: no se ha verificado la
+          reproducción real ni se garantiza disponibilidad para todos los idiomas o títulos. Los
+          canales IPTV del proyecto de referencia no se confunden con episodios.
         </p>
         <label className="setting">
-          <span>Activar los scrapers nativos</span>
+          <span>Buscar fuentes automáticamente</span>
           <input
             type="checkbox"
             data-focusable="true"
@@ -440,60 +432,66 @@ export function SettingsScreen() {
             onChange={(event) => void saveScrapers({ enabled: event.target.checked })}
           />
         </label>
-        {(scraperStatus?.providers ?? []).map((provider) => {
-          const selected = scraperStatus?.selected ?? [];
-          const active = selected.length === 0 || selected.includes(provider.id);
-          return (
-            <label className="setting" key={provider.id}>
-              <span>
-                {provider.name}
-                {provider.region ? ` · ${provider.region}` : ''}
-              </span>
-              <input
-                type="checkbox"
-                data-focusable="true"
-                checked={active}
-                onChange={(event) => {
-                  const next = event.target.checked
-                    ? [...selected.filter((id) => id !== provider.id), provider.id]
-                    : selected.filter((id) => id !== provider.id);
-                  void saveScrapers({ providers: next });
-                }}
-              />
-            </label>
-          );
-        })}
-        <label className="setting setting--stack">
-          <span>Proveedores propios (JSON)</span>
-          <textarea
-            data-focusable="true"
-            rows={6}
-            spellCheck={false}
-            value={scraperConfigs}
-            placeholder='[{"id":"mio","name":"Mi proveedor","types":["movie"],"searchUrl":"https://sitio/buscar?q={title}","itemUrl":"https://sitio/pelicula/{id}","itemPattern":"href=\"\\/pelicula\\/(\\w+)\"","streamPatterns":["src=\"(https?:\\/\\/[^\"]+\\.mp4)\""]}]'
-            onChange={(event) => setScraperConfigs(event.target.value)}
-          />
-        </label>
-        <div className="addons__install">
-          <Button variant="ghost" onClick={() => void testScrapers()}>
-            Probar proveedor
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              try {
-                const parsed = JSON.parse(scraperConfigs || '[]');
-                void saveScrapers({
-                  configs: Array.isArray(parsed) ? (parsed as ProviderConfig[]) : [],
-                });
-              } catch (cause) {
-                setScraperError(`JSON invalido: ${(cause as Error).message}`);
-              }
-            }}
-          >
-            Guardar proveedores
-          </Button>
-        </div>
+        <details className="scrapers-advanced">
+          <summary data-focusable="true">Configuración avanzada de fuentes</summary>
+          <p className="panel__hint">Solo se pueden activar los adaptadores portados aquí, no todos
+            los archivos de StreamFlix Reborn. Ningún enlace se considera verificado en vivo.
+            Puedes añadir fuentes propias que tengas derecho a usar, declarando su idioma y tipo.
+          </p>
+          {(scraperStatus?.available ?? []).map((provider) => {
+            const selected = scraperStatus?.selected ?? [];
+            const active = selected.length === 0 || selected.includes(provider.id);
+            return (
+              <label className="setting" key={provider.id}>
+                <span>{provider.name}{provider.region ? ` · ${provider.region}` : ''} ·
+                  {provider.verification === 'mock-tested' ? ' adaptador probado con mocks' : ' sin pruebas'}
+                </span>
+                <input
+                  type="checkbox"
+                  data-focusable="true"
+                  checked={active}
+                  onChange={(event) => {
+                    const explicit = selected.length ? selected :
+                      (scraperStatus?.available ?? []).map((entry) => entry.id);
+                    const next = event.target.checked
+                      ? [...explicit.filter((id) => id !== provider.id), provider.id]
+                      : explicit.filter((id) => id !== provider.id);
+                    void saveScrapers({ providers: next, enabled: next.length > 0 });
+                  }}
+                />
+              </label>
+            );
+          })}
+          <label className="setting setting--stack">
+            <span>Fuentes propias (JSON)</span>
+            <textarea
+              data-focusable="true"
+              rows={6}
+              spellCheck={false}
+              value={scraperConfigs}
+              placeholder='[{"id":"mio","name":"Mi fuente","types":["anime"],"languages":["es-419"],"searchUrl":"https://sitio/buscar?q={title}","itemPattern":"href=\"\\/serie\\/(\\w+)\"","episodeUrl":"https://sitio/serie/{id}/{season}/{episode}","streamPatterns":["src=\"(https?:\\/\\/[^\"]+\\.mp4)\""]}]'
+              onChange={(event) => setScraperConfigs(event.target.value)}
+            />
+          </label>
+          <div className="addons__install">
+            <Button variant="ghost" onClick={() => void testScrapers()}>Probar fuente</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                try {
+                  const parsed = JSON.parse(scraperConfigs || '[]');
+                  void saveScrapers({
+                    configs: Array.isArray(parsed) ? (parsed as ProviderConfig[]) : [],
+                  });
+                } catch (cause) {
+                  setScraperError(`JSON inválido: ${(cause as Error).message}`);
+                }
+              }}
+            >
+              Guardar fuentes
+            </Button>
+          </div>
+        </details>
         {scraperMessage ? <p className="panel__ok">{scraperMessage}</p> : null}
         {scraperError ? <ErrorState message={scraperError} /> : null}
       </section>
@@ -758,9 +756,13 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
-        <h2>Cuenta</h2>
+        <h2>Perfil</h2>
+        <p className="panel__hint">
+          {activeProfile?.name ?? 'Sin perfil'} · idioma de fuentes: {activeProfile?.contentLanguage ?? 'sin elegir'}.
+          Cambia el nombre o idioma en Perfiles; se conserva junto a tus listas y progreso.
+        </p>
         <Button variant="ghost" onClick={() => navigate({ name: 'profiles' })}>
-          Cambiar de perfil
+          Cambiar perfil o idioma
         </Button>
         <Button variant="ghost" onClick={() => navigate({ name: 'addons' })}>
           Gestionar addons

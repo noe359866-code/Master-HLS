@@ -171,13 +171,16 @@ implementado desde cero en TypeScript dentro de `packages/scrapers/`:
   de Dean Edwards **decodificándolo, sin ejecutarlo**.
 - Los proveedores se añaden **por configuración** (búsqueda + expresiones
   regulares del item y del stream) y se pueden probar antes de activarlos.
-- Se incluye un proveedor legítimo de referencia: **Internet Archive**
-  (dominio público).
+- Se incluye **Internet Archive** (respaldo de dominio público, audio no
+  declarado) y nueve puertos VOD de StreamFlix Reborn para es/en/de/fr/it/pl,
+  probados con mocks pero **sin reproducción verificada en vivo**. Los ports
+  italiano y polaco se limitan a películas (el polaco no porta WebView). Véase el
+  [inventario VOD/IPTV](streamflix-reborn-inventory.md).
 - El addon se registra en el mismo `AddonRegistry` que el resto: los streams
   resueltos se mezclan con los de los addons instalados, los magnets siguen
   pasando por debrid y el cliente no distingue de dónde salió cada fuente.
-- **No se incluyen extractores de sitios pirateados**: la arquitectura queda
-  documentada para que cada usuario añada sus propios proveedores legales.
+- El uso de fuentes de terceros depende de derechos y disponibilidad; un
+  proveedor enumerado en el upstream no se considera instalado aquí.
 
 ## 3. Decisiones de diseño que difieren
 

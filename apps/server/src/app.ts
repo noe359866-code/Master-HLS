@@ -19,6 +19,7 @@ import {
 import { loadConfig, type ServerConfig } from './config.js';
 import { JsonStore } from './store.js';
 import { emptyData, normalizeData, DEFAULT_PROFILE, type AppData } from './model.js';
+import { hashProfilePin, isHashedPin } from './library/profile-pin.js';
 import { Router, readJsonBody, sendJson, type RouteContext } from './http/router.js';
 import { registerStremioRoutes } from './routes/stremio.js';
 import { registerAddonRoutes } from './routes/addons.js';
@@ -107,6 +108,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   // El fichero de datos paso de `master-hls.json` a `vibe-flix.json` con el
   // rebranding: si existe el antiguo, se migra para no perder la configuracion.
   const store = new JsonStore<AppData>(path.join(config.dataDir, 'vibe-flix.json'), emptyData());
+  const getData = () => store.get();
   const registry =
     registryOverride ??
     new AddonRegistry({
@@ -128,7 +130,12 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     registry: scrapers,
     context: createScrapeContext({ fetchImpl }),
     version: APP_VERSION,
-    // El protocolo Stremio solo da el id: los metadatos se resuelven aqui.
+    language: () => {
+      const data = getData();
+      const profile = data.profiles.find((entry) => entry.id === data.activeProfileId);
+      return profile?.contentLanguage ?? profile?.audioLanguage ?? data.settings.language;
+    },
+    // El addon recibe el id base del título, no el del episodio S:E.
     resolveTitle: async (type, id) => {
       const result = await registry.meta({ type, id });
       const meta = result.value.meta;
@@ -137,14 +144,15 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       return {
         title: meta.name,
         year: year && !Number.isNaN(year) ? year : undefined,
-        imdbId: id.startsWith('tt') ? id : undefined,
+        imdbId: /^tt\d+$/i.test(id) ? id : undefined,
         tmdbId: meta.id?.startsWith('tmdb:') ? meta.id.slice(5) : undefined,
+        genres: meta.genres,
+        country: meta.country,
       };
     },
   });
 
   const router = new Router();
-  const getData = () => store.get();
   const save = async (mutate: (data: AppData) => void) => {
     store.mutate(mutate);
     await store.flush();
@@ -160,6 +168,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       app.applyDebrid(data);
       app.applyScrapers(data);
     },
+    onProfileChanged: () => registry.invalidate(),
   });
   registerBrowseRoutes(router, { registry, getData, save });
   registerScraperRoutes(router, {
@@ -228,6 +237,8 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       }
       for (const config of settings.configs ?? []) {
         try {
+          // Configuraciones heredadas no pueden suplantar un adaptador nativo.
+          if (DEFAULT_PROVIDERS.some((builtin) => builtin.id === config.id)) continue;
           scrapers.registerConfig(config);
         } catch (error) {
           console.warn('[scrapers] configuracion invalida:', (error as Error).message);
@@ -258,7 +269,12 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       // El store mantiene el mismo objeto en memoria: `normalizeData` completa
       // los campos que falten (ajustes nuevos) y se persisten.
       const data = normalizeData(await store.load());
-      store.mutate(() => undefined);
+      store.mutate((current) => {
+        // Migración transparente de los PIN antiguos en claro.
+        for (const profile of current.profiles) {
+          if (profile.pin && !isHashedPin(profile.pin)) profile.pin = hashProfilePin(profile.pin);
+        }
+      });
       await store.flush();
 
       // Metadata integrada: la app es utilizable sin instalar addons.
@@ -273,12 +289,15 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       // Garantiza al menos un perfil (WuPlay arranca pidiendo un perfil).
       if (!data.profiles.length) {
         const profile = { ...DEFAULT_PROFILE, id: 'default', createdAt: Date.now() };
-        data.profiles.push(profile);
-        data.activeProfileId = profile.id;
+        store.mutate((current) => {
+          current.profiles.push(profile);
+          current.activeProfileId = profile.id;
+        });
         await store.flush();
       }
       if (!data.activeProfileId && data.profiles[0]) {
-        data.activeProfileId = data.profiles[0].id;
+        store.mutate((current) => { current.activeProfileId = current.profiles[0]!.id; });
+        await store.flush();
       }
 
       // Reinstala los addons guardados.

@@ -94,9 +94,32 @@
         desempaquetador de JavaScript (decodificado, no ejecutado)
   - [x] Proveedores extensibles **por configuración** (JSON) desde los ajustes,
         con prueba antes de activarlos
-  - [x] Proveedor legítimo de referencia: Internet Archive (dominio público)
+  - [x] Proveedor de respaldo: Internet Archive (dominio público; audio no declarado)
+  - [x] Inventario upstream con idioma/registro/capacidad: 51 archivos VOD,
+        15 IPTV y 10 sin instancia; `GET /api/scrapers/upstream` es referencia,
+        **no** adaptadores instalados
+  - [x] Nueve adaptadores VOD basados en flujos upstream: CineHax,
+        Fanpelis, Doramasflix, TioAnime (es), Frembed (fr), Ridomovies (en),
+        MStream (de), GuardaFlix (it, solo películas) y Zaluknij (pl, port
+        parcial de películas sin WebView antibot), probados con mocks
   - [x] Streams mezclados con los de los addons instalados y los magnets
         pasando por la resolución de debrid
+  - [x] Selección por idioma/región y categoría (`movie`, `series`, `anime`,
+        `dorama`) del perfil, con prioridad para fuentes nativas del idioma
+  - [x] Resolución de episodios específicos y caché separada por perfil/idioma
+  - [x] Manifest del addon **Vibe Flix** y etiquetas públicas solo con título,
+        temporada y episodio (sin proveedores ni nombres de release)
+  - [x] Onboarding/edición de nombre e idioma en web y pantalla de perfiles
+        Android TV, persistidos en el JSON del servidor como las listas
+  - [x] PIN de perfiles protegido con hash/sal y redacción en la API
+  - [ ] Verificar compilación Android TV con Gradle/SDK: no hay `gradlew` ni
+        `gradle` en este entorno
+  - [ ] Probar hosts, pistas de audio y reproducción end-to-end **en vivo**
+        con autorización: los tests actuales solo simulan respuestas HTTP
+  - [ ] Portar los **42** archivos VOD registrados que faltan y completar
+        temporadas/episodios y protección antibot de Zaluknij (sin saltarse
+        restricciones sin autorización). No registrar IPTV como episodios ni
+        equiparar archivos de referencia con puertos implementados.
 
 ## Siguiente
 

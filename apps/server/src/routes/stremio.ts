@@ -21,10 +21,12 @@ import {
   type AddonRegistry,
   type DebridService,
 } from '@vibeflix/addon-engine';
+import { NATIVE_SCRAPERS_ID, parseEpisodeId } from '@vibeflix/scrapers';
 import type { Router, RouteContext } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
 import { applyContentFilters } from '../library/filters.js';
+import { presentStreams, streamDisplayName } from '../library/stream-labels.js';
 
 export interface StremioRouteOptions {
   registry: AddonRegistry;
@@ -140,14 +142,27 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
   router.get('/stream/:type/:id', async ({ res, params }) => {
     const type = stripJson(params['type'] ?? '');
     const id = stripJson(params['id'] ?? '');
-    const result = await registry.streams({ type, id });
-    // Debrid nativo: los enlaces premium se resuelven en el servidor y se
-    // cachean, de modo que Stremio, WuPlay, NuvioTV y el cliente web reciben
-    // el mismo enlace directo (ver docs/comparison.md).
-    const streams = debrid?.enabled
+    const { titleId } = parseEpisodeId(type, id);
+    const data = getData();
+    const profile = data.profiles.find((entry) => entry.id === data.activeProfileId);
+    const cacheScope = `${profile?.id ?? ''}:${profile?.contentLanguage ?? profile?.audioLanguage ?? data.settings.language}`;
+    // Se consulta la ficha del título (no la del id S:E) en paralelo con las
+    // fuentes; el scraper nativo comparte esta petición gracias a single-flight.
+    const [result, metadata] = await Promise.all([
+      registry.streams({
+        type, id, cacheScope,
+        preferredAddonIds: data.settings.scrapers?.enabled ? [NATIVE_SCRAPERS_ID] : [],
+      }),
+      registry.meta({ type: type === 'episode' ? 'series' : type, id: titleId }),
+    ]);
+    // Debrid antes de enmascarar: la ordenación y el desbloqueo usan la
+    // información original del stream; el cliente solo verá título + T/E.
+    const resolved = debrid?.enabled
       ? await debrid.resolveStreams(result.value.streams)
       : result.value.streams;
-    sendJson(res, 200, { streams });
+    sendJson(res, 200, {
+      streams: presentStreams(resolved, streamDisplayName(type, id, metadata.value.meta)),
+    });
   });
 
   /** Estado del debrid configurado. */

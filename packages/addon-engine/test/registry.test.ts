@@ -123,6 +123,13 @@ describe('AddonRegistry', () => {
     const result = await registry.streams({ type: 'movie', id: 'tt1' });
     assert.equal(result.value.streams.length, 2);
     assert.match(result.value.streams[0]?.name ?? '', /1080p/);
+    const preferred = await registry.streams({
+      type: 'movie', id: 'tt1', cacheScope: 'perfil-es', preferredAddonIds: ['addon.a'],
+    });
+    assert.equal(preferred.value.streams[0]?.url, 'https://host/a720.m3u8');
+    // El resultado anterior en caché no cambia por escoger otro perfil.
+    assert.equal((await registry.streams({ type: 'movie', id: 'tt1' })).value.streams[0]?.url,
+      'https://host/b1080.m3u8');
   });
 
   it('aisla los fallos: un addon caido no rompe el fan-out', async () => {

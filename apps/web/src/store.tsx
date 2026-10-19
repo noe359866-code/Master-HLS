@@ -70,6 +70,7 @@ interface AppState {
   refreshAll: () => Promise<void>;
   reloadLibrary: () => Promise<void>;
   setActiveProfile: (id: string, pin?: string) => Promise<void>;
+  updateProfile: (id: string, patch: Partial<Profile>) => Promise<void>;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
   installAddon: (url: string) => Promise<void>;
   removeAddon: (id: string) => Promise<void>;
@@ -154,6 +155,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const updateProfile = useCallback(async (id: string, patch: Partial<Profile>) => {
+    const updated = await api.updateProfile(id, patch);
+    setProfiles((current) => current.map((profile) => profile.id === id ? updated : profile));
+  }, []);
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const updated = await api.saveSettings(patch);
@@ -285,6 +291,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshAll,
     reloadLibrary,
     setActiveProfile,
+    updateProfile,
     saveSettings,
     installAddon,
     removeAddon,

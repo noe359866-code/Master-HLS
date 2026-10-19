@@ -1,33 +1,36 @@
 /**
- * Proveedor descrito por configuracion.
- *
- * Permite anadir un proveedor **sin escribir codigo**: basta con indicar la
- * URL de busqueda (con las plantillas {title}, {year}...) y las expresiones
- * regulares que extraen el enlace del stream. Es el mismo spiritu que las
- * configuraciones de extractores del ecosistema Stremio, pero con el
- * procesador de texto del servidor.
+ * Proveedor descrito por configuración: buscar título -> ficha -> episodio ->
+ * embed/vídeo. Es el mismo esquema de proveedores/extractores de StreamFlix,
+ * sin ejecutar JavaScript remoto. Solo funciona con fuentes configuradas por
+ * el usuario; no presupone que un sitio de terceros vaya a estar disponible.
  */
 
 import { detectQuality, extractStreams, normalizeUrl, resolveEmbed } from '../embed.js';
+import { extractYear, titleMatches } from '../normalize.js';
 import type { ProviderConfig, ScrapeContext, ScrapeProvider, ScrapeRequest, ScrapedSource } from '../types.js';
 
-/** Sustituye las plantillas de una URL con los datos de la peticion. */
+/** Sustituye las plantillas de una URL con los datos de la petición. */
 export function fillTemplate(template: string, request: ScrapeRequest): string {
   const values: Record<string, string> = {
     title: encodeURIComponent(request.title ?? ''),
-    year: request.year ? String(request.year) : '',
-    season: request.season ? String(request.season) : '',
-    episode: request.episode ? String(request.episode) : '',
-    imdbId: request.imdbId ?? request.id ?? '',
+    year: request.year === undefined ? '' : String(request.year),
+    season: request.season === undefined ? '' : String(request.season),
+    episode: request.episode === undefined ? '' : String(request.episode),
+    imdbId: request.imdbId ?? (/^tt\d+$/i.test(request.titleId ?? request.id) ? (request.titleId ?? request.id) : ''),
     tmdbId: request.tmdbId ?? '',
-    id: request.id ?? '',
+    id: request.id,
+    titleId: request.titleId ?? request.id,
   };
   return template.replace(/\{(\w+)\}/g, (match, key: string) =>
     key in values ? values[key]! : match,
   );
 }
 
-/** Crea un proveedor a partir de su configuracion. */
+function isEpisode(request: ScrapeRequest): boolean {
+  return request.season !== undefined && request.episode !== undefined;
+}
+
+/** Crea un proveedor a partir de su configuración. */
 export function createConfigProvider(config: ProviderConfig): ScrapeProvider {
   return {
     id: config.id,
@@ -37,87 +40,103 @@ export function createConfigProvider(config: ProviderConfig): ScrapeProvider {
     region: config.region,
     async fetchSources(request, context) {
       const sources: ScrapedSource[] = [];
-      if (!config.searchUrl) return sources;
+      if (!config.searchUrl && !config.itemUrl && !config.episodeUrl) return sources;
+      // Una ficha de serie puede contener el primer episodio. Nunca devolverla
+      // como otro episodio sin una ruta o un patrón que incluya temporada/num.
+      const episodic = isEpisode(request);
+      if (episodic && !config.episodeUrl && !config.episodePattern &&
+          ![config.searchUrl, config.itemUrl].some((url) =>
+            url?.includes('{season}') && url.includes('{episode}'))) return sources;
+      if (!episodic && !config.itemUrl && !config.searchUrl) return sources;
 
-      const searchUrl = fillTemplate(config.searchUrl, request);
+      const searchUrl = config.searchUrl ? fillTemplate(config.searchUrl, request) : '';
+      const headers = {
+        'User-Agent': context.userAgent,
+        Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+        ...(config.headers ?? {}),
+      };
       let html = '';
-      try {
-        html = await context.fetchText(searchUrl, {
-          headers: {
-            'User-Agent': context.userAgent,
-            Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
-            ...(config.headers ?? {}),
-          },
-        });
-      } catch {
-        return sources;
+      if (searchUrl) {
+        try {
+          html = await context.fetchText(searchUrl, { headers });
+        } catch {
+          return sources;
+        }
       }
 
-      // 1. Se buscan los items de la pagina de resultados.
+      // Si el patrón ofrece un segundo grupo (título) se verifica, para no
+      // servir por accidente otra película con un nombre parecido.
       const itemIds: string[] = [];
-      if (config.itemPattern) {
+      if (config.itemPattern && searchUrl) {
         const pattern = new RegExp(config.itemPattern, 'gi');
         let match: RegExpExecArray | null;
         while ((match = pattern.exec(html)) !== null) {
-          const value = match[1] ?? match[0];
-          if (value) itemIds.push(value);
+          const id = match[1];
+          const candidateTitle = match[2];
+          if (id && (!candidateTitle || !request.title || titleMatches(candidateTitle, request.title)) &&
+              (!candidateTitle || !request.year || !extractYear(candidateTitle) ||
+                extractYear(candidateTitle) === request.year)) itemIds.push(id);
           if (itemIds.length >= 5) break;
+          if (!match[0]) pattern.lastIndex += 1;
         }
+      } else if (config.itemUrl || config.episodeUrl) {
+        // URL directa por IMDb/TMDb (también para episodios).
+        itemIds.push(request.titleId ?? request.id);
       }
 
-      // 2. De cada item se extrae el enlace del stream.
-      for (const itemId of itemIds) {
-        if (!config.itemUrl) break;
-        // `{id}` es el id del item encontrado; el resto de plantillas
-        // ({title}, {year}...) se rellenan con los datos de la peticion.
-        const itemUrl = fillTemplate(config.itemUrl.replace('{id}', itemId), request);
-        const itemHtml = await context
-          .fetchText(itemUrl, {
-            headers: {
-              'User-Agent': context.userAgent,
-              Referer: searchUrl,
-              ...(config.headers ?? {}),
-            },
-          })
-          .catch(() => '');
+      const sourceFor = (url: string, quality?: string, referer?: string): ScrapedSource => ({
+        url,
+        provider: config.name,
+        quality: config.defaultQuality ?? quality ?? detectQuality(url),
+        headers: { ...(referer ? { Referer: referer } : {}), ...(config.headers ?? {}) },
+      });
 
-        const patterns = config.streamPatterns ?? [];
-        for (const pattern of patterns) {
-          const match = new RegExp(pattern, 'i').exec(itemHtml);
-          const url = normalizeUrl(match?.[1] ?? '', itemUrl);
-          if (!url) continue;
-          sources.push({
-            url,
-            provider: config.name,
-            quality: config.defaultQuality ?? detectQuality(url),
-          });
+      for (const itemId of itemIds) {
+        const itemUrl = config.itemUrl
+          ? fillTemplate(config.itemUrl.replace('{id}', encodeURIComponent(itemId)), request)
+          : searchUrl;
+        let pageUrl = itemUrl;
+        if (episodic && config.episodeUrl) {
+          pageUrl = fillTemplate(config.episodeUrl.replace('{id}', encodeURIComponent(itemId)), request);
+        } else if (episodic && config.episodePattern) {
+          const itemHtml = await context.fetchText(itemUrl, {
+            headers: { ...headers, ...(searchUrl ? { Referer: searchUrl } : {}) },
+          }).catch(() => '');
+          const match = new RegExp(fillTemplate(config.episodePattern, request), 'i').exec(itemHtml);
+          const episodeUrl = normalizeUrl(match?.[1] ?? '', itemUrl);
+          if (!episodeUrl) continue;
+          pageUrl = episodeUrl;
+        }
+        if (!pageUrl) continue;
+
+        const pageHtml = pageUrl === searchUrl ? html : await context.fetchText(pageUrl, {
+          headers: { ...headers, ...(itemUrl || searchUrl ? { Referer: itemUrl || searchUrl } : {}) },
+        }).catch(() => '');
+        if (!pageHtml) continue;
+
+        for (const pattern of config.streamPatterns ?? []) {
+          const match = new RegExp(pattern, 'i').exec(pageHtml);
+          const url = normalizeUrl(match?.[1] ?? '', pageUrl);
+          if (url) sources.push(sourceFor(url, undefined, pageUrl));
         }
 
-        // 3. Si el item es un embed, se resuelve con el extractor generico.
         if (config.useEmbedResolver) {
-          const candidates = await resolveEmbed(itemUrl, {
+          const candidates = await resolveEmbed(pageUrl, {
             fetchText: context.fetchText,
-            headers: { Referer: searchUrl },
+            headers: { ...headers, Referer: itemUrl || searchUrl },
           });
           for (const candidate of candidates) {
-            sources.push({
-              url: candidate.url,
-              provider: config.name,
-              quality: candidate.quality ?? config.defaultQuality,
-            });
+            sources.push(sourceFor(candidate.url, candidate.quality, pageUrl));
           }
         }
       }
 
-      // 4. Si no hay itemPattern, la propia pagina de busqueda puede traer
-      //    los enlaces (sitios que lo hacen asi).
-      if (!itemIds.length && !config.itemUrl) {
+      // Sitios cuya búsqueda apunta directamente al vídeo. Solo para una
+      // película, o para una búsqueda parametrizada por episodio concreto.
+      if (!itemIds.length && !config.itemUrl && !config.episodeUrl && searchUrl &&
+          (!episodic || (config.searchUrl?.includes('{season}') && config.searchUrl.includes('{episode}')))) {
         for (const candidate of extractStreams(html, searchUrl)) {
-          sources.push({
-            url: candidate.url,
-            provider: config.name,
-            quality: candidate.quality ?? config.defaultQuality,
-          });
+          sources.push(sourceFor(candidate.url, candidate.quality, searchUrl));
         }
       }
 

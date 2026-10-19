@@ -17,17 +17,22 @@
  *     fallos, deduplica y ordena por calidad.
  */
 
-/** Tipo de contenido que se puede raspar. */
-export type ScrapeType = 'movie' | 'series' | 'episode';
+/** Tipos que un proveedor puede atender. Anime y dorama son categorías de película/serie. */
+export type ScrapeType = 'movie' | 'series' | 'episode' | 'anime' | 'dorama';
+export type ContentKind = 'movie' | 'series' | 'anime' | 'dorama';
 
 /** Peticion de fuentes para un titulo. */
 export interface ScrapeRequest {
   /** Tipo segun el protocolo Stremio. */
   type: string;
-  /** Id del titulo (el que llega en la ruta del addon). */
+  /** Id del título/episodio (el que llega en la ruta del addon). */
   id: string;
+  /** Categoría inferida de la metadata; no siempre coincide con el tipo Stremio. */
+  kind?: ContentKind;
   /** Id de IMDb si se conoce (`tt1234567`). */
   imdbId?: string;
+  /** Id del título sin el sufijo :temporada:episodio. */
+  titleId?: string;
   /** Id de TMDB si se conoce. */
   tmdbId?: string;
   /** Titulo legible, necesario para buscar en paginas web. */
@@ -76,6 +81,8 @@ export interface ScrapeContext {
   fetchText: (url: string, init?: { headers?: Record<string, string> }) => Promise<string>;
   /** Descarga una URL y devuelve el JSON. */
   fetchJson: <T>(url: string, init?: { headers?: Record<string, string> }) => Promise<T>;
+  /** POST JSON para APIs GraphQL de proveedores que lo necesitan (opcional en mocks). */
+  postJson?: <T>(url: string, body: unknown, init?: { headers?: Record<string, string> }) => Promise<T>;
   /** User-Agent por defecto (los sitios de peliculas rechazan los bots). */
   userAgent: string;
 }
@@ -93,7 +100,7 @@ export interface ScrapeProvider {
   name: string;
   /** Tipos que admite. */
   types: ScrapeType[];
-  /** Idiomas que cubre (opcional). */
+  /** Idiomas/variantes que cubre (p. ej. es, es-419, en); vacío = sin declarar. */
   languages?: string[];
   /** Region o descripcion corta (opcional). */
   region?: string;
@@ -105,7 +112,7 @@ export interface ScrapeProvider {
  * Proveedor descrito por configuracion (sin codigo).
  *
  * Plantillas admitidas en las URLs:
- *   {title} {year} {season} {episode} {imdbId} {tmdbId} {id}
+ *   {title} {year} {season} {episode} {imdbId} {tmdbId} {id} {titleId}
  */
 export interface ProviderConfig {
   id: string;
@@ -117,11 +124,15 @@ export interface ProviderConfig {
   searchUrl?: string;
   /** Plantilla de la URL del item encontrado ({id} = lo capturado). */
   itemUrl?: string;
-  /** Expresion regular (con un grupo de captura) para obtener el id del item. */
+  /** Expresión regular: grupo 1 = id; grupo 2 opcional = título para verificar. */
   itemPattern?: string;
+  /** URL del episodio: {id} es el id hallado en búsqueda; {season}/{episode} son números. */
+  episodeUrl?: string;
+  /** Patrón sobre la página del título que captura (grupo 1) la URL del episodio correcto. */
+  episodePattern?: string;
   /** Expresiones regulares para extraer la URL del stream de la pagina. */
   streamPatterns?: string[];
-  /** Cabeceras HTTP adicionales. */
+  /** Cabeceras HTTP adicionales para las páginas; también se envían al reproductor. */
   headers?: Record<string, string>;
   /** Si es true, la pagina del item se resuelve con el extractor de embeds. */
   useEmbedResolver?: boolean;

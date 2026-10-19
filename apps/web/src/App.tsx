@@ -18,6 +18,7 @@ import {
 import { HistoryScreen, ListsScreen } from './screens/Library';
 import { AddonsScreen, SettingsScreen } from './screens/Addons';
 import { ProfilesScreen } from './screens/Profiles';
+import { ProfilePreferences } from './screens/ProfilePreferences';
 import { PersonScreen } from './screens/Person';
 import { DevicesScreen } from './screens/Devices';
 
@@ -29,7 +30,7 @@ interface SessionState {
 }
 
 export function App() {
-  const { route, navigate, loading, error, refreshAll } = useApp();
+  const { route, navigate, loading, error, activeProfile, refreshAll } = useApp();
   const [session, setSession] = useState<SessionState | null>(null);
 
   useSpatialNavigation();
@@ -74,6 +75,25 @@ export function App() {
               setSession({ pairingRequired: true, authenticated: true });
               void refreshAll();
             }}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  // El primer acceso a un perfil (también uno antiguo migrado) pide nombre e
+  // idioma. Tras guardarlos no vuelve a preguntar; se pueden editar en Perfiles.
+  if (!loading && !error && activeProfile && !activeProfile.contentLanguage &&
+      route.name !== 'profiles') {
+    return (
+      <div className="app app--norail app--welcome">
+        <main className="content">
+          <ProfilePreferences
+            key={activeProfile.id}
+            profile={activeProfile}
+            welcome
+            onSaved={() => navigate({ name: 'home' })}
+            onCancel={() => navigate({ name: 'profiles' })}
           />
         </main>
       </div>

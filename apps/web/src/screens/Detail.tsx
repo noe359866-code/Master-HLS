@@ -6,9 +6,10 @@ import type { Meta, OpenSubtitleEntry, Rating, Stream, Video } from '../types';
 import { Button, ErrorState, Loader, Modal, Poster, useBackdrop } from '../components/ui';
 
 export function DetailScreen({ id, type }: { id: string; type: string }) {
-  const { navigate, lists, toggleWatchlistItem, settings, activeProfile } = useApp();
+  const { navigate, lists, toggleWatchlistItem, activeProfile } = useApp();
   const [meta, setMeta] = useState<Meta | null>(null);
-  const [streams, setStreams] = useState<Stream[]>([]);
+  const [streamResult, setStreamResult] = useState<{ id: string; streams: Stream[] } | null>(null);
+  const [streamsLoading, setStreamsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [season, setSeason] = useState<number | null>(null);
@@ -35,19 +36,17 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
     setLoading(true);
     setError(null);
     setMeta(null);
-    setStreams([]);
+    setStreamResult(null);
+    setStreamsLoading(true);
     setEpisode(null);
     setSeason(null);
+    autoplayed.current = false;
 
     void (async () => {
       try {
-        const [metaResult, streamResult] = await Promise.all([
-          api.meta(type, id),
-          api.streams(type, id).catch(() => ({ streams: [] })),
-        ]);
+        const metaResult = await api.meta(type, id);
         if (cancelled) return;
         setMeta(metaResult.meta ?? null);
-        setStreams(streamResult.streams);
       } catch (cause) {
         if (!cancelled) setError((cause as Error).message);
       } finally {
@@ -123,14 +122,30 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
     [videos, season, seasons],
   );
 
+  // Cada episodio tiene sus propias fuentes: no reutilizar los streams de la
+  // ficha general ni los de la selección anterior al cambiar de temporada.
+  const currentEpisode = episode ?? episodes[0] ?? null;
+  const streamId = currentEpisode?.id ?? id;
+  const streams = streamResult?.id === streamId ? streamResult.streams : [];
+  useEffect(() => {
+    if (!meta) return;
+    let cancelled = false;
+    setStreamsLoading(true);
+    void api.streams(type, streamId)
+      .then((result) => { if (!cancelled) setStreamResult({ id: streamId, streams: result.streams }); })
+      .catch(() => { if (!cancelled) setStreamResult({ id: streamId, streams: [] }); })
+      .finally(() => { if (!cancelled) setStreamsLoading(false); });
+    return () => { cancelled = true; };
+  }, [type, streamId, meta]);
+
   // Autoplay: si el perfil lo pide, se reproduce el primer stream disponible.
   useEffect(() => {
     if (!activeProfile?.autoplayFirstStream) return;
     if (autoplayed.current || !streams.length || !meta) return;
     autoplayed.current = true;
-    play(streams[0]!);
+    play(streams[0]!, currentEpisode ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streams, meta, activeProfile?.autoplayFirstStream]);
+  }, [streams, meta, currentEpisode?.id, activeProfile?.autoplayFirstStream]);
 
   const trailer = useMemo(() => {
     const fromMeta = meta?.trailers?.find((entry) => entry.ytId);
@@ -168,7 +183,7 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
     setSubsLoading(true);
     setSubsError(null);
     try {
-      const [imdbId, seasonNumber, episodeNumber] = (episode?.id ?? id).split(':');
+      const [imdbId, seasonNumber, episodeNumber] = (currentEpisode?.id ?? id).split(':');
       const result = await api.openSubtitles({
         imdbId,
         season: seasonNumber ? Number(seasonNumber) : undefined,
@@ -204,6 +219,7 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
   if (!meta) return <ErrorState message="No se ha encontrado el contenido" />;
 
   const firstStream = streams[0];
+  const sourcesPending = streamsLoading || streamResult?.id !== streamId;
 
   return (
     <div className="detail">
@@ -232,11 +248,15 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
 
             <div className="detail__actions">
               {firstStream ? (
-                <Button onClick={() => play(firstStream, episode ?? undefined)}>
+                <Button onClick={() => play(firstStream, currentEpisode ?? undefined)}>
                   ▶ Reproducir
                 </Button>
               ) : (
-                <span className="detail__hint">Sin streams disponibles para este título</span>
+                <span className="detail__hint">
+                  {sourcesPending
+                    ? (currentEpisode ? 'Buscando fuentes para este episodio…' : 'Buscando fuentes…')
+                    : 'Sin streams disponibles para este título'}
+                </span>
               )}
               <Button
                 variant="ghost"
@@ -295,7 +315,11 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                       type="button"
                       data-focusable="true"
                       className={`chip ${(season ?? seasons[0]) === entry ? 'chip--active' : ''}`}
-                      onClick={() => setSeason(entry)}
+                      onClick={() => {
+                        setSeason(entry);
+                        setEpisode(null);
+                        setSelectedSubtitle(null);
+                      }}
                     >
                       Temporada {entry}
                     </button>
@@ -309,8 +333,11 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                   key={video.id}
                   type="button"
                   data-focusable="true"
-                  className={`episode ${episode?.id === video.id ? 'episode--active' : ''}`}
-                  onClick={() => setEpisode(video)}
+                  className={`episode ${currentEpisode?.id === video.id ? 'episode--active' : ''}`}
+                  onClick={() => {
+                    setEpisode(video);
+                    setSelectedSubtitle(null);
+                  }}
                 >
                   {video.thumbnail ? <img src={video.thumbnail} alt="" /> : null}
                   <span className="episode__number">{video.episode ?? video.number ?? '—'}</span>
@@ -335,7 +362,7 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                     type="button"
                     data-focusable="true"
                     className={`stream ${needsDebrid ? 'stream--locked' : ''}`}
-                    onClick={() => (needsDebrid ? undefined : play(stream, episode ?? undefined))}
+                    onClick={() => (needsDebrid ? undefined : play(stream, currentEpisode ?? undefined))}
                   >
                     <span className="stream__name">{stream.name ?? stream.title ?? 'Stream'}</span>
                     {stream.description ? (
@@ -344,7 +371,6 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                     {needsDebrid ? (
                       <span className="stream__url">Necesita debrid (torrent)</span>
                     ) : null}
-                    {url ? <span className="stream__url">{url}</span> : null}
                   </button>
                 );
               })}
@@ -456,7 +482,6 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
           </Modal>
         ) : null}
 
-        {settings?.showAddonPrefix ? null : null}
       </div>
     </div>
   );

@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.vibeflix.tv.data.remote.dto.OpenSubtitleDto
 import com.vibeflix.tv.data.remote.dto.StreamDto
+import com.vibeflix.tv.data.remote.dto.VideoDto
 
 @Composable
 fun DetailScreen(
@@ -44,6 +47,7 @@ fun DetailScreen(
     id: String,
     onBack: () -> Unit,
     onPlay: (
+        episodeId: String,
         url: String,
         name: String,
         title: String,
@@ -59,6 +63,12 @@ fun DetailScreen(
     LaunchedEffect(type, id) { viewModel.load(type, id) }
 
     val meta = state.meta
+    val videos = meta?.videos.orEmpty().filter { it.id.isNotBlank() }
+        .sortedWith(compareBy<VideoDto> { it.season ?: 1 }
+            .thenBy { it.episode ?: it.number ?: 0 })
+    val seasons = videos.map { it.season ?: 1 }.distinct()
+    val selectedSeason = videos.firstOrNull { it.id == state.selectedEpisodeId }?.season
+        ?: seasons.firstOrNull()
 
     LazyColumn(
         modifier = Modifier
@@ -110,6 +120,7 @@ fun DetailScreen(
                                 onClick = {
                                     state.streams.firstOrNull()?.let { stream ->
                                         onPlay(
+                                            state.selectedEpisodeId ?: id,
                                             stream.url.orEmpty(),
                                             stream.name.orEmpty(),
                                             meta?.name.orEmpty(),
@@ -125,7 +136,7 @@ fun DetailScreen(
                             Button(
                                 onClick = {
                                     subtitlesOpen = true
-                                    viewModel.loadSubtitles(type, id)
+                                    viewModel.loadSubtitles(type, state.selectedEpisodeId ?: id)
                                 },
                             ) {
                                 Text(
@@ -143,11 +154,58 @@ fun DetailScreen(
             }
         }
 
-        items(state.streams, key = { it.name ?: it.url.orEmpty() }) { stream ->
+        if (videos.isNotEmpty()) {
+            item {
+                Text("Episodios", style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                LazyRow(
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(seasons) { season ->
+                        Button(onClick = {
+                            videos.firstOrNull { (it.season ?: 1) == season }?.let {
+                                viewModel.selectEpisode(type, it.id)
+                            }
+                        }) {
+                            Text(if (selectedSeason == season) "✓ T$season" else "Temporada $season")
+                        }
+                    }
+                }
+            }
+            items(videos.filter { (it.season ?: 1) == selectedSeason }, key = { "episode:${it.id}" }) { video ->
+                Button(
+                    onClick = { viewModel.selectEpisode(type, video.id) },
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                ) {
+                    val number = video.episode ?: video.number ?: 0
+                    val title = video.title ?: video.name ?: "Episodio $number"
+                    Text("${if (state.selectedEpisodeId == video.id) "✓ " else ""}E$number · $title")
+                }
+            }
+        }
+
+        item {
+            val label = when {
+                state.loading -> "Cargando título…"
+                state.error != null -> state.error
+                state.streamsLoading -> "Buscando fuentes de este episodio…"
+                state.streams.isEmpty() -> "Sin fuentes disponibles para este título"
+                else -> "Fuentes (${state.streams.size})"
+            }
+            Text(label.orEmpty(), modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+        }
+
+        // Todas las etiquetas coinciden ahora con el título: usar la URL y el
+        // índice como clave para que Compose no reciba claves duplicadas.
+        itemsIndexed(state.streams, key = { index, stream ->
+            "stream:${stream.url ?: stream.externalUrl ?: stream.infoHash ?: stream.ytId ?: "otro"}:$index"
+        }) { _, stream ->
             StreamRow(
                 stream = stream,
                 onPlay = {
                     onPlay(
+                        state.selectedEpisodeId ?: id,
                         it,
                         stream.name.orEmpty(),
                         meta?.name.orEmpty(),

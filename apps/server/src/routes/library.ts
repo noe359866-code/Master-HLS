@@ -3,12 +3,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { normalizeLanguage } from '@vibeflix/scrapers';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
+import { hashProfilePin, PIN_PLACEHOLDER, publicProfile, verifyProfilePin } from '../library/profile-pin.js';
 import {
   DEFAULT_PROFILE,
   type AppData,
   type AppSettings,
+  type Profile,
   type ProgressEntry,
   type RatingEntry,
   type WatchlistItem,
@@ -19,12 +22,45 @@ export interface LibraryRouteOptions {
   save: (mutate: (data: AppData) => void) => Promise<void>;
   /** Se invoca cuando cambian los ajustes que afectan al registro de addons. */
   onSettingsChanged?: (data: AppData) => void;
+  /** Evita devolver streams cacheados con el idioma del perfil anterior. */
+  onProfileChanged?: () => void;
 }
 
 const MAX_HISTORY = 200;
 
+/** Valida el nombre y el idioma antes de persistir el perfil. */
+function profileInput(body: Record<string, unknown>): {
+  name?: string;
+  contentLanguage?: string;
+  error?: string;
+} {
+  let name: string | undefined;
+  let contentLanguage: string | undefined;
+  if ('name' in body) {
+    if (typeof body['name'] !== 'string' || !body['name'].trim() || body['name'].trim().length > 80) {
+      return { error: 'El nombre del perfil debe tener entre 1 y 80 caracteres' };
+    }
+    name = body['name'].trim();
+  }
+  if ('contentLanguage' in body) {
+    contentLanguage = normalizeLanguage(body['contentLanguage'] as string);
+    if (!contentLanguage) return { error: 'Idioma del perfil no válido' };
+  }
+  if ('pin' in body && body['pin'] !== null && body['pin'] !== '' &&
+      body['pin'] !== PIN_PLACEHOLDER &&
+      (typeof body['pin'] !== 'string' || body['pin'].length > 128)) {
+    return { error: 'PIN del perfil no válido' };
+  }
+  return { name, contentLanguage };
+}
+
+function storedPin(input: unknown, current?: string): string | undefined {
+  if (input === PIN_PLACEHOLDER) return current;
+  return typeof input === 'string' && input ? hashProfilePin(input) : undefined;
+}
+
 export function registerLibraryRoutes(router: Router, options: LibraryRouteOptions): void {
-  const { getData, save, onSettingsChanged } = options;
+  const { getData, save, onSettingsChanged, onProfileChanged } = options;
 
   const profileScope = (profileId: string) => {
     const data = getData();
@@ -39,14 +75,28 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
 
   router.get('/api/profiles', ({ res }) => {
     const data = getData();
-    sendJson(res, 200, { profiles: data.profiles, activeProfileId: data.activeProfileId });
+    sendJson(res, 200, {
+      profiles: data.profiles.map(publicProfile), activeProfileId: data.activeProfileId,
+    });
   });
 
   router.post('/api/profiles', async ({ res, body: rawBody }) => {
-    const body = (rawBody ?? {}) as Partial<typeof DEFAULT_PROFILE>;
-    const profile = {
+    const body = (rawBody ?? {}) as Partial<Profile>;
+    const input = profileInput(body as Record<string, unknown>);
+    if (input.error || body.pin === PIN_PLACEHOLDER) {
+      sendJson(res, 400, { error: input.error ?? 'PIN del perfil no válido' });
+      return;
+    }
+    const profile: Profile = {
       ...DEFAULT_PROFILE,
       ...body,
+      name: input.name ?? DEFAULT_PROFILE.name,
+      pin: storedPin(body.pin),
+      ...(input.contentLanguage ? {
+        contentLanguage: input.contentLanguage,
+        audioLanguage: input.contentLanguage.split('-')[0],
+        subtitleLanguage: input.contentLanguage.split('-')[0],
+      } : {}),
       id: randomUUID(),
       createdAt: Date.now(),
     };
@@ -54,22 +104,39 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       data.profiles.push(profile);
       if (!data.activeProfileId) data.activeProfileId = profile.id;
     });
-    sendJson(res, 200, { profile });
+    sendJson(res, 200, { profile: publicProfile(profile) });
   });
 
   router.put('/api/profiles/:id', async ({ res, body: rawBody, params }) => {
     const id = params['id'] ?? '';
     const body = (rawBody ?? {}) as Record<string, unknown>;
-    await save((data) => {
-      const profile = data.profiles.find((entry) => entry.id === id);
-      if (profile) Object.assign(profile, body, { id: profile.id, createdAt: profile.createdAt });
-    });
-    const profile = getData().profiles.find((entry) => entry.id === id);
-    if (!profile) {
+    const current = getData().profiles.find((entry) => entry.id === id);
+    if (!current) {
       sendJson(res, 404, { error: 'Perfil no encontrado' });
       return;
     }
-    sendJson(res, 200, { profile });
+    const input = profileInput(body);
+    if (input.error) {
+      sendJson(res, 400, { error: input.error });
+      return;
+    }
+    const pin = 'pin' in body ? storedPin(body['pin'], current.pin) : undefined;
+    await save((data) => {
+      const profile = data.profiles.find((entry) => entry.id === id)!;
+      Object.assign(profile, body, {
+        id: profile.id,
+        createdAt: profile.createdAt,
+        ...('pin' in body ? { pin } : {}),
+        ...(input.name ? { name: input.name } : {}),
+        ...(input.contentLanguage ? {
+          contentLanguage: input.contentLanguage,
+          audioLanguage: input.contentLanguage.split('-')[0],
+          subtitleLanguage: input.contentLanguage.split('-')[0],
+        } : {}),
+      });
+    });
+    if (getData().activeProfileId === id) onProfileChanged?.();
+    sendJson(res, 200, { profile: publicProfile(getData().profiles.find((entry) => entry.id === id)!) });
   });
 
   router.delete('/api/profiles/:id', async ({ res, params }) => {
@@ -83,6 +150,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         data.activeProfileId = data.profiles[0]?.id ?? '';
       }
     });
+    onProfileChanged?.();
     sendJson(res, 200, { deleted: true });
   });
 
@@ -100,7 +168,8 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         sendJson(res, 401, { error: 'PIN requerido', requiresPin: true });
         return;
       }
-      if (body.pin !== profile.pin) {
+      if (typeof body.pin !== 'string' || body.pin.length > 128 ||
+          !verifyProfilePin(profile.pin, body.pin)) {
         sendJson(res, 403, { error: 'PIN incorrecto', requiresPin: true });
         return;
       }
@@ -108,6 +177,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     await save((data) => {
       if (data.profiles.some((entry) => entry.id === id)) data.activeProfileId = id;
     });
+    onProfileChanged?.();
     sendJson(res, 200, { activeProfileId: getData().activeProfileId });
   });
 

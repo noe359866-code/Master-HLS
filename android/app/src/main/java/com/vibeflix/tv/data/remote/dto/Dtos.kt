@@ -101,6 +101,24 @@ data class SubtitleDto(
     @Json(name = "headers") val headers: Map<String, String>? = null,
 )
 
+/** Nombre e idioma de las fuentes guardados en el perfil del servidor. */
+data class ProfileDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "name") val name: String = "",
+    @Json(name = "avatar") val avatar: String = "👤",
+    @Json(name = "color") val color: String = "#5b8cff",
+    @Json(name = "pin") val pin: String? = null,
+    @Json(name = "contentLanguage") val contentLanguage: String? = null,
+    @Json(name = "audioLanguage") val audioLanguage: String? = null,
+)
+
+data class ProfilesResponseDto(
+    @Json(name = "profiles") val profiles: List<ProfileDto> = emptyList(),
+    @Json(name = "activeProfileId") val activeProfileId: String = "",
+)
+
+data class ProfileResponseDto(@Json(name = "profile") val profile: ProfileDto? = null)
+
 /** Addons instalados en el servidor. */
 data class AddonsResponseDto(
     @Json(name = "addons") val addons: List<InstalledAddonDto> = emptyList(),

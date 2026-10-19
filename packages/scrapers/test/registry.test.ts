@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { NativeScrapersAddon } from '../src/addon.js';
+import { NativeScrapersAddon, inferContentKind, parseEpisodeId } from '../src/addon.js';
+import { normalizeLanguage, languagePriority } from '../src/language.js';
 import { ScraperRegistry } from '../src/providers/registry.js';
 import type { ScrapeContext, ScrapeProvider } from '../src/types.js';
 
@@ -100,6 +101,49 @@ describe('registro de scrapers', () => {
     assert.equal(english.length, 0);
     assert.equal(spanish.length, 1);
   });
+
+  it('elige variante exacta y cae al idioma genérico si falla', async () => {
+    const registry = new ScraperRegistry();
+    for (const [id, languages] of [
+      ['latino', ['es-419']], ['castellano', ['es-ES']], ['espanol', ['es']], ['ingles', ['en']],
+    ] as const) {
+      registry.register({
+        id, name: id, types: ['movie'], languages: [...languages],
+        async fetchSources() {
+          return id === 'latino' && unavailable ? [] : [{ url: `https://site.test/${id}.mp4`, provider: id }];
+        },
+      });
+    }
+    let unavailable = false;
+    const request = { type: 'movie', id: 'tt1', language: 'es-419' };
+    const exact = await registry.resolve(request, context());
+    assert.deepEqual(exact.map((source) => source.provider), ['latino']);
+    unavailable = true;
+    const fallback = await registry.resolve(request, context());
+    assert.deepEqual(fallback.map((source) => source.provider), ['espanol']);
+    assert.equal(languagePriority(registry.get('castellano')!, 'es-419'), 2);
+    assert.equal(normalizeLanguage('ES_es'), 'es-ES');
+    assert.equal(normalizeLanguage('https://malicioso'), undefined);
+  });
+
+  it('prefiere anime/dorama a series genéricas y permite fallback', async () => {
+    const registry = new ScraperRegistry();
+    let animeAvailable = true;
+    for (const kind of ['anime', 'dorama', 'series'] as const) {
+      registry.register({
+        id: kind, name: kind, types: [kind], languages: ['es'],
+        async fetchSources() {
+          return kind === 'anime' && !animeAvailable ? [] :
+            [{ url: `https://site.test/${kind}.mp4`, provider: kind }];
+        },
+      });
+    }
+    const base = { type: 'series', id: 'tt2:1:3', season: 1, episode: 3, language: 'es' };
+    assert.equal((await registry.resolve({ ...base, kind: 'anime' }, context()))[0]?.provider, 'anime');
+    animeAvailable = false;
+    assert.equal((await registry.resolve({ ...base, kind: 'anime' }, context()))[0]?.provider, 'series');
+    assert.equal((await registry.resolve({ ...base, kind: 'dorama' }, context()))[0]?.provider, 'dorama');
+  });
 });
 
 describe('addon nativo de streams', () => {
@@ -110,6 +154,7 @@ describe('addon nativo de streams', () => {
     });
     const manifest = await addon.getManifest();
     assert.equal(manifest.id, 'com.vibeflix.native-scrapers');
+    assert.equal(manifest.name, 'Vibe Flix');
     assert.ok(manifest.resources?.includes('stream'));
     assert.deepEqual(manifest.catalogs, []);
   });
@@ -137,6 +182,61 @@ describe('addon nativo de streams', () => {
     assert.equal(response.streams.length, 1);
     assert.equal(response.streams[0]!.url, 'https://a/1.mp4');
     assert.deepEqual(received, { title: 'El viaje', year: 1999 });
+  });
+
+  it('interpreta episodios y categorías usando la ficha del título', async () => {
+    assert.deepEqual(parseEpisodeId('series', 'tt77:0:3'), { titleId: 'tt77', season: 0, episode: 3 });
+    assert.deepEqual(parseEpisodeId('dorama', 'tmdb:999:2:10'), {
+      titleId: 'tmdb:999', season: 2, episode: 10,
+    });
+    assert.equal(inferContentKind('series', { genres: ['Animation'], country: 'Japan' }), 'anime');
+    assert.equal(inferContentKind('series', { genres: ['Drama'], country: 'South Korea' }), 'dorama');
+    assert.equal(inferContentKind('series', { genres: ['Animation'], country: 'US' }), 'series');
+
+    const registry = new ScraperRegistry();
+    let received: unknown;
+    registry.register({
+      id: 'anime', name: 'Anime', types: ['anime'], languages: ['ja'],
+      async fetchSources(request) {
+        received = request;
+        return [{ url: 'https://a/episode.mp4', provider: 'anime' }];
+      },
+    });
+    const addon = new NativeScrapersAddon({
+      registry, context: context(), language: 'ja',
+      resolveTitle: async (type, id) => {
+        assert.deepEqual([type, id], ['series', 'tt77']);
+        return { title: 'Serie animada', genres: ['Anime'] };
+      },
+    });
+    await addon.streams({ type: 'series', id: 'tt77:0:3' });
+    assert.deepEqual(received, {
+      type: 'series', id: 'tt77:0:3', titleId: 'tt77', kind: 'anime',
+      imdbId: 'tt77', tmdbId: undefined, title: 'Serie animada', year: undefined,
+      season: 0, episode: 3, language: 'ja',
+    });
+  });
+
+  it('mantiene cachés separados para dos idiomas del mismo título', async () => {
+    const registry = new ScraperRegistry();
+    let language = 'es';
+    let calls = 0;
+    for (const id of ['es', 'en']) {
+      registry.register({
+        id, name: id, types: ['movie'], languages: [id],
+        async fetchSources() {
+          calls += 1;
+          return [{ url: `https://a/${id}.mp4`, provider: id }];
+        },
+      });
+    }
+    const addon = new NativeScrapersAddon({ registry, context: context(), language: () => language });
+    assert.equal((await addon.streams({ type: 'movie', id: 'tt1' })).streams[0]?.url, 'https://a/es.mp4');
+    language = 'en';
+    assert.equal((await addon.streams({ type: 'movie', id: 'tt1' })).streams[0]?.url, 'https://a/en.mp4');
+    language = 'es';
+    await addon.streams({ type: 'movie', id: 'tt1' });
+    assert.equal(calls, 2);
   });
 
   it('cachea el resultado de un titulo', async () => {
