@@ -22,7 +22,7 @@ import {
   listVariants,
   type DeviceCapabilities,
   type SelectionPreferences,
-} from '@master-hls/hls-master';
+} from '@vibeflix/hls-master';
 import type { Router } from '../http/router.js';
 import { sendJson, sendText } from '../http/router.js';
 

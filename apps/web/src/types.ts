@@ -194,6 +194,36 @@ export interface AppSettings {
     supportsDolbyVision: boolean;
     preferredCodecs: string[];
   };
+  /** OpenSubtitles nativo (busqueda y descarga desde el servidor). */
+  opensubtitles: {
+    apiKey: string;
+  };
+  /** Omitir intro: deteccion nativa a partir de los subtitulos. */
+  skipIntro: {
+    enabled: boolean;
+    offsetSeconds: number;
+  };
+}
+
+/** Segmento saltable (intro o recap) detectado por el servidor. */
+export interface SkipSegment {
+  startMs: number;
+  endMs: number;
+  kind: 'intro' | 'recap';
+  confidence: number;
+  source: 'subtitles' | 'fallback';
+}
+
+/** Subtitulo disponible en OpenSubtitles. */
+export interface OpenSubtitleEntry {
+  fileId: number;
+  fileName: string;
+  language: string;
+  languageName: string;
+  downloadCount: number;
+  hearingImpaired: boolean;
+  title: string;
+  release: string;
 }
 
 /** Valoracion de un titulo ("Me gusta" / "No para mi"). */

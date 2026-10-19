@@ -1,4 +1,4 @@
-# Master-HLS
+# Vibe Flix
 
 **App basada en Stremio** construida sobre dos bases reales:
 
@@ -7,7 +7,7 @@
 | [WuPlay](https://github.com/wuplayapp/wuplay-releases) | Cliente Android TV, privado, sin registro, con perfiles, watchlists, historial y configurador web de addons | Modelo de perfiles/watchlists/historial, auto-update de addons, orden y visibilidad de catálogos, privacidad (sin cuentas ni telemetría) |
 | [NuvioTV](https://github.com/NuvioMedia/NuvioTV) | Cliente Android TV open source (Kotlin, Compose, Media3) con debrid, plugins y watch parties | Arquitectura Kotlin/Compose for TV + Media3, tolerancia ante DTOs inconsistentes de addons, `behaviorHints`, soporte de vídeo advanced (DV/HDR) |
 
-Master-HLS se diferencia por el **núcleo HLS master**: el motor de agregación de
+Vibe Flix se diferencia por el **núcleo HLS master**: el motor de agregación de
 addons Stremio y la selección de variantes HLS viven en el servidor, de modo que
 **todos los clientes** (web TV, Android TV, o el propio Stremio/WuPlay/Nuvio)
 consumen exactamente la misma lógica.
@@ -18,14 +18,14 @@ consumen exactamente la misma lógica.
 
 ```
 ┌──────────────┐    ┌────────────────────────┐    ┌──────────────────────────┐
-│  Cliente TV  │    │   Servidor Master-HLS  │    │  Addons Stremio externos │
+│  Cliente TV  │    │   Servidor Vibe Flix  │    │  Addons Stremio externos │
 │  web / APK   │───▶│  (Node + TypeScript)   │───▶│  Cinemeta, Torrentio,    │
 │  React/hls.js│    │                        │    │  AIOStreams, Kometa…     │
-│  Compose/M3  │    │  · @master-hls/addon-  │    └──────────────────────────┘
+│  Compose/M3  │    │  · @vibe-flix/addon-  │    └──────────────────────────┘
 └──────────────┘    │    engine (agregación)  │
-                    │  · @master-hls/hls-     │    ┌──────────────────────────┐
+                    │  · @vibe-flix/hls-     │    ┌──────────────────────────┐
                     │    master (variantes)    │───▶│  Stremio / WuPlay / Nuvio│
-                    │  · API biblioteca       │    │  (instalando Master-HLS  │
+                    │  · API biblioteca       │    │  (instalando Vibe Flix  │
                     │  · Proxy HLS            │    │   como addon)            │
                     └────────────────────────┘    └──────────────────────────┘
 ```
@@ -34,10 +34,11 @@ consumen exactamente la misma lógica.
 
 | Paquete | Descripción |
 | --- | --- |
-| `@master-hls/addon-engine` | Cliente del protocolo de addons Stremio: manifest, `catalog`/`meta`/`stream`/`subtitles`, **fan-out paralelo** con aislamiento de fallos por addon, caché TTL + single-flight, normalización tolerante de respuestas, y heurística de calidad para ordenar streams. |
-| `@master-hls/hls-master` | Núcleo HLS: parser de master playlist (variantes, pistas de audio/subtítulos, `CODECS`, `VIDEO-RANGE`), política de selección por capacidades del dispositivo, y reescritura de playlists para hacerlas pasar por el proxy. |
-| `@master-hls/server` | Servidor: expone Master-HLS **como addon Stremio** (`/manifest.json`, `/catalog/…`, `/meta/…`, `/stream/…`, `/subtitles/…`), API de biblioteca/perfiles, proxy HLS y hosting del cliente web. |
-| `@master-hls/web` | Cliente de TV en React + Vite + hls.js: navegación espacial con D-pad, inicio, descubrir, búsqueda, detalle, reproductor, listas, historial, addons, ajustes y perfiles. |
+| `@vibe-flix/addon-engine` | Cliente del protocolo de addons Stremio: manifest, `catalog`/`meta`/`stream`/`subtitles`, **fan-out paralelo** con aislamiento de fallos por addon, caché TTL + single-flight, normalización tolerante de respuestas, y heurística de calidad para ordenar streams. |
+| `@vibe-flix/hls-master` | Núcleo HLS: parser de master playlist (variantes, pistas de audio/subtítulos, `CODECS`, `VIDEO-RANGE`), política de selección por capacidades del dispositivo, y reescritura de playlists para hacerlas pasar por el proxy. |
+| `@vibe-flix/skip-intro` | Núcleo de **omitir intro**: parser de subtítulos (SRT/WebVTT), detección de intro y de «anteriormente en…» sobre los propios subtítulos, conversión entre formatos y valor por defecto configurable. Sin servicios externos. |
+| `@vibe-flix/server` | Servidor: expone Vibe Flix **como addon Stremio** (`/manifest.json`, `/catalog/…`, `/meta/…`, `/stream/…`, `/subtitles/…`), API de biblioteca/perfiles, proxy HLS y hosting del cliente web. |
+| `@vibe-flix/web` | Cliente de TV en React + Vite + hls.js: navegación espacial con D-pad, inicio, descubrir, búsqueda, detalle, reproductor, listas, historial, addons, ajustes y perfiles. |
 | `android/` | Shell Android TV (Kotlin, Compose for TV, Media3, Hilt, Retrofit/Moshi) que consume los mismos motores a través del servidor. |
 
 ---
@@ -67,7 +68,7 @@ Y abre <http://localhost:8181>.
 
 ```bash
 npm run dev          # servidor con recarga (tsx watch) en :8181
-npm run dev -w @master-hls/web   # cliente Vite en :5173 (proxy al servidor)
+npm run dev -w @vibe-flix/web   # cliente Vite en :5173 (proxy al servidor)
 npm test             # 119 tests (addon-engine, hls-master, server)
 npm run typecheck    # TypeScript estricto en modo estricto
 ```
@@ -76,7 +77,7 @@ npm run typecheck    # TypeScript estricto en modo estricto
 
 ## Uso como addon Stremio
 
-Master-HLS se instala en **Stremio, WuPlay o Nuvio** usando su manifest:
+Vibe Flix se instala en **Stremio, WuPlay o Nuvio** usando su manifest:
 
 ```
 http://<tu-servidor>:8181/manifest.json
@@ -105,6 +106,9 @@ tocar el cliente.
 | `GET`/`POST`/`DELETE` | `/api/devices` · `/api/pairing` · `/api/pairing/claim` | Vinculación de dispositivos (biblioteca compartida) |
 | `GET` | `/api/addons` · `POST` · `DELETE` · `/api/addons/refresh` | Gestión de addons |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/profiles`, `/api/lists`, `/api/history`, `/api/progress`, `/api/settings` | Biblioteca y perfiles |
+| `GET` | `/api/skip-intro?type=&id=&season=&episode=` | Detecta el final de la intro (o del «anteriormente en…») con los subtítulos y devuelve el punto de salto |
+| `GET` | `/api/opensubtitles?imdbId=&season=&episode=` | Busca subtítulos en OpenSubtitles (API oficial, con la API key de los ajustes) |
+| `GET` | `/api/opensubtitles/download?fileId=` | Descarga un subtítulo y lo sirve convertido a WebVTT |
 | `GET` | `/hls/master?url=` | Analiza un master playlist y devuelve variantes + selección |
 | `GET` | `/hls/select?url=` | Devuelve la mejor variante según el dispositivo |
 | `GET` | `/hls/proxy?url=` | Proxy HLS (reproduce cabeceras y reescribe las playlists) |
@@ -135,7 +139,7 @@ soporta.
 ## Debrid nativo
 
 NuvioTV integra debrid (RealDebrid, Premiumize, TorBox); WuPlay lo delega en
-los addons. Master-HLS lo resuelve **en el servidor**, una sola vez, y cachea el
+los addons. Vibe Flix lo resuelve **en el servidor**, una sola vez, y cachea el
 enlace: el cliente web, el shell Android TV y el propio addon Stremio (es
 decir, también WuPlay y NuvioTV) reciben el mismo enlace directo.
 
@@ -178,7 +182,7 @@ servidor, así que compartirla entre la TV y el móvil no necesita cuentas:
 2. En el dispositivo B, se introduce el código de 6 caracteres.
 3. Ambos quedan vinculados y comparten la biblioteca.
 
-Desde ese momento el servidor exige un token (`X-Master-Hls-Token`) en las
+Desde ese momento el servidor exige un token (`X-Vibe-Flix-Token`) en las
 rutas de biblioteca. Si no hay ningún dispositivo vinculado, la app sigue
 funcionando en «modo local», sin autenticación.
 
@@ -258,6 +262,53 @@ aparecer con cualquier pulsación; cuando tiene el foco no se oculta.
 
 ---
 
+## Omitir intro, autoplay y OpenSubtitles
+
+Las tres funciones que hacen que la app se sienta como una app y no como un
+reproductor de URLs.
+
+### Omitir intro (nativo, sin servicios externos)
+
+No dependemos de IntroDB, AniSkip ni de ningún análisis de audio: el
+reproductor ya tiene los subtítulos, y ahí está la señal.
+
+1. El servidor reúne los subtítulos del título (los del addon y, si no hay,
+   los de OpenSubtitles) y los normaliza con `@vibe-flix/skip-intro`.
+2. Se ignoran los carteles (título, capítulo, créditos) y se busca la
+   **primera frase de diálogo real**: ahí termina la intro. El salto es 1,5 s
+   antes del primer diálogo, con un mínimo de 20 s y un máximo de 6 min.
+3. Si aparece un «Anteriormente en…» / «Previously on…», se detecta el
+   *recap* y también se puede saltar.
+4. Si no hay subtítulos o no se puede detectar nada, se usa el valor por
+   defecto (90 s, o el 8 % de la duración), que el usuario puede ajustar.
+
+El reproductor muestra un botón «Saltar intro» mientras la intro sigue en
+curso; al pulsarlo, salta al punto detectado. En la web el botón flota
+encima de la barra de controles; en Android TV, en la esquina inferior
+derecha.
+
+### Autoplay
+
+Al terminar un episodio aparece una tarjeta con el siguiente y una cuenta
+atrás de 5 s («Reproducir ahora» / «Cancelar»). El siguiente episodio se
+busca en la ficha de la serie y su stream se resuelve por el mismo camino que
+el resto, de modo que funciona igual en la web y en Android TV.
+
+### OpenSubtitles nativo
+
+Busca y descarga subtítulos de la API oficial de OpenSubtitles **sin instalar
+el addon de subtítulos**:
+
+- La API key se guarda en los ajustes del servidor (`settings.opensubtitles`),
+  nunca en el cliente: web y TV comparten el mismo servidor.
+- El servidor descomprime el `.gz`, normaliza a WebVTT y lo sirve en
+  `/api/opensubtitles/file/:name`; así el reproductor recibe siempre un
+  formato que entiende sin transformaciones.
+- En la web, el `<track>` nativo carga el WebVTT; en Android TV, Media3 lo
+  monta como *side-loaded subtitle* del propio medio.
+
+---
+
 ## Decisiones de diseño
 
 1. **El núcleo va en el servidor.** Agregación, caché, HLS master y biblioteca
@@ -298,6 +349,14 @@ aparecer con cualquier pulsación; cuando tiene el foco no se oculta.
 - [x] Sincronización multi-dispositivo por código de vinculación
 - [x] Valoraciones («Me gusta» / «No para mí») y recomendaciones personalizadas
 - [x] Catálogos predefinidos (Populares, Mejor valorados, Estrenos)
+- [x] Rebranding a **Vibe Flix** (manifest, paquete npm, Android, PWA, docs)
+- [x] **Omitir intro** nativo por análisis de subtítulos (intro y «anteriormente
+      en…»), con botón en el reproductor y salto configurable
+- [x] **Autoplay** con tarjeta de cuenta atrás y cancelación
+- [x] **OpenSubtitles nativo** (API oficial con API key en los ajustes del
+      servidor) con descarga y conversión a WebVTT
+- [x] Reproductor rediseñado en la web: barra de control propia, selector de
+      calidad/audio/subtítulos, tamaño de subtítulos y atajos de teclado
 - [ ] Plugins estilo Nuvio (CloudStream, repos de plugins)
 - [ ] Watch parties y Chromecast
 

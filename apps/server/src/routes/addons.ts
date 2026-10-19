@@ -2,7 +2,7 @@
  * API de gestion de addons (el "configurador" de WuPlay, pero por API).
  */
 
-import type { AddonRegistry } from '@master-hls/addon-engine';
+import type { AddonRegistry } from '@vibeflix/addon-engine';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData, InstalledAddonRecord } from '../model.js';

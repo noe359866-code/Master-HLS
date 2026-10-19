@@ -2,7 +2,7 @@
 
 ## Hecho
 
-- [x] **Motor de agregación de addons Stremio** (`@master-hls/addon-engine`)
+- [x] **Motor de agregación de addons Stremio** (`@vibe-flix/addon-engine`)
   - [x] Manifest con caché y validación
   - [x] Catálogos, metadatos, streams y subtítulos con fan-out paralelo
   - [x] Aislamiento de fallos por addon + timeout + reintentos
@@ -10,12 +10,12 @@
   - [x] Normalización tolerante de respuestas inconsistentes
   - [x] Herencia de la query del manifest (api keys)
   - [x] Ordenación de streams por calidad
-- [x] **Núcleo HLS master** (`@master-hls/hls-master`)
+- [x] **Núcleo HLS master** (`@vibe-flix/hls-master`)
   - [x] Parser de master playlist (variantes + pistas)
   - [x] Selección por capacidades del dispositivo
   - [x] Selección de audio/subtítulos por idioma
   - [x] Reescritura de playlists para el proxy
-- [x] **Servidor** (`@master-hls/server`)
+- [x] **Servidor** (`@vibe-flix/server`)
   - [x] Addon Stremio local instalable en Stremio/WuPlay/Nuvio
   - [x] API de perfiles, watchlists, historial y progreso
   - [x] Proxy HLS con reproducción de cabeceras
@@ -57,6 +57,19 @@
 - [x] **Catálogos predefinidos** en la metadata integrada (Populares, Mejor
       valorados, Estrenos)
 - [x] Streams de torrent (`infoHash` sin URL) ya no se descartan
+- [x] **Rebranding a Vibe Flix**: manifest del addon (`com.vibeflix.app`),
+      paquete npm (`vibe-flix`), paquetes internos (`@vibe-flix/*`), shell
+      Android (`com.vibeflix.tv`), PWA, docs y datos (`vibe-flix.json` con
+      migración del fichero antiguo)
+- [x] **Omitir intro nativo** (`@vibe-flix/skip-intro`): análisis de los
+      subtítulos del propio título (SRT/WebVTT) para detectar el final de la
+      intro y el «anteriormente en…», sin IntroDB/AniSkip ni análisis de audio
+- [x] **Autoplay** con tarjeta de cuenta atrás (5 s) y cancelación, tanto en
+      la web como en Android TV
+- [x] **OpenSubtitles nativo**: API REST oficial con API key en los ajustes
+      del servidor, descarga `.gz` y conversión a WebVTT
+- [x] **Reproductor web rediseñado**: barra de control propia, selección de
+      calidad/audio/subtítulos, tamaño de subtítulos y atajos de teclado
 
 ## Siguiente
 

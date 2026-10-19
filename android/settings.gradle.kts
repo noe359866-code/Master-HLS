@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Master-HLS TV"
+rootProject.name = "Vibe Flix TV"
 include(":app")

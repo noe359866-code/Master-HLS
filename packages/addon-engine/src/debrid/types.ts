@@ -3,7 +3,7 @@
  * y te dan un enlace directo).
  *
  * WuPlay solo trabaja con streams HTTP y delega el debrid en los addons;
- * NuvioTV trae debrid nativo (RealDebrid, Premiumize, TorBox). Master-HLS lo
+ * NuvioTV trae debrid nativo (RealDebrid, Premiumize, TorBox). Vibe Flix lo
  * resuelve en el *servidor*, una sola vez, y el resultado se cachea para que
  * todos los dispositivos (web, Android TV, Stremio) aprovechen el mismo enlace.
  *

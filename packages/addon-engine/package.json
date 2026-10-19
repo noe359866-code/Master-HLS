@@ -1,5 +1,5 @@
 {
-  "name": "@master-hls/addon-engine",
+  "name": "@vibeflix/addon-engine",
   "version": "1.0.0",
   "description": "Motor de agregacion de addons Stremio: manifest, fan-out de catalogos, cache, normalizacion de meta/streams/subtitulos",
   "license": "CC0-1.0",

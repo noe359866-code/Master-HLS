@@ -1,7 +1,7 @@
 /**
  * Registro de addons: instalacion, cache y agregacion.
  *
- * Este es el motor central de Master-HLS. A diferencia de un cliente Stremio
+ * Este es el motor central de Vibe Flix. A diferencia de un cliente Stremio
  * normal (que consulta un addon a la vez), aqui se hace *fan-out* a todos los
  * addons instalados en paralelo y se fusionan los resultados:
  *

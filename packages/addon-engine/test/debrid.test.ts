@@ -129,7 +129,7 @@ describe('debrid: Real-Debrid', () => {
 describe('debrid: AllDebrid', () => {
   it('usa el enlace instantaneo si el torrent esta cacheado', async () => {
     const routes = {
-      'https://ad.tld/v4/magnet/instant?agent=masterhls&apikey=KEY&magnets[]=magnet%3Aabc': {
+      'https://ad.tld/v4/magnet/instant?agent=vibeflix&apikey=KEY&magnets[]=magnet%3Aabc': {
         body: {
           status: 'success',
           data: {
@@ -157,13 +157,13 @@ describe('debrid: AllDebrid', () => {
 
   it('sube el magnet y espera a que este listo', async () => {
     const routes = {
-      'https://ad.tld/v4/magnet/instant?agent=masterhls&apikey=KEY&magnets[]=magnet%3Aabc': {
+      'https://ad.tld/v4/magnet/instant?agent=vibeflix&apikey=KEY&magnets[]=magnet%3Aabc': {
         body: { status: 'success', data: { magnets: { 'magnet:abc': { instant: false } } } },
       },
-      'https://ad.tld/v4/magnet/upload?agent=masterhls&apikey=KEY&magnets[]=magnet%3Aabc': {
+      'https://ad.tld/v4/magnet/upload?agent=vibeflix&apikey=KEY&magnets[]=magnet%3Aabc': {
         body: { status: 'success', data: { magnets: { 'magnet:abc': { id: 77 } } } },
       },
-      'https://ad.tld/v4/magnet/status?agent=masterhls&apikey=KEY&id=77': {
+      'https://ad.tld/v4/magnet/status?agent=vibeflix&apikey=KEY&id=77': {
         body: {
           status: 'success',
           data: {

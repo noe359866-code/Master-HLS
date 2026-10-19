@@ -51,7 +51,7 @@ export function AddonsScreen() {
         <h2>Instalar addon</h2>
         <p className="panel__hint">
           Pega la URL del manifest de un addon Stremio (por ejemplo{' '}
-          <code>https://v3-cinemeta.strem.io/manifest.json</code>). Master-HLS agrega todos los addons
+          <code>https://v3-cinemeta.strem.io/manifest.json</code>). Vibe Flix agrega todos los addons
           instalados en sus catálogos, metadatos, streams y subtítulos.
         </p>
         <div className="addons__install">
@@ -194,7 +194,7 @@ export function SettingsScreen() {
       <section className="panel">
         <h2>Metadata integrada</h2>
         <p className="panel__hint">
-          Permite usar Master-HLS sin instalar ningún addon de metadatos (el «built-in metadata» de
+          Permite usar Vibe Flix sin instalar ningún addon de metadatos (el «built-in metadata» de
           WuPlay). Se agrega a los addons que tengas instalados, no los sustituye.
         </p>
         <label className="setting">
@@ -331,9 +331,76 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
+        <h2>OpenSubtitles nativo</h2>
+        <p className="panel__hint">
+          Busca y descarga subtítulos directamente de OpenSubtitles, sin instalar el addon de
+          subtítulos. La API key es gratuita (opensubtitles.com → My Account → API) y se guarda
+          solo en el servidor.
+        </p>
+        <label className="setting">
+          <span>API key</span>
+          <input
+            type="password"
+            data-focusable="true"
+            value={settings.opensubtitles?.apiKey ?? ''}
+            placeholder="Clave de OpenSubtitles"
+            onChange={(event) =>
+              void saveSettings({
+                opensubtitles: {
+                  apiKey: event.target.value,
+                },
+              })
+            }
+          />
+        </label>
+      </section>
+
+      <section className="panel">
+        <h2>Omitir intro</h2>
+        <p className="panel__hint">
+          Detecta el final de la intro analizando los subtítulos del título (nativo, sin servicios
+          externos). Si no puede detectarlo, salta el primer bloque de tiempo.
+        </p>
+        <label className="setting">
+          <span>Mostrar el botón de saltar intro</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={settings.skipIntro?.enabled !== false}
+            onChange={(event) =>
+              void saveSettings({
+                skipIntro: {
+                  enabled: event.target.checked,
+                  offsetSeconds: settings.skipIntro?.offsetSeconds ?? 90,
+                },
+              })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>Salto por defecto (segundos)</span>
+          <input
+            type="number"
+            min={5}
+            max={600}
+            data-focusable="true"
+            value={settings.skipIntro?.offsetSeconds ?? 90}
+            onChange={(event) =>
+              void saveSettings({
+                skipIntro: {
+                  enabled: settings.skipIntro?.enabled !== false,
+                  offsetSeconds: Number(event.target.value) || 90,
+                },
+              })
+            }
+          />
+        </label>
+      </section>
+
+      <section className="panel">
         <h2>Instalar en la TV</h2>
         <p className="panel__hint">
-          Master-HLS es una PWA: se instala como una app (ventana propia, sin barra del navegador)
+          Vibe Flix es una PWA: se instala como una app (ventana propia, sin barra del navegador)
           y sigue funcionando con la red intermitente gracias al service worker.
         </p>
         <div className="addons__install">

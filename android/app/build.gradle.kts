@@ -7,21 +7,21 @@ plugins {
 }
 
 android {
-    namespace = "com.masterhls.tv"
+    namespace = "com.vibeflix.tv"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.masterhls.tv"
+        applicationId = "com.vibeflix.tv"
         minSdk = 23
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
-        // URL del servidor Master-HLS. En el emulador de Android es 10.0.2.2.
+        // URL del servidor Vibe Flix. En el emulador de Android es 10.0.2.2.
         buildConfigField(
             "String",
             "DEFAULT_SERVER_URL",
-            "\"${project.findProperty("masterHls.serverUrl") ?: "http://10.0.2.2:8181"}\""
+            "\"${project.findProperty("vibeFlix.serverUrl") ?: "http://10.0.2.2:8181"}\""
         )
     }
 

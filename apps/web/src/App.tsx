@@ -87,7 +87,7 @@ export function App() {
         <header className="topbar">
           <div className="topbar__brand">
             <span className="topbar__logo">M</span>
-            <span className="topbar__name">Master-HLS</span>
+            <span className="topbar__name">Vibe Flix</span>
           </div>
 
           <nav className="topbar__nav">
@@ -119,7 +119,7 @@ export function App() {
       ) : null}
 
       <main className="content">
-        {loading && !isPlayer ? <Loader label="Arrancando Master-HLS…" /> : null}
+        {loading && !isPlayer ? <Loader label="Arrancando Vibe Flix…" /> : null}
         {error ? <ErrorState message={error} onRetry={() => void refreshAll()} /> : null}
 
         {!loading && !error ? (
@@ -136,6 +136,10 @@ export function App() {
                 streamName={route.streamName}
                 title={route.title}
                 poster={route.poster}
+                subtitleUrl={route.subtitleUrl}
+                subtitleLabel={route.subtitleLabel}
+                nextId={route.nextId}
+                nextTitle={route.nextTitle}
               />
             ) : null}
             {route.name === 'lists' ? <ListsScreen /> : null}

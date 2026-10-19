@@ -1,7 +1,7 @@
 {
-  "name": "@master-hls/web",
+  "name": "@vibeflix/web",
   "version": "1.0.0",
-  "description": "Cliente TV de Master-HLS (React + Vite + hls.js)",
+  "description": "Cliente TV de Vibe Flix (React + Vite + hls.js)",
   "license": "CC0-1.0",
   "private": true,
   "type": "module",

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../api';
 import { useApp } from '../store';
-import type { Meta, Rating, Stream, Video } from '../types';
+import type { Meta, OpenSubtitleEntry, Rating, Stream, Video } from '../types';
 import { Button, ErrorState, Loader, Modal, Poster, useBackdrop } from '../components/ui';
 
 export function DetailScreen({ id, type }: { id: string; type: string }) {
@@ -17,6 +17,16 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
   const [rating, setRating] = useState<Rating | null>(null);
   const [trailerOpen, setTrailerOpen] = useState(false);
   const autoplayed = useRef(false);
+
+  // OpenSubtitles nativo: busqueda, descarga y subtitulo elegido.
+  const [subsOpen, setSubsOpen] = useState(false);
+  const [subs, setSubs] = useState<OpenSubtitleEntry[]>([]);
+  const [subsLoading, setSubsLoading] = useState(false);
+  const [subsEnabled, setSubsEnabled] = useState(true);
+  const [subsError, setSubsError] = useState<string | null>(null);
+  const [selectedSubtitle, setSelectedSubtitle] = useState<{ url: string; label: string } | null>(
+    null,
+  );
 
   const backdrop = useBackdrop(meta);
 
@@ -135,6 +145,9 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
   const play = (stream: Stream, video?: Video) => {
     const url = stream.url ?? stream.externalUrl;
     if (!url) return;
+    // Episodio siguiente (para el autoplay del reproductor).
+    const currentIndex = video ? episodes.findIndex((entry) => entry.id === video.id) : -1;
+    const nextEpisode = currentIndex >= 0 ? episodes[currentIndex + 1] : undefined;
     navigate({
       name: 'player',
       id: video?.id ?? id,
@@ -143,7 +156,47 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
       streamName: stream.name ?? stream.title ?? 'Stream',
       title: meta?.name,
       poster: meta?.poster,
+      subtitleUrl: selectedSubtitle?.url,
+      subtitleLabel: selectedSubtitle?.label,
+      nextId: nextEpisode?.id,
+      nextTitle: nextEpisode?.title ?? nextEpisode?.name,
     });
+  };
+
+  // -------------------------------------------------------- OpenSubtitles
+  const openSubtitles = async () => {
+    setSubsLoading(true);
+    setSubsError(null);
+    try {
+      const [imdbId, seasonNumber, episodeNumber] = (episode?.id ?? id).split(':');
+      const result = await api.openSubtitles({
+        imdbId,
+        season: seasonNumber ? Number(seasonNumber) : undefined,
+        episode: episodeNumber ? Number(episodeNumber) : undefined,
+      });
+      setSubsEnabled(result.enabled);
+      setSubs(result.subtitles);
+    } catch (cause) {
+      setSubsError((cause as Error).message);
+    } finally {
+      setSubsLoading(false);
+    }
+  };
+
+  const chooseSubtitle = async (entry: OpenSubtitleEntry) => {
+    setSubsLoading(true);
+    setSubsError(null);
+    try {
+      const result = await api.downloadOpenSubtitle(entry.fileId);
+      setSelectedSubtitle({
+        url: result.path,
+        label: `${entry.languageName} (OpenSubtitles)`,
+      });
+    } catch (cause) {
+      setSubsError((cause as Error).message);
+    } finally {
+      setSubsLoading(false);
+    }
   };
 
   if (loading) return <Loader label="Cargando detalle…" />;
@@ -203,6 +256,15 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
                   ▶ Trailer
                 </Button>
               ) : null}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSubsOpen(true);
+                  void openSubtitles();
+                }}
+              >
+                💬 Subtítulos
+              </Button>
               <Button
                 variant="ghost"
                 onClick={() => void vote('like')}
@@ -335,6 +397,50 @@ export function DetailScreen({ id, type }: { id: string; type: string }) {
               ))}
             </div>
           </section>
+        ) : null}
+
+        {subsOpen ? (
+          <Modal title="Subtítulos (OpenSubtitles)" onClose={() => setSubsOpen(false)}>
+            {!subsEnabled ? (
+              <p className="panel__hint">
+                OpenSubtitles está desactivado. Añade la API key en Ajustes para buscar
+                subtítulos de forma nativa.
+              </p>
+            ) : null}
+            {subsError ? <p className="panel__hint">{subsError}</p> : null}
+            {subsLoading ? <Loader label="Buscando subtítulos…" /> : null}
+            {subsEnabled && !subsLoading && !subs.length ? (
+              <p className="panel__hint">No se han encontrado subtítulos para este título.</p>
+            ) : null}
+            <div className="subtitle-list">
+              {subs.map((entry) => (
+                <button
+                  key={entry.fileId}
+                  type="button"
+                  data-focusable="true"
+                  className={`stream ${
+                    selectedSubtitle?.url.endsWith(`os-${entry.fileId}.vtt`)
+                      ? 'stream--active'
+                      : ''
+                  }`}
+                  onClick={() => void chooseSubtitle(entry)}
+                >
+                  <span className="stream__name">
+                    {entry.languageName} · {entry.release || entry.fileName}
+                  </span>
+                  <span className="stream__description">
+                    {entry.hearingImpaired ? 'Para sordos · ' : ''}
+                    {entry.downloadCount} descargas
+                  </span>
+                </button>
+              ))}
+            </div>
+            {selectedSubtitle ? (
+              <div className="detail__actions">
+                <Button onClick={() => setSelectedSubtitle(null)}>Quitar subtítulo</Button>
+              </div>
+            ) : null}
+          </Modal>
         ) : null}
 
         {trailerOpen && trailer ? (

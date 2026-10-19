@@ -7,7 +7,7 @@
  *  - Nuvio: colecciones/listas, "continuar viendo", repeticiones, atajos.
  */
 
-import type { DebridProviderId, MetaPreview } from '@master-hls/addon-engine';
+import type { DebridProviderId, MetaPreview } from '@vibeflix/addon-engine';
 
 export interface InstalledAddonRecord {
   id: string;
@@ -100,7 +100,7 @@ export interface RatingEntry {
 export interface PairedDevice {
   id: string;
   name: string;
-  /** Token que el cliente envia en `X-Master-Hls-Token`. */
+  /** Token que el cliente envia en `X-Vibe-Flix-Token`. */
   token: string;
   createdAt: number;
   lastSeenAt: number;
@@ -152,6 +152,23 @@ export interface AppSettings {
     /** API key del proveedor. */
     apiKey: string;
   };
+  /**
+   * OpenSubtitles nativo (no hace falta instalar el addon de subtitulos).
+   *
+   * La API key se puede obtener gratis en opensubtitles.com y da acceso a la
+   * busqueda y descarga de subtitulos desde el propio servidor.
+   */
+  opensubtitles: {
+    /** API key de OpenSubtitles (vacio = servicio desactivado). */
+    apiKey: string;
+  };
+  /** Omitir intro: deteccion nativa a partir de los subtitulos. */
+  skipIntro: {
+    /** Mostrar el boton de saltar intro. */
+    enabled: boolean;
+    /** Offset por defecto (segundos) cuando no se puede detectar la intro. */
+    offsetSeconds: number;
+  };
   /** Capacidades declaradas del dispositivo (afectan a la seleccion HLS). */
   device: {
     maxHeight: number;
@@ -194,6 +211,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showAddonPrefix: true,
   preferredStreamAddons: [],
   debrid: { provider: '', apiKey: '' },
+  opensubtitles: { apiKey: '' },
+  skipIntro: { enabled: true, offsetSeconds: 90 },
   device: {
     maxHeight: 1080,
     maxFrameRate: 60,
@@ -231,6 +250,14 @@ export function normalizeData(data: AppData): AppData {
     device: {
       ...DEFAULT_SETTINGS.device,
       ...(settings.device ?? {}),
+    },
+    opensubtitles: {
+      ...DEFAULT_SETTINGS.opensubtitles,
+      ...(settings.opensubtitles ?? {}),
+    },
+    skipIntro: {
+      ...DEFAULT_SETTINGS.skipIntro,
+      ...(settings.skipIntro ?? {}),
     },
   };
   data.addons ??= [];

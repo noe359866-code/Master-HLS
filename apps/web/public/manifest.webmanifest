@@ -1,7 +1,7 @@
 {
-  "name": "Master-HLS",
-  "short_name": "Master-HLS",
-  "description": "Agregador de addons Stremio con nucleo HLS master: catalogo, metadata, streams y subtitulos de todos tus addons en uno.",
+  "name": "Vibe Flix",
+  "short_name": "Vibe Flix",
+  "description": "Vibe Flix: reproductor de TV con agregacion de addons Stremio, nucleo HLS master, omitir intro, OpenSubtitles y autoplay nativo.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

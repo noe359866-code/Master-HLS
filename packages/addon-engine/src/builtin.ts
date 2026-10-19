@@ -35,7 +35,7 @@ import type {
   SubtitleResponse,
 } from './types.js';
 
-export const BUILTIN_METADATA_ID = 'com.masterhls.builtin-metadata';
+export const BUILTIN_METADATA_ID = 'com.vibeflix.builtin-metadata';
 export const DEFAULT_METADATA_BASE_URL = 'https://v3-cinemeta.strem.io';
 
 export interface BuiltinMetadataOptions {
@@ -103,10 +103,10 @@ export class BuiltinMetadataAddon implements AddonSource {
 
     this.manifest = {
       id: this.id,
-      name: 'Master-HLS Metadata',
+      name: 'Vibe Flix Metadata',
       version: '1.0.0',
       description:
-        'Metadata integrada (Cinemeta). Permite usar Master-HLS sin instalar ningun addon.',
+        'Metadata integrada (Cinemeta). Permite usar Vibe Flix sin instalar ningun addon.',
       logo: `${this.baseUrl}/logo.png`,
       types: ['movie', 'series'],
       idPrefixes: ['tt', 'kitsu', 'mal', 'tvdb'],

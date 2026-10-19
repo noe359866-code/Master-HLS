@@ -12,6 +12,25 @@ import http from 'node:http';
 
 const port = Number(process.argv[2] ?? 8182);
 
+/** Subtitulo de demostracion (cartel de titulo + dialogo). */
+const SUBTITLES_VTT = `WEBVTT
+
+00:00:01.000 --> 00:00:08.000
+Vibe Flix
+
+00:01:35.000 --> 00:01:41.000
+Esta es una demostracion del reproductor nativo.
+
+00:02:10.000 --> 00:02:16.000
+El boton de saltar intro aparece aqui.
+
+00:03:05.000 --> 00:03:11.000
+Los subtitulos vienen de OpenSubtitles de forma nativa.
+
+00:04:00.000 --> 00:04:06.000
+Y el autoplay ofrece el siguiente episodio.
+`;
+
 const MOVIES = [
   {
     id: 'tt0111161',
@@ -143,10 +162,10 @@ const server = http.createServer((req, res) => {
 
   if (path === '/manifest.json') {
     json(res, {
-      id: 'com.masterhls.demo',
-      name: 'Master-HLS Demo',
+      id: 'com.vibeflix.demo',
+      name: 'Vibe Flix Demo',
       version: '1.0.0',
-      description: 'Addon de demostracion con catalogo, metadatos, streams HLS y subtitulos.',
+      description: 'Addon de demostracion de Vibe Flix: catalogo, metadatos, streams HLS y subtitulos.',
       logo: `http://127.0.0.1:${port}/logo.png`,
       types: ['movie', 'series'],
       idPrefixes: ['tt'],
@@ -296,8 +315,10 @@ const server = http.createServer((req, res) => {
   }
 
   if (path.endsWith('.vtt')) {
+    // Subtitulo de demostracion: cartel de titulo (no es dialogo) seguido de
+    // dialogo real. Asi la deteccion de intro tiene en que fijarse.
     res.writeHead(200, { 'content-type': 'text/vtt' });
-    res.end('WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nDemo de subtitulos Master-HLS\n');
+    res.end(SUBTITLES_VTT);
     return;
   }
 

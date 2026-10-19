@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 
-import { AddonRegistry, HttpClient } from '@master-hls/addon-engine';
+import { AddonRegistry, HttpClient } from '@vibeflix/addon-engine';
 import { createApp, type App } from '../src/app.js';
 
 const MANIFESTS: Record<string, unknown> = {
@@ -85,14 +85,14 @@ function createFetch(): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
-describe('servidor Master-HLS', () => {
+describe('servidor Vibe Flix', () => {
   let app: App;
   let server: http.Server;
   let base: string;
   let dataDir: string;
 
   before(async () => {
-    dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'master-hls-'));
+    dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vibe-flix-'));
     const registry = new AddonRegistry({
       http: new HttpClient({ fetchImpl: createFetch(), retries: 0 }),
       fanoutTimeoutMs: 3000,
@@ -121,7 +121,7 @@ describe('servidor Master-HLS', () => {
     const response = await fetch(`${base}/manifest.json`);
     assert.equal(response.status, 200);
     const manifest = (await response.json()) as { id: string; catalogs: unknown[] };
-    assert.equal(manifest.id, 'com.masterhls.app');
+    assert.equal(manifest.id, 'com.vibeflix.app');
     assert.ok(manifest.catalogs.length >= 1);
   });
 
@@ -341,7 +341,7 @@ describe('servidor Master-HLS', () => {
     assert.equal(sinToken.status, 401);
 
     const conToken = await fetch(`${base}/api/lists`, {
-      headers: { 'x-master-hls-token': created.token },
+      headers: { 'x-vibe-flix-token': created.token },
     });
     assert.equal(conToken.status, 200);
 
@@ -354,7 +354,7 @@ describe('servidor Master-HLS', () => {
     assert.equal(claim.status, 200);
     const claimed = (await claim.json()) as { token: string };
     const list = await fetch(`${base}/api/lists`, {
-      headers: { 'x-master-hls-token': claimed.token },
+      headers: { 'x-vibe-flix-token': claimed.token },
     });
     assert.equal(list.status, 200);
 
@@ -380,13 +380,13 @@ describe('servidor Master-HLS', () => {
     if (movil) {
       await fetch(`${base}/api/devices/${movil.id}`, {
         method: 'DELETE',
-        headers: { 'x-master-hls-token': claimed.token },
+        headers: { 'x-vibe-flix-token': claimed.token },
       });
     }
     if (tv) {
       await fetch(`${base}/api/devices/${tv.id}`, {
         method: 'DELETE',
-        headers: { 'x-master-hls-token': created.token },
+        headers: { 'x-vibe-flix-token': created.token },
       });
     }
     const abierto = await fetch(`${base}/api/lists`);

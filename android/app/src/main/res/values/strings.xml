@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Master-HLS</string>
-    <string name="app_banner_description">Master-HLS — reproductor Stremio para TV</string>
-    <string name="server_url_label">URL del servidor Master-HLS</string>
+    <string name="app_name">Vibe Flix</string>
+    <string name="app_banner_description">Vibe Flix — reproductor Stremio para TV</string>
+    <string name="server_url_label">URL del servidor Vibe Flix</string>
     <string name="replay">Reproducir</string>
     <string name="back">Volver</string>
     <string name="no_streams">Sin streams disponibles</string>

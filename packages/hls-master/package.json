@@ -1,5 +1,5 @@
 {
-  "name": "@master-hls/hls-master",
+  "name": "@vibeflix/hls-master",
   "version": "1.0.0",
   "description": "Nucleo HLS master: parser de playlists, seleccion de variantes y pistas, reescritura de URLs y proxy",
   "license": "CC0-1.0",

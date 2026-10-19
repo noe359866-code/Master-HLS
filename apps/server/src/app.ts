@@ -4,8 +4,9 @@
  * Se separa de `index.ts` para poder montar la app en tests sin abrir un puerto.
  */
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
-import { AddonRegistry, DebridService, HttpClient } from '@master-hls/addon-engine';
+import { AddonRegistry, DebridService, HttpClient } from '@vibeflix/addon-engine';
 
 import { loadConfig, type ServerConfig } from './config.js';
 import { JsonStore } from './store.js';
@@ -16,6 +17,8 @@ import { registerAddonRoutes } from './routes/addons.js';
 import { registerLibraryRoutes } from './routes/library.js';
 import { registerHlsRoutes } from './routes/hls.js';
 import { registerDeviceRoutes } from './routes/devices.js';
+import { registerSubtitleRoutes } from './routes/subtitles.js';
+import type { OpenSubtitlesService } from './services/opensubtitles.js';
 
 export const APP_VERSION = '1.0.0';
 
@@ -47,12 +50,47 @@ export interface App {
 export interface CreateAppOptions extends Partial<ServerConfig> {
   /** Permite inyectar un registro de addons (tests, embed). */
   registry?: AddonRegistry;
+  /** `fetch` inyectable para las descargas de subtitulos (tests). */
+  fetchImpl?: typeof fetch;
+  /** Factoría del servicio de OpenSubtitles (tests). */
+  createOpenSubtitles?: (apiKey: string) => OpenSubtitlesService;
+}
+
+/**
+ * Migra el fichero de datos antiguo (`master-hls.json`) al nuevo
+ * (`vibe-flix.json`) tras el rebranding a Vibe Flix.
+ */
+async function migrateLegacyDataFile(dataDir: string, target: string): Promise<void> {
+  const legacy = path.join(dataDir, 'master-hls.json');
+  try {
+    await fs.access(target);
+    return; // ya existe el nuevo: no se toca nada
+  } catch {
+    // no existe todavia
+  }
+  try {
+    const raw = await fs.readFile(legacy, 'utf8');
+    await fs.writeFile(target, raw, 'utf8');
+    console.log(`[store] datos migrados de ${legacy} a ${target}`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.warn('[store] no se pudo migrar el fichero de datos:', (error as Error).message);
+    }
+  }
 }
 
 export function createApp(overrides: CreateAppOptions = {}): App {
-  const { registry: registryOverride, ...configOverrides } = overrides;
+  const {
+    registry: registryOverride,
+    fetchImpl,
+    createOpenSubtitles,
+    ...configOverrides
+  } = overrides;
   const config = { ...loadConfig(), ...configOverrides };
-  const store = new JsonStore<AppData>(path.join(config.dataDir, 'master-hls.json'), emptyData());
+  // El fichero de datos paso de `master-hls.json` a `vibe-flix.json` con el
+  // rebranding: si existe el antiguo, se migra para no perder la configuracion.
+  const store = new JsonStore<AppData>(path.join(config.dataDir, 'vibe-flix.json'), emptyData());
   const registry =
     registryOverride ??
     new AddonRegistry({
@@ -83,6 +121,14 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   });
   registerHlsRoutes(router, {});
   registerDeviceRoutes(router, { getData, save });
+  registerSubtitleRoutes(router, {
+    registry,
+    getData,
+    cacheDir: path.join(config.dataDir, 'subtitles'),
+    publicUrl: () => config.publicUrl,
+    fetchImpl,
+    createOpenSubtitles,
+  });
 
   router.get('/api/health', ({ res }) => {
     sendJson(res, 200, {
@@ -125,6 +171,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       }
     },
     async bootstrap() {
+      await migrateLegacyDataFile(config.dataDir, store.path);
       // El store mantiene el mismo objeto en memoria: `normalizeData` completa
       // los campos que falten (ajustes nuevos) y se persisten.
       const data = normalizeData(await store.load());
@@ -183,11 +230,11 @@ export function createApp(overrides: CreateAppOptions = {}): App {
         return;
       }
       // Sincronizacion multi-dispositivo: si hay dispositivos vinculados, la
-      // biblioteca exige un token valido (`X-Master-Hls-Token`).
+      // biblioteca exige un token valido (`X-Vibe-Flix-Token`).
       if (PROTECTED_API_PREFIXES.some((prefix) => ctx.url.pathname.startsWith(prefix))) {
         const list = getData().devices ?? [];
         if (list.length) {
-          const header = ctx.req.headers['x-master-hls-token'];
+          const header = ctx.req.headers['x-vibe-flix-token'];
           const token = Array.isArray(header) ? header[0] : header;
           const device = list.find((entry) => entry.token === token);
           if (!device) {

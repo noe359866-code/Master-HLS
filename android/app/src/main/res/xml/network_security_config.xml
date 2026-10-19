@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  El servidor Master-HLS se despliega normalmente en la LAN (http://192.168.x.x:8181),
+  El servidor Vibe Flix se despliega normalmente en la LAN (http://192.168.x.x:8181),
   por lo que se permite trafico claro solo en direcciones privadas.
 -->
 <network-security-config>

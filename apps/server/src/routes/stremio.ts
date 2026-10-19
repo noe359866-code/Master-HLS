@@ -1,7 +1,7 @@
 /**
  * Endpoints del addon Stremio local.
  *
- * Master-HLS se puede instalar como addon en Stremio, WuPlay o Nuvio:
+ * Vibe Flix se puede instalar como addon en Stremio, WuPlay o Nuvio:
  * la URL `http://<host>:<puerto>/manifest.json` es la que se pega en el
  * configurador. A partir de ahi, el addon agrega *todos* los addons que el
  * usuario tenga instalados en el servidor, de modo que un unico addon da
@@ -20,7 +20,7 @@ import {
   findSimilarTitles,
   type AddonRegistry,
   type DebridService,
-} from '@master-hls/addon-engine';
+} from '@vibeflix/addon-engine';
 import type { Router, RouteContext } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
@@ -85,11 +85,11 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     const idPrefixes = new Set<string>(['tt', 'kitsu', 'mal', 'tvdb', 'imdb']);
 
     sendJson(res, 200, {
-      id: 'com.masterhls.app',
-      name: 'Master-HLS',
+      id: 'com.vibeflix.app',
+      name: 'Vibe Flix',
       version: appVersion,
       description:
-        'Agregador de addons Stremio con nucleo HLS master: catalogo, metadata, streams y subtitulos de todos tus addons en uno.',
+        'Vibe Flix: agregador de addons Stremio con nucleo HLS master, omitir intro, OpenSubtitles y autoplay nativo.',
       logo: `${publicBase()}/logo.png`,
       background: `${publicBase()}/background.png`,
       types: [...types],

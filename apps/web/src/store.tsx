@@ -26,7 +26,21 @@ export type Route =
   | { name: 'search' }
   | { name: 'detail'; id: string; type: string }
   | { name: 'person'; person: string }
-  | { name: 'player'; id: string; type: string; streamUrl?: string; streamName?: string; title?: string; poster?: string }
+  | {
+      name: 'player';
+      id: string;
+      type: string;
+      streamUrl?: string;
+      streamName?: string;
+      title?: string;
+      poster?: string;
+      /** Subtitulo externo elegido (WebVTT). */
+      subtitleUrl?: string;
+      subtitleLabel?: string;
+      /** Episodio siguiente (autoplay). */
+      nextId?: string;
+      nextTitle?: string;
+    }
   | { name: 'lists' }
   | { name: 'history' }
   | { name: 'addons' }

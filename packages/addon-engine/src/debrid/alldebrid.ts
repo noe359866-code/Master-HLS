@@ -13,7 +13,7 @@ import {
 } from './types.js';
 
 const DEFAULT_BASE_URL = 'https://api.alldebrid.com/v4';
-const AGENT = 'masterhls';
+const AGENT = 'vibeflix';
 
 interface AdInstantFile {
   filename?: string;

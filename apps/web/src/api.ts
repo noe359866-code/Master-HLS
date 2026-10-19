@@ -2,6 +2,8 @@ import type {
   AppSettings,
   Catalog,
   DebridStatus,
+  OpenSubtitleEntry,
+  SkipSegment,
   HistoryEntry,
   InstalledAddon,
   Manifest,
@@ -24,7 +26,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       'content-type': 'application/json',
       // Token del dispositivo (biblioteca compartida entre dispositivos).
-      ...(token ? { 'x-master-hls-token': token } : {}),
+      ...(token ? { 'x-vibe-flix-token': token } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -324,6 +326,42 @@ export const api = {
   /** Comprueba las credenciales del proveedor de debrid. */
   async testDebrid(): Promise<{ ok: boolean; message: string }> {
     return request<{ ok: boolean; message: string }>('/api/debrid/test', { method: 'POST' });
+  },
+
+  // ------------------------------------------------- subtitulos y omitir intro
+
+  /** Segmento saltable (intro/recap) detectado por el servidor. */
+  async skipIntro(params: {
+    type?: string;
+    id?: string;
+    imdbId?: string;
+    season?: number;
+    episode?: number;
+    duration?: number;
+  }): Promise<{ segment: SkipSegment; source: string; cues: number }> {
+    return request<{ segment: SkipSegment; source: string; cues: number }>(
+      `/api/skip-intro${query({ ...params })}`,
+    );
+  },
+
+  /** Busca subtitulos en OpenSubtitles (nativo, sin addon). */
+  async openSubtitles(params: {
+    imdbId?: string;
+    season?: number;
+    episode?: number;
+    lang?: string;
+    q?: string;
+  }): Promise<{ enabled: boolean; subtitles: OpenSubtitleEntry[] }> {
+    return request<{ enabled: boolean; subtitles: OpenSubtitleEntry[] }>(
+      `/api/opensubtitles${query({ ...params })}`,
+    );
+  },
+
+  /** Descarga un subtitulo y devuelve su URL en WebVTT. */
+  async downloadOpenSubtitle(fileId: number): Promise<{ path: string; url: string }> {
+    return request<{ path: string; url: string }>(
+      `/api/opensubtitles/download${query({ fileId })}`,
+    );
   },
 
   // --------------------------------------------------------------------- HLS

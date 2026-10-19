@@ -7,16 +7,16 @@ implementa por su lado el consumo de addons, la reproducción y la biblioteca.
 Eso duplica el trabajo y hace que dos dispositivos del mismo usuario se
 comporten de forma distinta.
 
-En Master-HLS la división es:
+En Vibe Flix la división es:
 
-- **Servidor (`@master-hls/server`)** — entiende el protocolo de addons Stremio,
+- **Servidor (`@vibe-flix/server`)** — entiende el protocolo de addons Stremio,
   agrega los addons instalados, normaliza sus respuestas, cachea, resuelve
   conflictos de calidad y aplica las políticas HLS. También guarda biblioteca y
   perfiles.
 - **Cliente** — sólo presenta y reproduce. El cliente web y el shell Android
   consumen el mismo contrato (el protocolo Stremio + unas pocas rutas `/api`).
 
-Consecuencia práctica: **Master-HLS instalado como addon en Stremio, WuPlay o
+Consecuencia práctica: **Vibe Flix instalado como addon en Stremio, WuPlay o
 Nuvio da exactamente los mismos resultados que la app nativa**, porque ambos
 consumen el mismo agregador.
 
@@ -72,7 +72,7 @@ Cliente                     Servidor                         CDN
   │◀── playlist reescrita ─────────────────────────────────────┘
 ```
 
-`@master-hls/hls-master` es una librería pura (sin I/O), lo que la hace
+`@vibe-flix/hls-master` es una librería pura (sin I/O), lo que la hace
 fácilmente testeable y reutilizable desde el shell Android si en el futuro se
 quiere parsear en el dispositivo.
 
@@ -105,7 +105,7 @@ AppData {
 }
 ```
 
-Persistencia en un único JSON (`data/master-hls.json`) con escritura atómica
+Persistencia en un único JSON (`data/vibe-flix.json`) con escritura atómica
 (temporal + `rename`). Se evita una base de datos nativa para que el proyecto
 sea `clone & run` sin compilación nativa.
 
@@ -145,9 +145,20 @@ streams agregados  ->  candidatos (infoHash / externalUrl)
 - `apps/web/src/pwa.ts`: registro del service worker y captura del evento
   `beforeinstallprompt` para el botón «Instalar app».
 - `apps/server/src/routes/devices.ts`: códigos de vinculación de 6 caracteres
-  con caducidad de 10 minutos; el token viaja en `X-Master-Hls-Token` y, en
+  con caducidad de 10 minutos; el token viaja en `X-Vibe-Flix-Token` y, en
   cuanto existe un dispositivo vinculado, el servidor lo exige en las rutas de
   biblioteca (`app.ts`).
+
+### 5.3 Omitir intro y OpenSubtitles (web)
+
+- `api.skipIntro()` y `api.openSubtitles()` / `api.downloadOpenSubtitle()`
+  (`apps/web/src/api.ts`) consumen las nuevas rutas del servidor.
+- `Player.tsx` es un reproductor propio (sin `controls` nativos): barra
+  inferior con progreso, volumen, calidad, audio, subtítulos y tamaño de
+  subtítulos; atajos de teclado (espacio/K, flechas, M, F, I) y auto-ocultado
+  de la barra a los 3 s.
+- El subtitulo externo se carga con `<track kind="subtitles">` (WebVTT), que
+  es lo que hls.js v1 no puede hacer con pistas externas del propio stream.
 
 ## 6. Shell Android TV
 
@@ -157,13 +168,13 @@ streams agregados  ->  candidatos (infoHash / externalUrl)
 - El cliente Android habla con el servidor usando el protocolo Stremio, igual
   que cualquier otro cliente de addons.
 
-### 6.1 Reproductor Media3 (`android/app/src/main/java/com/masterhls/tv/data/player/`)
+### 6.1 Reproductor Media3 (`android/app/src/main/java/com/vibeflix/tv/data/player/`)
 
 ```
 url + cabeceras
    -> PlayerViewModel.prepare()      consulta /hls/master (variante + pistas)
    -> PlayerEngine.setMedia()        MediaItem con mimeType HLS
-   -> MasterHlsMediaSourceFactory    HlsMediaSource (chunkless off) o default
+   -> VibeFlixMediaSourceFactory    HlsMediaSource (chunkless off) o default
    -> CacheDataSource                SimpleCache (LRU 512 MB) + clave propia
    -> OkHttpDataSource               cabeceras del addon en cada peticion
 ```
@@ -196,6 +207,26 @@ url + cabeceras
   las flechas recorren los botones de forma nativa.
 - Los controles se ocultan a los 5 s de inactividad, pero no mientras el
   usuario los está usando.
+
+### 6.3 Omitir intro, autoplay y OpenSubtitles (Android TV)
+
+El shell Android TV hereda las tres funciones del servidor, de modo que la
+web y la TV se comportan igual:
+
+- **`PlayerViewModel.prepare(url, headers, id, type)`** pide al servidor el
+  segmento saltable (`/api/skip-intro`) y el episodio siguiente (ficha de la
+  serie + streams) en paralelo al análisis del master playlist.
+- **`PlayerEngine.setMedia(url, title, isHls, subtitleUrl)`** monta el
+  subtitulo externo como *side-loaded subtitle* de Media3
+  (`MediaItem.SubtitleConfiguration`), que es la vía que ofrece Media3 para
+  WebVTT descargados de OpenSubtitles.
+- **Botón «Saltar la intro»**: `Button` de Compose en la esquina inferior
+  derecha, visible mientras `positionMs < segment.endMs`; al pulsarlo hace
+  `engine.seekTo(segment.endMs)`.
+- **Autoplay**: cuando `PlaybackState.isEnded` pasa a `true`, el
+  `PlayerScreen` muestra la tarjeta del siguiente episodio con una cuenta
+  atrás (`AUTOPLAY_COUNTDOWN = 5`); al llegar a cero se navega a la ruta del
+  reproductor del episodio siguiente.
 
 ## 7. Endurecimiento pendiente
 

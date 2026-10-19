@@ -348,13 +348,19 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     const body = (rawBody ?? {}) as Record<string, unknown>;
     await save((data) => {
       // Los objetos anidados (debrid, device) se fusionan en vez de sustituirse.
-      const { debrid, device, ...rest } = body as {
+      const { debrid, device, opensubtitles, skipIntro, ...rest } = body as {
         debrid?: Partial<AppSettings['debrid']>;
         device?: Partial<AppSettings['device']>;
+        opensubtitles?: Partial<AppSettings['opensubtitles']>;
+        skipIntro?: Partial<AppSettings['skipIntro']>;
       } & Record<string, unknown>;
       Object.assign(data.settings, rest);
       if (debrid) data.settings.debrid = { ...data.settings.debrid, ...debrid };
       if (device) data.settings.device = { ...data.settings.device, ...device };
+      if (opensubtitles) {
+        data.settings.opensubtitles = { ...data.settings.opensubtitles, ...opensubtitles };
+      }
+      if (skipIntro) data.settings.skipIntro = { ...data.settings.skipIntro, ...skipIntro };
     });
     // La metadata integrada vive en el registro de addons y el debrid en el
     // servicio de resolucion: hay que aplicar los cambios.

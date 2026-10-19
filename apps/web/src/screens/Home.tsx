@@ -109,7 +109,7 @@ export function HomeScreen() {
         <h2>No hay catálogos todavía</h2>
         <p>
           Instala un addon de metadatos (Cinemeta, ThePirateBay+…) desde <strong>Ajustes → Addons</strong> para
-          empezar. Master-HLS agregará todos sus catálogos en esta pantalla.
+          empezar. Vibe Flix agregará todos sus catálogos en esta pantalla.
         </p>
       </div>
     );

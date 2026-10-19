@@ -1,4 +1,4 @@
-# Comparativa: WuPlay y NuvioTV vs. Master-HLS
+# Comparativa: WuPlay y NuvioTV vs. Vibe Flix
 
 Revisión hecha contra el código real de las dos bases:
 
@@ -12,7 +12,7 @@ Revisión hecha contra el código real de las dos bases:
 
 ## 1. Resumen ejecutivo
 
-| | WuPlay | NuvioTV | **Master-HLS** |
+| | WuPlay | NuvioTV | **Vibe Flix** |
 | --- | --- | --- | --- |
 | Plataforma | Android TV (APK cerrado) | Android TV + móvil (Kotlin, GPLv3) | **Servidor + web TV + shell Android TV** |
 | Addons Stremio | Uno a la vez | Uno a la vez | **Fan-out agregado a todos** |
@@ -21,7 +21,7 @@ Revisión hecha contra el código real de las dos bases:
 | Biblioteca | Perfiles, listas, historial, sync | Colecciones, Trakt, sync Supabase | Perfiles, listas, historial, progreso |
 | Multi-dispositivo | Sí (sync proprietary) | Sí (Supabase) | No (en roadmap) |
 
-**Conclusión**: Master-HLS no es un clon de ninguna de las dos, es la
+**Conclusión**: Vibe Flix no es un clon de ninguna de las dos, es la
 convergencia de ambas con un núcleo que las dos tienen duplicado en cliente
 (agregación + HLS) movido a un servidor único. Su ventaja comparativa real
 está en la **agregación**, el **núcleo HLS** y en que el resultado es
@@ -31,9 +31,9 @@ instalable como addon en las tres apps existentes.
 
 ## 2. Funcionalidad por bloques
 
-### 2.1 Agregación de addons — *ventaja de Master-HLS*
+### 2.1 Agregación de addons — *ventaja de Vibe Flix*
 
-| Capacidad | WuPlay | NuvioTV | Master-HLS |
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
 | Añadir addon por URL de manifest | ✅ | ✅ | ✅ |
 | Manifest con querystring (api key) | ✅ (corregido en v0.8.2) | ✅ | ✅ (hereda la query a **todos** los recursos) |
@@ -48,7 +48,7 @@ instalable como addon en las tres apps existentes.
 
 ### 2.2 Metadata y descubrimiento
 
-| Capacidad | WuPlay | NuvioTV | Master-HLS |
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
 | Metadata integrada sin addons | ✅ | parcial (TMDB) | ✅ (Cinemeta embebido, conmutable) |
 | Catálogos de terceros | ✅ | ✅ | ✅ |
@@ -62,11 +62,12 @@ instalable como addon en las tres apps existentes.
 | Recomendaciones personalizadas | ✅ ("Recommended by Wuplay") | ❌ | ✅ (`/api/recommended`) |
 | Trakt / MDBList / Simkl | ✅ | ✅ | ❌ **pendiente** |
 | Control parental | ❌ | ✅ | ❌ **pendiente** |
-| Skip intro / Skip credits | ❌ | ✅ | ❌ **pendiente** |
+| **Skip intro / Skip recap** | ❌ | ✅ (IntroDB/AniSkip + Simkl) | ✅ **nativo** (análisis de los subtítulos, sin servicios externos) |
+| **OpenSubtitles nativo** | ✅ (addon) | ✅ (hash de archivo + API) | ✅ **nativo** (API oficial v1 desde el servidor) |
 
-### 2.3 Reproducción y HLS — *ventaja de Master-HLS*
+### 2.3 Reproducción y HLS — *ventaja de Vibe Flix*
 
-| Capacidad | WuPlay | NuvioTV | Master-HLS |
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
 | Reproducción HLS | Media3 | Media3 + libmpv | hls.js (web) + Media3 (APK) |
 | **Análisis del master playlist** | ❌ | parcial | ✅ (variantes + pistas) |
@@ -76,7 +77,7 @@ instalable como addon en las tres apps existentes.
 | Pistas de audio y subtítulos seleccionables | ✅ | ✅ | ✅ (hls.js + `<track>` externo) |
 | Subtítulos solo para audio extranjero | ✅ | ✅ | ❌ **pendiente** |
 | Subtítulos SDH limpios / opacidad / colores | ✅ | ✅ | ❌ **pendiente** |
-| Reproducción automática (siguiente episodio) | ✅ | ✅ | ✅ (busca el siguiente y encadena stream) |
+| **Reproducción automática (siguiente episodio)** | ✅ | ✅ | ✅ (tarjeta con cuenta atrás y cancelación) |
 | Continuar donde lo dejaste | ✅ | ✅ | ✅ |
 | Preview thumbnails en scrubbing | ✅ | ❌ | ❌ **no aplica (web)** |
 | Dolby Digital conversion | ✅ | ✅ | ❌ **pendiente** |
@@ -84,7 +85,7 @@ instalable como addon en las tres apps existentes.
 
 ### 2.4 Biblioteca, perfiles y sincronización
 
-| Capacidad | WuPlay | NuvioTV | Master-HLS |
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
 | Perfiles sin registro | ✅ | ⚠️ cuenta Supabase | ✅ |
 | **PIN por perfil** | ✅ | ✅ | ✅ (401/403 en el servidor + diálogo en el cliente) |
@@ -97,7 +98,7 @@ instalable como addon en las tres apps existentes.
 
 ### 2.5 Extras de plataforma
 
-| Capacidad | WuPlay | NuvioTV | Master-HLS |
+| Capacidad | WuPlay | NuvioTV | Vibe Flix |
 | --- | --- | --- | --- |
 | Plugins / repos de scrapers | ❌ | ✅ | ❌ **pendiente** |
 | Watch parties | ❌ | ✅ | ❌ **pendiente** |
@@ -115,21 +116,28 @@ instalable como addon en las tres apps existentes.
 ## 3. Decisiones de diseño que difieren
 
 1. **WuPlay no soporta P2P/torrent/usenet** (decisión legal deliberada: sólo
-   HTTP). Nuvio sí. Master-HLS ha seguido a WuPlay: el motor sólo consume
+   HTTP). Nuvio sí. Vibe Flix ha seguido a WuPlay: el motor sólo consume
    streams HTTP/HLS, que además es lo que el proxy HLS necesita para poder
    reescribir cabeceras y playlists.
 
 2. **Nuvio exige cuenta (Supabase)** para la sincronización; WuPlay no exige
-   registro. Master-HLS arranca **sin cuenta** y deja la sincronización para
+   registro. Vibe Flix arranca **sin cuenta** y deja la sincronización para
    una fase posterior, con token por dispositivo en vez de login social.
 
 3. **WuPlay es un APK cerrado**: no se puede construir encima. NuvioTV es
-   GPLv3. Master-HLS no es un fork de ninguno: es una implementación nueva
+   GPLv3. Vibe Flix no es un fork de ninguno: es una implementación nueva
    que consume el *mismo contrato* (protocolo Stremio), por lo que convive
    con ambas sin conflicto de licencia.
 
+4. **El «saltar intro» se hace con los subtítulos, no con servicios
+   externos.** NuvioTV consulta IntroDB, AniSkip o AnimeSkip, y para el
+   «previously on» usa Simkl. Vibe Flix analiza los subtítulos que ya trae
+   el título: menos dependencias, sin claves de API de terceros y funciona
+   con cualquier addon que sirva subtítulos. Cuando no hay subtítulos, se cae
+   a un salto por defecto configurable (90 s o el 8 % de la duración).
+
 4. **El núcleo en el servidor** es la diferencia de fondo: WuPlay y Nuvio
-   duplican la agregación de addons en cada cliente. En Master-HLS el
+   duplican la agregación de addons en cada cliente. En Vibe Flix el
    servidor es la única implementación, y por eso el resultado puede
    instalarse como addon en Stremio, WuPlay y Nuvio con el mismo
    comportamiento.
@@ -142,7 +150,7 @@ instalable como addon en las tres apps existentes.
 | --- | --- | --- |
 | Debrid nativo | Cuatro proveedores (Real-Debrid, AllDebrid, TorBox, Premiumize) resuelven magnet y hosters premium **en el servidor**, con caché de 2 h, concurrencia limitada y degradación elegante (si falla, el stream original se conserva) | `packages/addon-engine/src/debrid/` |
 | PWA instalable | `manifest.webmanifest` + service worker (shell cacheado, catálogos *stale-while-revalidate*, streams nunca cacheados) e iconos generados sin dependencias | `apps/web/public/`, `apps/web/src/pwa.ts` |
-| Sincronización multi-dispositivo | Código de vinculación de 6 caracteres; el servidor exige `X-Master-Hls-Token` en las rutas de biblioteca en cuanto hay un dispositivo vinculado, y sigue en modo local si no hay ninguno | `apps/server/src/routes/devices.ts` |
+| Sincronización multi-dispositivo | Código de vinculación de 6 caracteres; el servidor exige `X-Vibe-Flix-Token` en las rutas de biblioteca en cuanto hay un dispositivo vinculado, y sigue en modo local si no hay ninguno | `apps/server/src/routes/devices.ts` |
 | Valoraciones y recomendaciones | «Me gusta» / «No para mí» por título y fila *Recomendado para ti* calculada por género compartido con lo valorado | `/api/ratings`, `/api/recommended` |
 | Catálogos predefinidos | *Populares*, *Mejor valorados* y *Estrenos* calculados sobre el catálogo base del proveedor de metadata | `packages/addon-engine/src/builtin.ts` |
 | Torrents sin enlace directo | Los streams que solo traen `infoHash` (los típicos de debrid) ya no se descartan en la normalización | `packages/addon-engine/src/normalize.ts` |

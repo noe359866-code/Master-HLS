@@ -4,10 +4,10 @@
  * La biblioteca vive en el servidor, asi que para compartirla entre varios
  * dispositivos hace falta vincular cada uno con un codigo. El token que se
  * entrega en la vinculacion se guarda en el navegador y se envia en cada
- * peticion (`X-Master-Hls-Token`).
+ * peticion (`X-Vibe-Flix-Token`).
  */
 
-const TOKEN_KEY = 'master-hls.device-token';
+const TOKEN_KEY = 'vibe-flix.device-token';
 
 export function getDeviceToken(): string | undefined {
   try {

@@ -25,7 +25,7 @@ import type { AppData, PairedDevice } from '../model.js';
 export interface DeviceRouteOptions {
   getData: () => AppData;
   save: (mutate: (data: AppData) => void) => Promise<void>;
-  /** Token de la peticion en curso (cabecera `X-Master-Hls-Token`). */
+  /** Token de la peticion en curso (cabecera `X-Vibe-Flix-Token`). */
   getToken?: (ctx: RouteContext) => string | undefined;
 }
 
@@ -54,7 +54,7 @@ export function registerDeviceRoutes(router: Router, options: DeviceRouteOptions
   const tokenOf = (ctx: RouteContext): string | undefined => {
     const explicit = getToken?.(ctx);
     if (explicit) return explicit;
-    const header = ctx.req.headers['x-master-hls-token'];
+    const header = ctx.req.headers['x-vibe-flix-token'];
     return Array.isArray(header) ? header[0] : header;
   };
 

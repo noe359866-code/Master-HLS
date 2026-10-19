@@ -1,5 +1,5 @@
 /**
- * Arranque del servidor Master-HLS.
+ * Arranque del servidor Vibe Flix.
  *
  * Sirve:
  *  - el addon Stremio local (`/manifest.json`, `/catalog/...`, `/meta/...`,
@@ -78,9 +78,9 @@ function isApiPath(pathname: string): boolean {
 }
 
 function fallbackHtml(publicUrl: string): string {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Master-HLS</title></head>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Vibe Flix</title></head>
            <body style="font-family:system-ui;background:#0b0e14;color:#e6e9ef;padding:3rem">
-           <h1>Master-HLS</h1>
+           <h1>Vibe Flix</h1>
            <p>El servidor esta en marcha. El cliente web aun no esta compilado.</p>
            <p>Ejecuta <code>npm run build:web</code> y recarga, o usa la API en <code>/api/health</code>.</p>
            <p>Addon Stremio: <code>${publicUrl}/manifest.json</code></p>
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
     res.setHeader('access-control-allow-origin', '*');
-    res.setHeader('access-control-allow-headers', 'content-type, x-master-hls-token');
+    res.setHeader('access-control-allow-headers', 'content-type, x-vibe-flix-token');
     res.setHeader('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -140,13 +140,13 @@ async function main(): Promise<void> {
   });
 
   server.listen(app.config.port, app.config.host, () => {
-    console.log(`[master-hls] servidor en http://${app.config.host}:${app.config.port}`);
-    console.log(`[master-hls] addon Stremio: ${app.config.publicUrl}/manifest.json`);
-    console.log(`[master-hls] addons cargados: ${app.registry.size}`);
+    console.log(`[vibe-flix] servidor en http://${app.config.host}:${app.config.port}`);
+    console.log(`[vibe-flix] addon Stremio: ${app.config.publicUrl}/manifest.json`);
+    console.log(`[vibe-flix] addons cargados: ${app.registry.size}`);
   });
 }
 
 main().catch((error) => {
-  console.error('[master-hls] fallo al arrancar:', error);
+  console.error('[vibe-flix] fallo al arrancar:', error);
   process.exit(1);
 });

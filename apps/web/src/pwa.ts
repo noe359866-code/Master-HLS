@@ -1,7 +1,7 @@
 /**
  * Registro de la PWA.
  *
- * Master-HLS se puede instalar como app en la TV (Android TV, Fire TV o
+ * Vibe Flix se puede instalar como app en la TV (Android TV, Fire TV o
  * cualquier navegador con "Instalar aplicacion") sin necesidad del APK: es el
  * equivalente web de lo que hacen WuPlay y NuvioTV, y evita depender de la
  * cadena de compilacion de Android.

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Hls from 'hls.js';
 
 import { api } from '../api';
 import { useApp } from '../store';
-import type { MasterInfo, Subtitle } from '../types';
+import type { MasterInfo, SkipSegment, Subtitle } from '../types';
 import { Button, ErrorState, Loader } from '../components/ui';
 
 export interface PlayerProps {
@@ -13,6 +13,12 @@ export interface PlayerProps {
   streamName?: string;
   title?: string;
   poster?: string;
+  /** Subtitulo externo elegido en la ficha (WebVTT). */
+  subtitleUrl?: string;
+  subtitleLabel?: string;
+  /** Id y titulo del siguiente episodio (autoplay). */
+  nextId?: string;
+  nextTitle?: string;
 }
 
 interface TrackInfo {
@@ -22,20 +28,47 @@ interface TrackInfo {
   isDefault: boolean;
 }
 
+/** Tamaños de subtitulo disponibles. */
+const SUBTITLE_SIZES = [
+  { id: 'small', label: 'S', scale: 0.85 },
+  { id: 'normal', label: 'M', scale: 1 },
+  { id: 'large', label: 'L', scale: 1.25 },
+] as const;
+
+/** Segundos que se muestra la cuenta atras del siguiente episodio. */
+const AUTOPLAY_COUNTDOWN = 5;
+
 /**
- * Reproductor.
+ * Reproductor de Vibe Flix.
  *
  * - Reproduce el master playlist dejando que hls.js negocie la calidad, y
  *   ofrece el selector de variantes real que devuelve el servidor.
- * - Permite elegir pista de audio y de subtitulos (incluidos los subtitulos
- *   externos que trae el stream).
+ * - Permite elegir pista de audio y de subtitulos (incluidos los externos del
+ *   stream y los descargados de OpenSubtitles).
+ * - **Omitir intro**: el servidor detecta el final de la intro a partir de los
+ *   subtitulos y aqui aparece el boton para saltar a ese punto.
+ * - **Autoplay**: al terminar, ofrece el siguiente episodio con una cuenta
+ *   atras que se puede cancelar.
  * - Continua donde lo dejo (progreso guardado por el servidor).
- * - Reproduce automaticamente el siguiente episodio si el perfil lo pide.
  */
-export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }: PlayerProps) {
+export function PlayerScreen({
+  id,
+  type,
+  streamUrl,
+  streamName,
+  title,
+  poster,
+  subtitleUrl,
+  subtitleLabel,
+  nextId,
+  nextTitle,
+}: PlayerProps) {
   const { navigate, activeProfileId, activeProfile, settings, reloadLibrary } = useApp();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const controlsTimer = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [master, setMaster] = useState<MasterInfo | null>(null);
@@ -48,10 +81,27 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
   const [subtitlesOn, setSubtitlesOn] = useState(false);
   const [externalTracks, setExternalTracks] = useState<Array<{ name: string; lang: string; url: string }>>([]);
   const [resumedAt, setResumedAt] = useState<number | null>(null);
-  const [nextEpisode, setNextEpisode] = useState<string | null>(null);
+
+  // Reproduccion
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [subtitleSize, setSubtitleSize] = useState(1);
+
+  // Omitir intro
+  const [skipSegment, setSkipSegment] = useState<SkipSegment | null>(null);
+  const [skipped, setSkipped] = useState(false);
+
+  // Autoplay
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const device = settings?.device;
   const maxHeight = device?.maxHeight ?? 1080;
+  const skipEnabled = settings?.skipIntro?.enabled !== false;
 
   // --------------------------------------------------------------- carga
   useEffect(() => {
@@ -152,8 +202,12 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
     let cancelled = false;
     void (async () => {
       try {
-        const base = id.split(':')[0] ?? id;
-        const { streams } = await api.streams(type === 'episode' ? 'series' : type, base);
+        // En Stremio, un episodio se pide como tipo `series` con el id
+        // completo (`tt123:1:2`), que es lo que entienden los addons.
+        const { streams } = await api.streams(
+          type === 'episode' ? 'series' : type,
+          id,
+        );
         const found = streams.find((stream) => stream.url === streamUrl);
         const subtitles: Subtitle[] = found?.subtitles ?? [];
         const tracks = subtitles
@@ -193,6 +247,32 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
     };
   }, [streamUrl, maxHeight, activeProfile?.audioLanguage]);
 
+  // ------------------------------------------------------ deteccion de intro
+  //
+  // El servidor analiza los subtitulos y dice hasta donde llega la intro.
+  useEffect(() => {
+    if (!skipEnabled) return;
+    let cancelled = false;
+    const [imdbId, season, episode] = id.split(':');
+    void (async () => {
+      try {
+        const result = await api.skipIntro({
+          type: type === 'episode' ? 'series' : type,
+          id: imdbId,
+          imdbId,
+          season: season ? Number(season) : undefined,
+          episode: episode ? Number(episode) : undefined,
+        });
+        if (!cancelled && result.segment) setSkipSegment(result.segment);
+      } catch {
+        // Sin deteccion: se queda el boton con el offset por defecto.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, type, skipEnabled]);
+
   // ---------------------------------------------------- historial y progreso
   useEffect(() => {
     if (!title) return;
@@ -209,7 +289,12 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
   const lastSaved = useRef(0);
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !title) return;
+    if (!video) return;
+    setCurrentTime(video.currentTime);
+    setDuration(video.duration || 0);
+    if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
+
+    if (!title) return;
     const now = Date.now();
     if (now - lastSaved.current < 15_000) return;
     lastSaved.current = now;
@@ -255,8 +340,13 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
   }, [id, activeProfileId, resumedAt]);
 
   // -------------------------------------------------- siguiente episodio
+  //
+  // Si la ruta no trae el siguiente (p.ej. se entra desde la biblioteca), se
+  // busca en la ficha de la serie.
+  const [detectedNext, setDetectedNext] = useState<{ id: string; title: string } | null>(null);
+
   useEffect(() => {
-    if (type !== 'episode') return;
+    if (type !== 'episode' || nextId) return;
     const base = id.split(':')[0] ?? id;
     let cancelled = false;
     void (async () => {
@@ -265,7 +355,12 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
         const videos = meta?.videos ?? [];
         const index = videos.findIndex((video) => video.id === id);
         const next = videos[index + 1];
-        if (!cancelled && next) setNextEpisode(next.id);
+        if (!cancelled && next) {
+          setDetectedNext({
+            id: next.id,
+            title: next.title ?? next.name ?? `Episodio ${next.episode ?? index + 2}`,
+          });
+        }
       } catch {
         // Sin informacion de episodios: no hay autoplay siguiente.
       }
@@ -273,28 +368,201 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
     return () => {
       cancelled = true;
     };
-  }, [id, type]);
+  }, [id, type, nextId]);
+
+  const resolvedNextId = nextId ?? detectedNext?.id ?? '';
+  const resolvedNextTitle = nextTitle ?? detectedNext?.title;
 
   const playNext = useCallback(async () => {
-    if (!nextEpisode || !activeProfile?.autoplay) return;
+    if (!resolvedNextId) return;
     try {
-      const { streams } = await api.streams('series', nextEpisode);
+      const { streams } = await api.streams('series', resolvedNextId);
       const stream = streams[0];
       if (!stream?.url) return;
       navigate({
         name: 'player',
-        id: nextEpisode,
+        id: resolvedNextId,
         type: 'episode',
         streamUrl: stream.url,
         streamName: stream.name ?? stream.title ?? 'Stream',
-        title,
+        title: resolvedNextTitle ?? title,
         poster,
       });
     } catch {
       // Sin streams para el siguiente episodio.
     }
-  }, [nextEpisode, activeProfile?.autoplay, id, navigate, title, poster]);
+  }, [resolvedNextId, resolvedNextTitle, navigate, title, poster]);
 
+  // Cuenta atras de autoplay al terminar el episodio.
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      setCountdown(null);
+      void playNext();
+      return;
+    }
+    const timer = window.setTimeout(() => setCountdown((value) => (value === null ? null : value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown, playNext]);
+
+  // ------------------------------------------------------------- controles
+  /** true si el foco esta dentro de la barra de controles. */
+  const focusInControls = useCallback((target: EventTarget | null) => {
+    const element = target as HTMLElement | null;
+    return Boolean(element?.closest?.('.player__bar'));
+  }, []);
+
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+    controlsTimer.current = window.setTimeout(() => setControlsVisible(false), 3000);
+  }, []);
+
+  useEffect(() => {
+    showControls();
+    return () => {
+      if (controlsTimer.current) window.clearTimeout(controlsTimer.current);
+    };
+  }, [showControls]);
+
+  /** Lleva el foco al primer control de la barra (D-pad hacia arriba/abajo). */
+  const focusControls = useCallback(() => {
+    const bar = containerRef.current?.querySelector<HTMLElement>(
+      '.player__bar [data-focusable="true"]',
+    );
+    bar?.focus();
+    showControls();
+  }, [showControls]);
+
+  // Al entrar en el reproductor el foco va al video: las flechasseek y el
+  // espacio play/pausa.
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, [streamUrl]);
+
+  const togglePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) void video.play();
+    else video.pause();
+  }, []);
+
+  const seekBy = useCallback((delta: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + delta));
+    showControls();
+  }, [showControls]);
+
+  const changeVolume = useCallback((value: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const next = Math.max(0, Math.min(1, value));
+    video.volume = next;
+    video.muted = next === 0;
+    setVolume(next);
+    setMuted(next === 0);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setMuted(video.muted);
+  }, []);
+
+  const skipIntro = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !skipSegment) return;
+    video.currentTime = Math.max(0, skipSegment.endMs / 1000);
+    setSkipped(true);
+    showControls();
+  }, [skipSegment, showControls]);
+
+  const toggleFullscreen = useCallback(() => {
+    const container = document.querySelector('.player');
+    if (!container) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void container.requestFullscreen?.();
+  }, []);
+
+  // Atajos de teclado del reproductor.
+  //
+  // Se escuchan en la fase de captura y se detiene la propagacion: asi el
+  // reproductor manda en las flechas y la navegacion espacial del D-pad solo
+  // actua cuando el foco esta dentro de la barra de controles.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      // Los campos (volumen, progreso) se comportan de forma nativa.
+      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      // Con el foco en la barra, las flechas mueven el foco entre controles y
+      // espacio/enter activan el boton enfocado.
+      if (
+        focusInControls(event.target) &&
+        (event.key.startsWith('Arrow') || event.key === ' ' || event.key === 'Enter')
+      ) {
+        return;
+      }
+
+      let handled = true;
+      switch (event.key) {
+        case ' ':
+        case 'k':
+          togglePlay();
+          break;
+        case 'ArrowLeft':
+          seekBy(-10);
+          break;
+        case 'ArrowRight':
+          seekBy(10);
+          break;
+        case 'ArrowUp':
+        case 'ArrowDown':
+          // Arriba/abajo: el foco pasa a la barra de controles (o vuelve al
+          // video si ya estaba en ella).
+          if (focusInControls(event.target)) {
+            containerRef.current?.focus();
+          } else {
+            focusControls();
+          }
+          break;
+        case 'm':
+          toggleMute();
+          break;
+        case 'f':
+          toggleFullscreen();
+          break;
+        case 'i':
+          setShowInfo((value) => !value);
+          break;
+        case 'Escape':
+          navigate({ name: 'detail', id, type });
+          break;
+        default:
+          handled = false;
+      }
+      if (!handled) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showControls();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [
+    togglePlay,
+    seekBy,
+    focusControls,
+    focusInControls,
+    toggleMute,
+    toggleFullscreen,
+    showControls,
+    navigate,
+    id,
+    type,
+  ]);
+
+  // -------------------------------------------------------------- acciones
   const selectQuality = (level: number) => {
     const hls = hlsRef.current;
     if (!hls) return;
@@ -328,6 +596,38 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
     setSubtitlesOn(index >= 0);
   };
 
+  const turnSubtitlesOff = () => {
+    const hls = hlsRef.current;
+    if (hls) hls.subtitleDisplay = false;
+    const video = videoRef.current;
+    if (video) {
+      Array.from(video.textTracks).forEach((track) => {
+        track.mode = 'hidden';
+      });
+    }
+    setSubtitlesOn(false);
+    setActiveSubtitle(-1);
+  };
+
+  // ------------------------------------------------------------- render
+  const allExternalTracks = useMemo(() => {
+    const tracks = [...externalTracks];
+    if (subtitleUrl) {
+      tracks.push({
+        name: subtitleLabel ?? 'OpenSubtitles',
+        lang: 'os',
+        url: subtitleUrl,
+      });
+    }
+    return tracks;
+  }, [externalTracks, subtitleUrl, subtitleLabel]);
+
+  const showSkipButton =
+    skipEnabled &&
+    !skipped &&
+    Boolean(skipSegment) &&
+    currentTime < (skipSegment?.endMs ?? 0) / 1000 - 1;
+
   if (error) {
     return (
       <div className="player player--error">
@@ -339,19 +639,39 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
     );
   }
 
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
+
   return (
-    <div className="player">
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      data-focusable="true"
+      className={`player ${controlsVisible ? 'player--controls' : ''}`}
+      onMouseMove={showControls}
+      onMouseLeave={() => setControlsVisible(false)}
+      onFocus={showControls}
+    >
       <video
         ref={videoRef}
         className="player__video"
-        controls
         autoPlay
         playsInline
         poster={poster}
         onTimeUpdate={handleTimeUpdate}
-        onEnded={() => void playNext()}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onVolumeChange={(event) => {
+          const video = event.currentTarget;
+          setVolume(video.volume);
+          setMuted(video.muted);
+        }}
+        onEnded={() => {
+          if (resolvedNextId && activeProfile?.autoplay) setCountdown(AUTOPLAY_COUNTDOWN);
+        }}
+        style={{ ['--subtitle-scale' as string]: subtitleSize }}
       >
-        {externalTracks.map((track) => (
+        {allExternalTracks.map((track) => (
           <track
             key={track.url}
             kind="subtitles"
@@ -364,23 +684,132 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
 
       {loading ? <Loader label="Preparando stream…" /> : null}
 
-      <div className="player__overlay">
-        <div className="player__meta">
-          <strong>{title ?? streamName ?? 'Reproduciendo'}</strong>
-          <span>
-            {streamName}
-            {quality ? ` · ${quality}` : ''}
-            {resumedAt ? ' · reanudado' : ''}
-          </span>
+      {/* Boton de omitir intro */}
+      {showSkipButton && skipSegment ? (
+        <button
+          type="button"
+          data-focusable="true"
+          className="player__skip"
+          onClick={skipIntro}
+        >
+          ⏭ Saltar {skipSegment.kind === 'recap' ? 'el resumen' : 'la intro'}
+        </button>
+      ) : null}
+
+      {/* Cuenta atras del siguiente episodio */}
+      {countdown !== null ? (
+        <div className="player__next" role="status">
+          <div className="player__next-card">
+            <span className="player__next-label">Siguiente episodio</span>
+            <strong>{resolvedNextTitle ?? 'Reproduciendo…'}</strong>
+            <div className="player__next-actions">
+              <Button onClick={() => void playNext()}>Reproducir ahora</Button>
+              <Button variant="ghost" onClick={() => setCountdown(null)}>
+                Cancelar
+              </Button>
+            </div>
+            <span className="player__next-count">{countdown}s</span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Barra de controles nativa */}
+      <div className="player__bar" data-focusable="true">
+        <div className="player__progress">
+          <div className="player__progress-track">
+            <div className="player__progress-buffered" style={{ width: `${bufferedPercent}%` }} />
+            <div className="player__progress-played" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <input
+            className="player__progress-input"
+            type="range"
+            min={0}
+            max={Math.max(1, Math.floor(duration))}
+            value={Math.floor(currentTime)}
+            aria-label="Progreso"
+            onChange={(event) => {
+              const video = videoRef.current;
+              if (video) video.currentTime = Number(event.target.value);
+            }}
+          />
         </div>
 
-        <div className="player__controls">
-          <Button variant="ghost" onClick={() => navigate({ name: 'detail', id, type })}>
-            Volver
-          </Button>
-          <Button variant="ghost" onClick={() => setShowInfo((value) => !value)}>
-            {showInfo ? 'Ocultar info' : 'Info HLS'}
-          </Button>
+        <div className="player__row">
+          <span className="player__time">
+            {formatClock(currentTime)} / {formatClock(duration)}
+          </span>
+
+          <div className="player__actions">
+            <button type="button" data-focusable="true" className="player__btn" onClick={() => seekBy(-10)}>
+              ⏪ 10s
+            </button>
+            <button
+              type="button"
+              data-focusable="true"
+              className="player__btn player__btn--primary"
+              onClick={togglePlay}
+              aria-label={playing ? 'Pausar' : 'Reproducir'}
+            >
+              {playing ? '⏸' : '▶'}
+            </button>
+            <button type="button" data-focusable="true" className="player__btn" onClick={() => seekBy(10)}>
+              10s ⏩
+            </button>
+
+            <button
+              type="button"
+              data-focusable="true"
+              className="player__btn"
+              onClick={toggleMute}
+              aria-label="Silenciar"
+            >
+              {muted || volume === 0 ? '🔇' : '🔊'}
+            </button>
+            <input
+              className="player__volume"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={muted ? 0 : volume}
+              aria-label="Volumen"
+              onChange={(event) => changeVolume(Number(event.target.value))}
+            />
+          </div>
+
+          <div className="player__meta">
+            <span className="player__title">{title ?? streamName ?? 'Reproduciendo'}</span>
+            {quality ? <span className="player__badge">{quality}</span> : null}
+            {resumedAt ? <span className="player__badge">reanudado</span> : null}
+          </div>
+
+          <div className="player__actions">
+            <button
+              type="button"
+              data-focusable="true"
+              className="player__btn"
+              onClick={() => setShowInfo((value) => !value)}
+            >
+              {showInfo ? 'Ocultar info' : 'Info HLS'}
+            </button>
+            <button
+              type="button"
+              data-focusable="true"
+              className="player__btn"
+              onClick={toggleFullscreen}
+              aria-label="Pantalla completa"
+            >
+              ⛶
+            </button>
+            <button
+              type="button"
+              data-focusable="true"
+              className="player__btn"
+              onClick={() => navigate({ name: 'detail', id, type })}
+            >
+              Volver
+            </button>
+          </div>
         </div>
       </div>
 
@@ -428,7 +857,7 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
             </>
           ) : null}
 
-          {subtitleTracks.length || externalTracks.length ? (
+          {subtitleTracks.length || allExternalTracks.length ? (
             <>
               <h3>Subtítulos</h3>
               <div className="player__levels">
@@ -436,18 +865,7 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
                   type="button"
                   data-focusable="true"
                   className={`chip ${!subtitlesOn ? 'chip--active' : ''}`}
-                  onClick={() => {
-                    const hls = hlsRef.current;
-                    if (hls) hls.subtitleDisplay = false;
-                    const video = videoRef.current;
-                    if (video) {
-                      Array.from(video.textTracks).forEach((track) => {
-                        track.mode = 'hidden';
-                      });
-                    }
-                    setSubtitlesOn(false);
-                    setActiveSubtitle(-1);
-                  }}
+                  onClick={turnSubtitlesOff}
                 >
                   Off
                 </button>
@@ -463,7 +881,7 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
                     {track.lang ? ` (${track.lang})` : ''}
                   </button>
                 ))}
-                {externalTracks.map((track, index) => (
+                {allExternalTracks.map((track, index) => (
                   <button
                     key={`ext-${track.url}`}
                     type="button"
@@ -476,10 +894,35 @@ export function PlayerScreen({ id, type, streamUrl, streamName, title, poster }:
                   </button>
                 ))}
               </div>
+              <h3>Tamaño de los subtítulos</h3>
+              <div className="player__levels">
+                {SUBTITLE_SIZES.map((size) => (
+                  <button
+                    key={size.id}
+                    type="button"
+                    data-focusable="true"
+                    className={`chip ${subtitleSize === size.scale ? 'chip--active' : ''}`}
+                    onClick={() => setSubtitleSize(size.scale)}
+                  >
+                    {size.label}
+                  </button>
+                ))}
+              </div>
             </>
           ) : null}
         </aside>
       ) : null}
     </div>
   );
+}
+
+/** Formatea segundos como `h:mm:ss` o `mm:ss`. */
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${minutes}:${pad(secs)}`;
 }

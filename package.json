@@ -1,8 +1,8 @@
 {
-  "name": "master-hls",
+  "name": "vibe-flix",
   "version": "1.0.0",
   "private": true,
-  "description": "Master-HLS — app basada en Stremio (bases: WuPlay + NuvioTV) con motor de agregacion de addons y nucleo HLS master",
+  "description": "Vibe Flix — app de TV basada en Stremio (bases: WuPlay + NuvioTV) con motor de agregacion de addons y nucleo HLS master",
   "license": "CC0-1.0",
   "type": "module",
   "engines": {
@@ -14,12 +14,12 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:packages": "npm run build -w @master-hls/addon-engine -w @master-hls/hls-master",
-    "dev": "npm run dev -w @master-hls/server",
-    "start": "npm run start -w @master-hls/server",
-    "build:web": "npm run build -w @master-hls/web",
-    "test": "npm run test -w @master-hls/addon-engine && npm run test -w @master-hls/hls-master && npm run test -w @master-hls/server",
-    "typecheck": "tsc -b packages/addon-engine packages/hls-master apps/server --pretty",
+    "build:packages": "npm run build -w @vibeflix/addon-engine -w @vibeflix/hls-master -w @vibeflix/skip-intro",
+    "dev": "npm run dev -w @vibeflix/server",
+    "start": "npm run start -w @vibeflix/server",
+    "build:web": "npm run build -w @vibeflix/web",
+    "test": "npm run test -w @vibeflix/addon-engine && npm run test -w @vibeflix/hls-master && npm run test -w @vibeflix/skip-intro && npm run test -w @vibeflix/server",
+    "typecheck": "tsc -b packages/addon-engine packages/hls-master packages/skip-intro apps/server --pretty",
     "clean": "rm -rf packages/*/dist apps/server/dist apps/web/dist"
   },
   "devDependencies": {
