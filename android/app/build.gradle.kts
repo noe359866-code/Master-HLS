@@ -14,8 +14,8 @@ android {
         applicationId = "com.vibeflix.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.0.3"
+        versionCode = 4
+        versionName = "0.1.0"
 
         // URL del servidor Vibe Flix. En el emulador de Android es 10.0.2.2.
         buildConfigField(

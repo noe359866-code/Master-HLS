@@ -14,6 +14,41 @@ consumen exactamente la misma lógica.
 
 ---
 
+## Inicio rápido (probar en Android TV)
+
+La app es un **cliente**: necesita el servidor Vibe Flix en tu red. Dos pasos.
+
+### 1. Servidor (PC, NAS o mini-PC en la misma red)
+
+```bash
+cp .env.example .env      # edita PUBLIC_URL con la IP LAN del equipo
+docker compose up -d      # interfaz web y API en http://IP:8181
+```
+
+Sin Docker: `npm ci && npm run build && npm start` (Node 22+, escucha en `8181`).
+
+Comprueba desde el móvil o el PC: `http://IP_DEL_SERVIDOR:8181/manifest.json`
+debe devolver JSON.
+
+### 2. APK en la TV
+
+1. Descarga el APK desde **[Releases](../../releases/latest)**
+   (`vibe-flix-tv-*-release.apk`).
+2. Instálalo con `adb install -r archivo.apk` o con la app **Downloader** de la TV.
+3. Abre **Vibe Flix → ⚙ Servidor**, escribe `IP_DEL_SERVIDOR:8181`,
+   pulsa **Probar conexión** y **Guardar**.
+
+`10.0.2.2:8181` es el valor por defecto y **solo funciona en el emulador** de
+Android; en una TV física hay que poner la IP real.
+
+| Pieza | Dónde corre | Para qué |
+| --- | --- | --- |
+| `apps/server` | PC/NAS/Docker | Agrega addons, proxy HLS, biblioteca y perfiles |
+| `android/` | Android TV | Cliente Compose for TV + Media3 |
+| `apps/web` | Navegador de la TV/móvil | PWA con el mismo motor |
+
+---
+
 ## Arquitectura
 
 ```

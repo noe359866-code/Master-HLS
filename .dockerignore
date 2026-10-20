@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+data
+android
+reference
+upstream
+docs
+artifacts
+*.apk
+*.log
+.env
+.env.*
+!.env.example
+release.keystore

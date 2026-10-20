@@ -217,7 +217,14 @@ jobs:
           if [ "$VARIANT" = "release" ]; then
             APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
             echo "APK=$APK"
-            cp "$APK" ../artifacts/vibe-flix-tv-0.0.3-release.apk
+            VERSION="${GITHUB_REF_NAME#v}"
+            VERSION="${VERSION%%-*}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              VERSION="$(sed -nE 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+            fi
+            echo "VERSION=$VERSION"
+            echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+            cp "$APK" "../artifacts/vibe-flix-tv-${VERSION}-release.apk"
             cp "$APK" ../artifacts/vibe-flix-tv-release.apk
             ls -lh ../artifacts
             # checksum para verificacion
@@ -255,13 +262,16 @@ jobs:
         id: variant
         run: |
           REF="${{ github.ref }}"
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${VERSION%%-*}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == *-debug* ]]; then
             echo "artifact=vibe-flix-apk-debug" >> "$GITHUB_OUTPUT"
             echo "apk=vibe-flix-tv-debug.apk" >> "$GITHUB_OUTPUT"
             echo "title_suffix=(debug)" >> "$GITHUB_OUTPUT"
           else
             echo "artifact=vibe-flix-apk-release" >> "$GITHUB_OUTPUT"
-            echo "apk=vibe-flix-tv-0.0.3-release.apk" >> "$GITHUB_OUTPUT"
+            echo "apk=vibe-flix-tv-${VERSION}-release.apk" >> "$GITHUB_OUTPUT"
             echo "apk_alt=vibe-flix-tv-release.apk" >> "$GITHUB_OUTPUT"
             echo "title_suffix=" >> "$GITHUB_OUTPUT"
           fi
@@ -283,21 +293,30 @@ jobs:
         run: |
           set -euo pipefail
           REF="${{ github.ref }}"
+          VERSION="${{ steps.variant.outputs.version }}"
           if [[ "$REF" == *-debug* ]]; then
             TITLE="Vibe Flix TV $TAG (debug)"
-            NOTES="APK debug generado automáticamente desde $TAG (versionCode/variant debug, sin ofuscación)."
+            NOTES="APK debug generado automáticamente desde $TAG (sin ofuscación)."
           else
             TITLE="Vibe Flix TV $TAG"
-            NOTES="APK de producción **$TAG** (versionName 0.0.3, versionCode 3) — firmado, ofuscado y optimizado (minify+shrink+proguard-android-optimize). Instalable en Android TV / Fire TV / TV Box con \`adb install\` o gestor de archivos.
+            NOTES="APK de producción **$TAG** (versionName \`$VERSION\`) firmado y optimizado (minify + shrink + proguard). Instalable en Android TV / Fire TV / TV Box con \`adb install\` o un gestor de archivos.
 
-          **Instalación**
+          **Antes de instalarlo necesitas el servidor**
+          Esta app es un cliente: sin un servidor Vibe Flix en tu red no carga catálogos.
+          \`\`\`bash
+          docker compose up -d   # en un PC/NAS de la misma red, puerto 8181
+          \`\`\`
+          Define \`PUBLIC_URL=http://IP_DEL_SERVIDOR:8181\` en un archivo \`.env\` junto al compose.
+
+          **Instalación en la TV**
           1. Descarga el APK de abajo.
-          2. En la TV: \`adb install vibe-flix-tv-0.0.3-release.apk\` o ábrelo desde el navegador/gestor.
-          3. Abre **Vibe Flix → ⚙ Servidor** y escribe la IP:PUERTO de tu servidor (ej: \`192.168.1.50:8181\`). \`10.0.2.2\` solo vale en emulador.
+          2. \`adb install -r vibe-flix-tv-${VERSION}-release.apk\` o ábrelo desde Downloader/gestor de archivos.
+          3. Abre **Vibe Flix → ⚙ Servidor**, escribe \`IP:8181\` (ej. \`192.168.1.50:8181\`), prueba la conexión y guarda. \`10.0.2.2\` solo vale en emulador.
 
           **Notas**
-          - Firmado con keystore de producción (si configuraste \`ANDROID_KEYSTORE_BASE64\` en Secrets) o con keystore efímero de CI en esta primera publicación. Para actualizaciones sin reinstalar, guarda un keystore estable en Secrets.
-          - \`minifyEnabled + shrinkResources + proguard-android-optimize.txt\` activos; reglas en \`proguard-rules.pro\` preservan DTOs Moshi."
+          - Firmado con keystore de producción si configuraste los Secrets \`ANDROID_KEYSTORE_*\`; si no, con un keystore efímero de CI. Con firma distinta hay que **desinstalar** la versión anterior antes de instalar esta.
+          - Para actualizaciones sin reinstalar, guarda un keystore estable en Secrets."
+          fi
           fi
           echo "Publicando $TAG: $TITLE con $APK"
           ls -lh artifacts/

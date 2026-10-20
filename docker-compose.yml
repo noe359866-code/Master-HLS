@@ -1,0 +1,18 @@
+services:
+  vibeflix:
+    build: .
+    image: vibe-flix:local
+    container_name: vibe-flix
+    ports:
+      - "8181:8181"
+    environment:
+      PORT: "8181"
+      HOST: "0.0.0.0"
+      DATA_DIR: "/data"
+      # URL con la que la TV alcanza el servidor. Debe ser la IP LAN del equipo
+      # que ejecuta el contenedor, no localhost.
+      PUBLIC_URL: "${PUBLIC_URL:-http://localhost:8181}"
+      TZ: "${TZ:-America/Managua}"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
