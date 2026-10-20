@@ -30,6 +30,9 @@ jobs:
   android:
     name: APK Android TV
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     defaults:
       run:
         working-directory: android
@@ -80,29 +83,41 @@ jobs:
           set -o pipefail
           LOG="$RUNNER_TEMP/gradle-build.log"
           if ./gradlew :app:assembleDebug --no-daemon --stacktrace > "$LOG" 2>&1; then
-            tail -n 20 "$LOG"
+            tail -n 25 "$LOG"
             exit 0
           fi
-          tail -n 60 "$LOG"
-          # Los logs de Actions no siempre son legibles desde fuera: se publica
-          # el resumen del error como anotacion del check (legible via API).
-          python3 - "$LOG" <<'PYEOF' >> "$GITHUB_STEP_SUMMARY"
-          import sys, urllib.parse
-          path = sys.argv[1]
-          lines = []
-          with open(path, errors="replace") as fh:
-              for line in fh:
-                  line = line.rstrip()
-                  if line.startswith("e: ") or line.startswith("error:") or "What went wrong" in line or line.startswith("> Task") and "FAILED" in line:
-                      lines.append(line)
-          lines = lines[:60] or ["(sin lineas e:/error en el log)"]
-          msg = "\n".join(lines)[:60000]
-          print("::error::" + msg.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
-          print("### Errores de compilacion")
-          print("```")
-          print(msg)
-          print("```")
+          tail -n 80 "$LOG" || true
+          REPORT="$RUNNER_TEMP/report.md"
+          python3 - "$LOG" "$REPORT" <<'PYEOF'
+          import sys
+          log, report = sys.argv[1], sys.argv[2]
+          with open(log, errors="replace") as fh:
+              lines = [line.rstrip() for line in fh]
+          errors = [
+              line for line in lines
+              if line.startswith("e: ")
+              or line.startswith("error:")
+              or "What went wrong" in line
+              or ("FAILED" in line and line.startswith("> Task"))
+              or line.startswith("Caused by")
+          ]
+          errors = errors[:80] or ["(sin lineas e:/error en el log)"]
+          with open(report, "w") as out:
+              out.write("### Error de compilacion del APK\n\n```\n")
+              out.write("\n".join(errors)[:55000])
+              out.write("\n```\n")
+          print("::error::APK Android fallo. Detalle en el issue 'CI log Android'.")
           PYEOF
+          # Los logs de Actions no son legibles desde el sandbox de desarrollo:
+          # se deja el detalle en un issue del repositorio.
+          ENV_TOKEN="${{ github.token }}"
+          REPO="${{ github.repository }}"
+          export GH_TOKEN="$ENV_TOKEN"
+          NUM="$(gh api "repos/$REPO/issues?state=all&per_page=100" --jq '[.[] | select(.title == "CI log Android")][0].number // empty' || true)"
+          if [ -z "$NUM" ]; then
+            NUM="$(gh api -X POST "repos/$REPO/issues" -f title="CI log Android" -f body="Registro de errores de compilacion del APK de Android TV." --jq .number)"
+          fi
+          gh api -X POST "repos/$REPO/issues/$NUM/comments" -F body=@"$REPORT" > /dev/null || true
           exit 1
 
       - name: Tests unitarios Kotlin
