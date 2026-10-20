@@ -317,7 +317,6 @@ jobs:
           - Firmado con keystore de producción si configuraste los Secrets \`ANDROID_KEYSTORE_*\`; si no, con un keystore efímero de CI. Con firma distinta hay que **desinstalar** la versión anterior antes de instalar esta.
           - Para actualizaciones sin reinstalar, guarda un keystore estable en Secrets."
           fi
-          fi
           echo "Publicando $TAG: $TITLE con $APK"
           ls -lh artifacts/
           # El artefacto release contiene dos nombres; prioriza el versionado
