@@ -11,6 +11,9 @@ import type { DebridProviderId, MetaPreview } from '@vibeflix/addon-engine';
 import type { ProviderConfig } from '@vibeflix/scrapers';
 
 import { normalizeParental, type ParentalSettings } from './library/parental.js';
+import type { CollectionDefinition } from './library/collections.js';
+import type { StreamBadgeConfig } from './library/stream-badges.js';
+import type { PartyRoom } from './library/party.js';
 import type { TrackPreference } from './library/track-prefs.js';
 
 export interface InstalledAddonRecord {
@@ -391,6 +394,12 @@ export interface AppData {
    * para el siguiente.
    */
   trackPrefs: Record<string, Record<string, TrackPreference>>;
+  /** Colecciones curadas (NuvioTV: Collection). */
+  collections: CollectionDefinition[];
+  /** Configuración de badges de streams (NuvioTV: StreamBadgeRules). */
+  streamBadges: StreamBadgeConfig;
+  /** Salas de watch party (NuvioTV: Party). */
+  partyRooms: PartyRoom[];
   settings: AppSettings;
 }
 
@@ -573,6 +582,9 @@ export function normalizeData(data: AppData): AppData {
   data.catalogPreferences ??= [];
   data.searchHistory ??= {};
   data.trackPrefs ??= {};
+  (data as { collections?: unknown }).collections ??= [];
+  (data as { streamBadges?: unknown }).streamBadges ??= { imports: [] };
+  (data as { partyRooms?: unknown }).partyRooms ??= [];
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
 }
@@ -596,6 +608,9 @@ export function emptyData(): AppData {
     catalogPreferences: [],
     searchHistory: {},
     trackPrefs: {},
+    collections: [],
+    streamBadges: { imports: [] },
+    partyRooms: [],
     settings: { ...DEFAULT_SETTINGS },
   };
 }

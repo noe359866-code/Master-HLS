@@ -37,6 +37,8 @@ const ProfilePreferences = lazy(() =>
 );
 const PersonScreen = lazy(() => import('./screens/Person').then((m) => ({ default: m.PersonScreen })));
 const DevicesScreen = lazy(() => import('./screens/Devices').then((m) => ({ default: m.DevicesScreen })));
+const CollectionsScreen = lazy(() => import('./screens/Collections').then((m) => ({ default: m.CollectionsScreen })));
+const PartyScreen = lazy(() => import('./screens/Party').then((m) => ({ default: m.PartyScreen })));
 
 interface SessionState {
   pairingRequired: boolean;
@@ -165,6 +167,10 @@ export function App() {
         return <ListsScreen />;
       case 'history':
         return <HistoryScreen />;
+      case 'collections':
+        return <CollectionsScreen />;
+      case 'party':
+        return <PartyScreen />;
       case 'addons':
         return <AddonsScreen />;
       case 'settings':

@@ -528,8 +528,9 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       ? await debrid.resolveStreams(result.value.streams)
       : result.value.streams;
     const capped = applyConfigToStreams(resolved, config);
+    const badgeConfig = (data as unknown as { streamBadges?: import('../library/stream-badges.js').StreamBadgeConfig }).streamBadges;
     sendJson(ctx.res, 200, {
-      streams: presentStreams(capped, streamDisplayName(type, id, metadata.value.meta), 'vibeflix'),
+      streams: presentStreams(capped, streamDisplayName(type, id, metadata.value.meta), 'vibeflix', badgeConfig),
     }, resourceSendOptions(ctx.req, DEFAULT_CACHE_POLICIES.stream, result));
   };
 

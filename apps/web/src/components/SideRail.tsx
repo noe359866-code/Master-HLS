@@ -20,6 +20,8 @@ const ICONS: Record<string, IconName> = {
   search: 'search',
   lists: 'lists',
   history: 'history',
+  collections: 'discover',
+  party: 'profile',
   addons: 'addons',
   settings: 'settings',
 };

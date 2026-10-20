@@ -32,6 +32,10 @@ import { registerDeviceRoutes } from './routes/devices.js';
 import { registerSubtitleRoutes } from './routes/subtitles.js';
 import { registerBrowseRoutes } from './routes/browse.js';
 import { registerScraperRoutes } from './routes/scrapers.js';
+import { registerCollectionRoutes } from './routes/collections.js';
+import { registerStreamBadgeRoutes } from './routes/stream-badges.js';
+import { registerPartyRoutes } from './routes/party.js';
+import { registerTrackingRoutes } from './routes/tracking.js';
 import type { OpenSubtitlesService } from './services/opensubtitles.js';
 
 export const APP_VERSION = '1.0.0';
@@ -243,6 +247,10 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     lookup: dnsLookup,
     allowPrivateHosts: config.allowPrivateHosts,
   });
+  registerCollectionRoutes(router, { getData, save });
+  registerStreamBadgeRoutes(router, { getData, save });
+  registerPartyRoutes(router, { getData, save });
+  registerTrackingRoutes(router, { getData, save });
 
   router.get('/api/health', ({ res }) => {
     sendJson(res, 200, {

@@ -32,3 +32,89 @@
 .stream--locked .stream__url {
   color: var(--accent);
 }
+
+/* ------------------------------------------------------------- colecciones y party (NuvioTV) */
+
+.collections__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.collections__card {
+  background: var(--bg-card);
+  border: 1px solid var(--stroke);
+  border-inline-start: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.collections__card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.collections__emoji { font-size: 22px; }
+.collections__type { font-size: 11px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.06em; }
+.collections__desc { font-size: 13px; color: var(--text-2); }
+.collections__actions { display: flex; gap: 8px; }
+.collections__presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.collections__preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.collections__form, .party__form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.collections__input, .party__input {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.party__list { display: flex; flex-direction: column; gap: 10px; list-style: none; padding: 0; }
+.party__room {
+  background: var(--bg-card);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.party__room-head { display: flex; justify-content: space-between; align-items: center; }
+.party__state { font-size: 12px; text-transform: uppercase; color: var(--accent); }
+.party__meta { font-size: 12px; color: var(--text-dim); }
+.party__actions { display: flex; gap: 8px; }
+
+/* Badges de streams (NuvioTV: StreamBadge) */
+.stream-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.stream-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+}

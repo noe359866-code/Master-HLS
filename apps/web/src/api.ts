@@ -642,4 +642,68 @@ export const api = {
       })}`,
     );
   },
+
+  // -------------------------------------------------- colecciones (NuvioTV: Collection)
+  async collections(): Promise<{ collections: import('./types').CollectionDefinition[] }> {
+    return request('/api/collections');
+  },
+  async collectionPresets(): Promise<{ presets: Array<{ title: string; sourceType: string; sourceId: string; mediaType: string; emoji: string; color: string; description: string }> }> {
+    return request('/api/collections/presets');
+  },
+  async createCollection(payload: Record<string, unknown>): Promise<{ collection: import('./types').CollectionDefinition }> {
+    return request('/api/collections', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async deleteCollection(id: string): Promise<void> {
+    await request(`/api/collections/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // -------------------------------------------------- badges (NuvioTV: StreamBadgeRules)
+  async streamBadges(): Promise<{ config: import('./types').StreamBadgeConfig }> {
+    return request('/api/stream-badges');
+  },
+  async saveStreamBadges(config: import('./types').StreamBadgeConfig): Promise<{ config: import('./types').StreamBadgeConfig }> {
+    return request('/api/stream-badges', { method: 'PUT', body: JSON.stringify(config) });
+  },
+  async badgePreview(haystack: string): Promise<{ badges: import('./types').StreamBadge[]; haystack: string }> {
+    return request(`/api/stream-badges/preview${query({ haystack })}`);
+  },
+
+  // -------------------------------------------------- tracking (NuvioTV: TrackingProvider)
+  async trackingProviders(): Promise<{ providers: import('./types').TrackingProvider[] }> {
+    return request('/api/tracking/providers');
+  },
+  async setTrackingProvider(id: string, payload: { connected: boolean; token?: string }): Promise<{ providers: import('./types').TrackingProvider[] }> {
+    return request(`/api/tracking/providers/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  async trackScrobble(action: 'start' | 'pause' | 'stop' | 'seek', event: Record<string, unknown>): Promise<{ action: string; event: string; results: Array<{ providerId: string; ok: boolean; error?: string }> }> {
+    return request('/api/tracking/scrobble', { method: 'POST', body: JSON.stringify({ action, event }) });
+  },
+
+  // -------------------------------------------------- watch party (NuvioTV: Party)
+  async partyRooms(): Promise<{ rooms: import('./types').PartyRoom[] }> {
+    return request('/api/party');
+  },
+  async createPartyRoom(payload: Record<string, unknown>): Promise<{ room: import('./types').PartyRoom }> {
+    return request('/api/party', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async partyRoom(id: string): Promise<{ room: import('./types').PartyRoom }> {
+    return request(`/api/party/${encodeURIComponent(id)}`);
+  },
+  async updatePartyRoom(id: string, patch: Record<string, unknown>): Promise<{ room: import('./types').PartyRoom }> {
+    return request(`/api/party/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
+  },
+  async joinPartyRoom(id: string, payload: { memberId?: string; memberName?: string; position?: number; paused?: boolean }): Promise<{ room: import('./types').PartyRoom; memberId: string }> {
+    return request(`/api/party/${encodeURIComponent(id)}/join`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async leavePartyRoom(id: string, memberId: string): Promise<{ room: import('./types').PartyRoom }> {
+    return request(`/api/party/${encodeURIComponent(id)}/leave`, { method: 'POST', body: JSON.stringify({ memberId }) });
+  },
+  async deletePartyRoom(id: string): Promise<void> {
+    await request(`/api/party/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // -------------------------------------------------- progreso mejorado (continue watching)
+  async nextUp(contentId: string, season?: number, episode?: number): Promise<{ nextEpisode: { id: string; season: number; episode: number } | null; current: { id: string; season: number; episode: number } | null; isCurrentCompleted: boolean }> {
+    return request(`/api/progress/next-up${query({ contentId, season, episode })}`);
+  },
 };

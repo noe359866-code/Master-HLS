@@ -24,6 +24,8 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'search', labelKey: 'SEARCH', route: { name: 'search' }, label: 'Buscar', description: 'Buscador con teclado en pantalla' },
   { id: 'lists', labelKey: 'LISTS', route: { name: 'lists' }, label: 'Mis listas', description: 'Watchlists del perfil' },
   { id: 'history', labelKey: 'HISTORY', route: { name: 'history' }, label: 'Historial', description: 'Lo que has visto' },
+  { id: 'collections', route: { name: 'collections' }, label: 'Colecciones', description: 'Franquicias y catálogos curados' },
+  { id: 'party', route: { name: 'party' }, label: 'Party', description: 'Ver juntos en sincronía' },
   { id: 'addons', labelKey: 'ADDONS', route: { name: 'addons' }, label: 'Addons', description: 'Gestor de addons Stremio' },
   { id: 'settings', labelKey: 'SETTINGS', route: { name: 'settings' }, label: 'Ajustes', description: 'Ajustes de la app' },
 ];

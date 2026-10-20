@@ -144,8 +144,9 @@ export type ProfilePatch = Omit<Partial<Profile>, 'parental'> & {
 };
 
 /**
- * Preferencia de pista de un vídeo (NuvioTV: `TrackPreferenceDataStore`):
- * audio, subtítulo, desfase y velocidad **por videoId**.
+ * Preferencia de pista de un vídeo (NuvioTV: `TrackPreferenceDataStore` +
+ * `AudioDelayRouteDataStore`): audio, subtítulo, desfases y velocidad
+ * **por videoId**.
  */
 export interface TrackPreference {
   audioLanguage?: string;
@@ -153,6 +154,8 @@ export interface TrackPreference {
   subtitleKey?: string | null;
   subtitleLanguage?: string;
   delayMs?: number;
+  /** Desfase de audio en ms (NuvioTV: AudioDelayRouteDataStore). */
+  audioDelayMs?: number;
   speed?: number;
   updatedAt: number;
 }
@@ -535,6 +538,74 @@ export interface MasterInfo {
     reason: string;
   } | null;
   url: string;
+}
+
+/** Modo de experiencia (NuvioTV: docs/essential-mode.md). */
+export type ExperienceMode = 'essential' | 'advanced';
+export type SettingsSection =
+  | 'account' | 'profiles' | 'appearance' | 'layout' | 'plugins'
+  | 'integration' | 'playback' | 'trakt' | 'debrid' | 'scrapers'
+  | 'filters' | 'device' | 'about' | 'advanced' | 'debug';
+export type PlayerControl =
+  | 'playPause' | 'nextEpisode' | 'subtitles' | 'audio' | 'sources' | 'episodes'
+  | 'engineSwitch' | 'speed' | 'aspectRatio' | 'externalPlayer' | 'streamInfo' | 'torrentStats';
+
+/** Colección curada (NuvioTV: Collection / CollectionSource). */
+export interface CollectionDefinition {
+  id: string;
+  title: string;
+  description?: string;
+  sourceType: 'addon-catalog' | 'tmdb-collection' | 'tmdb-discover' | 'trakt-list' | 'company' | 'network' | 'person' | 'genre-preset' | 'keyword';
+  mediaType: 'movie' | 'tv' | 'all';
+  order: number;
+  hidden: boolean;
+  createdAt: number;
+  updatedAt: number;
+  catalogRef?: { addonId: string; type: string; catalogId: string; genre?: string };
+  sourceId?: string;
+  sourceTitle?: string;
+  sortBy?: string;
+  filters?: Record<string, string>;
+  emoji?: string;
+  color?: string;
+}
+
+/** Badge de stream (NuvioTV: StreamBadge). */
+export interface StreamBadge {
+  id: string;
+  label: string;
+  kind: 'hdr' | 'dolby-vision' | 'dolby-atmos' | 'uhd' | 'fhd' | 'hd' | 'hevc' | 'av1' | 'remux' | 'bluray' | 'webdl' | 'custom';
+  color?: string;
+  icon?: string;
+}
+export interface StreamBadgeConfig {
+  imports: Array<{ sourceUrl: string; filters: Array<{ id: string; name: string; pattern: string; tagColor?: string; imageUrl?: string; enabled: boolean; groupId?: string }>; groups: Array<{ id: string; name: string; color?: string }>; isActive: boolean }>;
+}
+
+/** Proveedor de tracking (NuvioTV: TrackingProvider). */
+export interface TrackingProvider {
+  id: 'trakt' | 'simkl' | 'mdblist' | 'local';
+  name: string;
+  capabilities: Array<'library' | 'progress' | 'scrobble'>;
+  connected: boolean;
+  authUrl?: string;
+  hasToken?: boolean;
+}
+
+/** Sala de watch party (NuvioTV: Party). */
+export interface PartyRoom {
+  id: string;
+  hostId: string;
+  contentId: string;
+  contentType: string;
+  contentName: string;
+  videoId?: string;
+  streamUrl?: string;
+  state: 'playing' | 'paused' | 'idle';
+  position: number;
+  updatedAt: number;
+  members: Array<{ id: string; name: string; joinedAt: number; lastSeenAt: number; position?: number; paused?: boolean }>;
+  createdAt: number;
 }
 
 /** Recorte de una hoja de sprites (lo que devuelve `/hls/thumbnails`). */

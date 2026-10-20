@@ -48,6 +48,8 @@ export type Route =
     }
   | { name: 'lists' }
   | { name: 'history' }
+  | { name: 'collections' }
+  | { name: 'party' }
   | { name: 'addons' }
   | { name: 'settings' }
   | { name: 'devices' }

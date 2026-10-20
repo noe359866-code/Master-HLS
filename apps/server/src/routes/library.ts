@@ -681,6 +681,30 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
     sendJson(res, 200, { deleted: true });
   });
 
+  // Next-up: siguiente episodio a ver (NuvioTV: ContinueWatchingNextUpReconciliation)
+  router.get('/api/progress/next-up', async ({ res, query }) => {
+    const contentId = (query.get('contentId') ?? '').trim();
+    if (!contentId) {
+      sendJson(res, 400, { error: 'Falta contentId' });
+      return;
+    }
+    const season = query.get('season') ? Number(query.get('season')) : undefined;
+    const episode = query.get('episode') ? Number(query.get('episode')) : undefined;
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const progress = profileScope(profileId).progress;
+    const current = progress.find(
+      (p) => p.id === contentId && (season === undefined || p.season === season) && (episode === undefined || p.episode === episode),
+    );
+    // La lista de episodios viene de la metadata; aquí devolvemos el estado
+    // del progreso para que el cliente proyecte el siguiente.
+    const completed = current ? current.position / Math.max(1, current.duration) >= 0.9 : false;
+    sendJson(res, 200, {
+      current: current ? { id: current.id, season: current.season, episode: current.episode, position: current.position, duration: current.duration } : null,
+      isCurrentCompleted: completed,
+      // El cliente resuelve nextEpisode contra meta.videos localmente.
+    });
+  });
+
   // --------------------------------------------- preferencias de pista (Nuvio)
   // Audio, subtítulo, desfase y velocidad por videoId (NuvioTV:
   // `TrackPreferenceDataStore`): un desfase calibrado para un episodio no
