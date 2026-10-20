@@ -1,6 +1,6 @@
 {
   "name": "vibe-flix",
-  "version": "1.0.0",
+  "version": "0.0.3",
   "private": true,
   "description": "Vibe Flix — app de TV basada en Stremio (bases: WuPlay + NuvioTV) con motor de agregacion de addons y nucleo HLS master",
   "license": "CC0-1.0",

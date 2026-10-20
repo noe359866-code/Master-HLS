@@ -11,6 +11,9 @@ import type { DebridProviderId, MetaPreview } from '@vibeflix/addon-engine';
 import type { ProviderConfig } from '@vibeflix/scrapers';
 
 import { normalizeParental, type ParentalSettings } from './library/parental.js';
+import type { CollectionDefinition } from './library/collections.js';
+import type { StreamBadgeConfig } from './library/stream-badges.js';
+import type { PartyRoom } from './library/party.js';
 import type { TrackPreference } from './library/track-prefs.js';
 
 export interface InstalledAddonRecord {
@@ -97,13 +100,14 @@ export interface ProgressEntry {
   episode?: number;
 }
 
-/** Valoracion de un titulo ("Me gusta" / "No para mi"). */
+/** Valoracion de un titulo (WuPlay v0.9.1: 3 niveles). */
 export interface RatingEntry {
   id: string;
   type: string;
   name: string;
   poster?: string;
-  rating: 'like' | 'dislike';
+  /** WuPlay: dislike = No para mí, like = Me gusta, love = ¡Me encanta! */
+  rating: 'like' | 'dislike' | 'love';
   /** Generos del titulo: se usan para las recomendaciones. */
   genres?: string[];
   updatedAt: number;
@@ -208,6 +212,15 @@ export interface AppSettings {
     minRating: number;
     /** Ocultar el contenido para adultos. */
     hideAdult: boolean;
+    /** WuPlay v0.8.1+ : filtrar por duracion (minutos, 0 = sin filtro). */
+    minRuntimeMinutes: number;
+    maxRuntimeMinutes: number;
+    /** WuPlay: estado de estreno (released/upcoming/all). */
+    releaseStatus: 'all' | 'released' | 'upcoming';
+    /** WuPlay: solo estrenos digitales. */
+    digitalReleaseOnly: boolean;
+    /** WuPlay v0.8.1: networks / streaming services. */
+    networks: string[];
   };
   /**
    * Scrapers nativos (addon de streams resuelto en el servidor).
@@ -271,6 +284,14 @@ export interface AppSettings {
      * v0.6.5, por defecto 3). 0 = nunca preguntar.
      */
     stillWatchingAfter: number;
+    /** WuPlay v0.9.3: confirmar seek con OK (pausa en la nueva posicion). */
+    confirmSeek: boolean;
+    /** WuPlay v0.8.3: addon preferido para autoplay. */
+    preferredAddonId: string;
+    /** WuPlay v0.6.4: desactivar fallback automatico de streams. */
+    disableAutoFallback: boolean;
+    /** WuPlay v0.6.4: delay del fallback automatico (ms). */
+    autoFallbackDelayMs: number;
   };
   /**
    * Apariencia y comportamiento de los subtitulos.
@@ -307,6 +328,36 @@ export interface AppSettings {
   };
 }
 
+/** Titulos ocultos (WuPlay v0.6.5 Hide Everywhere). */
+export interface HiddenTitle {
+  id: string;
+  type: string;
+  name: string;
+  hiddenAt: number;
+}
+
+/** Hub personalizado (WuPlay v0.8.1 Custom Hubs). */
+export interface CustomHub {
+  id: string;
+  name: string;
+  type: 'genre' | 'collection' | 'keyword' | 'network' | 'preset';
+  genre?: string;
+  keyword?: string;
+  network?: string;
+  preset?: string;
+  layout: 'rows' | 'grid' | 'chips';
+  createdAt: number;
+}
+
+/** Pantalla personalizada (WuPlay v0.8.0 Custom Screens). */
+export interface CustomScreen {
+  id: string;
+  name: string;
+  hubs: string[];
+  layout: 'rows' | 'grid';
+  createdAt: number;
+}
+
 export interface AppData {
   version: number;
   addons: InstalledAddonRecord[];
@@ -320,6 +371,14 @@ export interface AppData {
   progress: Record<string, ProgressEntry[]>;
   /** Valoraciones por id de perfil. */
   ratings: Record<string, RatingEntry[]>;
+  /** Titulos ocultos por perfil (WuPlay Hide Everywhere). */
+  hiddenTitles: Record<string, HiddenTitle[]>;
+  /** Hubs personalizados (WuPlay Custom Hubs). */
+  customHubs: CustomHub[];
+  /** Pantallas personalizadas (WuPlay Custom Screens). */
+  customScreens: CustomScreen[];
+  /** Recomendaciones descartadas (WuPlay Good/Bad Recommendation feedback). */
+  dismissedRecommendations: Record<string, string[]>;
   /** Dispositivos vinculados (sincronizacion multi-dispositivo sin cuenta). */
   devices: PairedDevice[];
   /** Codigos de vinculacion pendientes de canjear. */
@@ -335,6 +394,17 @@ export interface AppData {
    * para el siguiente.
    */
   trackPrefs: Record<string, Record<string, TrackPreference>>;
+  /** Colecciones curadas (NuvioTV: Collection). */
+  collections: CollectionDefinition[];
+  /** Configuración de badges de streams (NuvioTV: StreamBadgeRules). */
+  streamBadges: StreamBadgeConfig;
+  /** Salas de watch party (NuvioTV: Party). */
+  partyRooms: PartyRoom[];
+  /**
+   * Overrides de URLs base/portal por proveedor (StreamFlix: portalUrl/baseUrl
+   * via UserPreferences con Mutex). Permite rotar espejos sin redeploy.
+   */
+  providerUrls: Record<string, { portalUrl?: string; baseUrl?: string }>;
   settings: AppSettings;
 }
 
@@ -362,6 +432,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     excludeKeywords: [],
     minRating: 0,
     hideAdult: false,
+    minRuntimeMinutes: 0,
+    maxRuntimeMinutes: 0,
+    releaseStatus: 'all' as const,
+    digitalReleaseOnly: false,
+    networks: [],
   },
   sidebar: [
     { id: 'home', hidden: false, order: 0 },
@@ -392,6 +467,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     speed: 1,
     progressIntervalSeconds: 15,
     stillWatchingAfter: 3,
+    confirmSeek: false,
+    preferredAddonId: '',
+    disableAutoFallback: false,
+    autoFallbackDelayMs: 5000,
   },
   subtitles: {
     enabled: true,
@@ -450,6 +529,14 @@ export function normalizeData(data: AppData): AppData {
           ? value
           : DEFAULT_SETTINGS.playback.stillWatchingAfter;
       })(),
+      confirmSeek: Boolean((settings.playback as { confirmSeek?: unknown })?.confirmSeek),
+      preferredAddonId: typeof (settings.playback as { preferredAddonId?: unknown })?.preferredAddonId === 'string'
+        ? (settings.playback as { preferredAddonId: string }).preferredAddonId : DEFAULT_SETTINGS.playback.preferredAddonId,
+      disableAutoFallback: Boolean((settings.playback as { disableAutoFallback?: unknown })?.disableAutoFallback),
+      autoFallbackDelayMs: (() => {
+        const raw = Number((settings.playback as { autoFallbackDelayMs?: unknown })?.autoFallbackDelayMs);
+        return Number.isFinite(raw) && raw >= 0 && raw <= 30000 ? raw : DEFAULT_SETTINGS.playback.autoFallbackDelayMs;
+      })(),
     },
     subtitles: {
       ...DEFAULT_SETTINGS.subtitles,
@@ -466,6 +553,8 @@ export function normalizeData(data: AppData): AppData {
     filters: {
       ...DEFAULT_SETTINGS.filters,
       ...(settings.filters ?? {}),
+      networks: Array.isArray((settings.filters as { networks?: unknown })?.networks)
+        ? ((settings.filters as { networks?: unknown }).networks as string[]) : DEFAULT_SETTINGS.filters.networks,
     },
     scrapers: {
       ...DEFAULT_SETTINGS.scrapers,
@@ -489,11 +578,19 @@ export function normalizeData(data: AppData): AppData {
   data.history ??= {};
   data.progress ??= {};
   data.ratings ??= {};
+  (data as { hiddenTitles?: unknown }).hiddenTitles ??= {};
+  (data as { customHubs?: unknown }).customHubs ??= [];
+  (data as { customScreens?: unknown }).customScreens ??= [];
+  (data as { dismissedRecommendations?: unknown }).dismissedRecommendations ??= {};
   data.devices ??= [];
   data.pairings ??= [];
   data.catalogPreferences ??= [];
   data.searchHistory ??= {};
   data.trackPrefs ??= {};
+  (data as { collections?: unknown }).collections ??= [];
+  (data as { streamBadges?: unknown }).streamBadges ??= { imports: [] };
+  (data as { partyRooms?: unknown }).partyRooms ??= [];
+  (data as { providerUrls?: unknown }).providerUrls ??= {};
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
 }
@@ -508,11 +605,19 @@ export function emptyData(): AppData {
     history: {},
     progress: {},
     ratings: {},
+    hiddenTitles: {},
+    customHubs: [],
+    customScreens: [],
+    dismissedRecommendations: {},
     devices: [],
     pairings: [],
     catalogPreferences: [],
     searchHistory: {},
     trackPrefs: {},
+    collections: [],
+    streamBadges: { imports: [] },
+    partyRooms: [],
+    providerUrls: {},
     settings: { ...DEFAULT_SETTINGS },
   };
 }

@@ -199,6 +199,8 @@ export function PlayerScreen({
   const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null);
   const [cues, setCues] = useState<Cue[]>([]);
   const [subtitleDelay, setSubtitleDelay] = useState(subtitleSettings?.delayMs ?? 0);
+  // Retardo de audio por vídeo (NuvioTV: AudioDelayRouteDataStore, ±60 s).
+  const [audioDelay, setAudioDelay] = useState(0);
   const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStyle>(() =>
     normalizeSubtitleStyle({
       size: subtitleSettings?.size,
@@ -229,6 +231,7 @@ export function PlayerScreen({
     ...(subtitleChosenRef.current ? { subtitleKey: activeSubtitle } : {}),
     subtitleLanguage: subtitleOptions.find((option) => option.key === activeSubtitle)?.lang,
     delayMs: subtitleDelay,
+    audioDelayMs: audioDelay,
     speed,
   };
 
@@ -540,6 +543,8 @@ export function PlayerScreen({
         setTrackPref(pref);
         if (typeof pref?.delayMs === 'number') setSubtitleDelay(pref.delayMs);
         else setSubtitleDelay(subtitleSettings?.delayMs ?? 0);
+        if (typeof pref?.audioDelayMs === 'number') setAudioDelay(pref.audioDelayMs);
+        else setAudioDelay(0);
         const rememberedSpeed = pref?.speed && pref.speed !== 1 ? pref.speed : 1;
         setSpeed(rememberedSpeed);
         if (videoRef.current) videoRef.current.playbackRate = rememberedSpeed;
@@ -1029,6 +1034,19 @@ export function PlayerScreen({
     [notify, t, persistTrackPref],
   );
 
+  const changeAudioDelay = useCallback(
+    (deltaMs: number) => {
+      setAudioDelay((current) => {
+        // NuvioTV: AudioDelayRouteDataStore permite ±60 s por vídeo.
+        const next = Math.max(-60_000, Math.min(60_000, current + deltaMs));
+        notify(`Audio ${formatDelay(next)}`);
+        return next;
+      });
+      persistTrackPref();
+    },
+    [notify, persistTrackPref],
+  );
+
   const changeSubtitleSize = useCallback(
     (direction: 1 | -1) => {
       setSubtitleStyle((current) => {
@@ -1081,6 +1099,9 @@ export function PlayerScreen({
           break;
         case 'subtitleDelay':
           changeSubtitleDelay(action.deltaMs);
+          break;
+        case 'audioDelay':
+          changeAudioDelay(action.deltaMs);
           break;
         case 'subtitleSize':
           changeSubtitleSize(action.direction);
@@ -1552,6 +1573,15 @@ export function PlayerScreen({
                 </button>
                 <button type="button" data-focusable="true" className="chip chip--value">
                   {formatDelay(subtitleDelay)}
+                </button>
+                <button type="button" data-focusable="true" className="chip" onClick={() => changeAudioDelay(-250)}>
+                  Audio −250 ms
+                </button>
+                <button type="button" data-focusable="true" className="chip" onClick={() => changeAudioDelay(250)}>
+                  Audio +250 ms
+                </button>
+                <button type="button" data-focusable="true" className="chip chip--value">
+                  {formatDelay(audioDelay)}
                 </button>
                 <button type="button" data-focusable="true" className="chip" onClick={() => changeSubtitleSize(-1)}>
                   {t('PLAYER_SUBTITLES_SIZE')} −

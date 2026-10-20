@@ -47,9 +47,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       # Las imagenes ubuntu-latest ya traen el SDK de Android preinstalado
-      # (ANDROID_HOME apunta a /usr/local/lib/android/sdk). Antes se usaba
-      # android-actions/setup-android@v3, que rompia el job en las imagenes
-      # nuevas antes de llegar a compilar.
+      # (ANDROID_HOME apunta a /usr/local/lib/android/sdk).
       - name: Preparar Android SDK
         working-directory: .
         run: |
@@ -78,12 +76,98 @@ jobs:
           yes | "$SM" --licenses > /dev/null 2>&1 || true
           "$SM" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
 
-      - name: Compilar APK debug
+      - name: Configurar keystore de produccion
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VIBFLIX_RELEASE_STORE_PASSWORD: ${{ secrets.VIBFLIX_RELEASE_STORE_PASSWORD }}
+          VIBFLIX_RELEASE_KEY_PASSWORD: ${{ secrets.VIBFLIX_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Soporta ambos namespaces de secrets: ANDROID_* y VIBFLIX_*
+          STORE_B64="${ANDROID_KEYSTORE_BASE64:-}"
+          STORE_PASS="${ANDROID_KEYSTORE_PASSWORD:-${VIBFLIX_RELEASE_STORE_PASSWORD:-}}"
+          KEY_ALIAS="${ANDROID_KEY_ALIAS:-vibeflix}"
+          KEY_PASS="${ANDROID_KEY_PASSWORD:-${VIBFLIX_RELEASE_KEY_PASSWORD:-}}"
+
+          KEYSTORE_PATH="$GITHUB_WORKSPACE/android/app/release.keystore"
+          GRADLE_PROPS="$GITHUB_WORKSPACE/android/gradle.properties"
+
+          # Si hay keystore en secrets, decodificarlo
+          if [ -n "$STORE_B64" ]; then
+            echo "Usando keystore de produccion desde secrets"
+            echo "$STORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+            [ -n "$STORE_PASS" ] || STORE_PASS="$KEY_PASS"
+            [ -n "$KEY_PASS" ] || KEY_PASS="$STORE_PASS"
+            {
+              echo "vibeFlix.releaseStoreFile=$KEYSTORE_PATH"
+              echo "vibeFlix.releaseStorePassword=$STORE_PASS"
+              echo "vibeFlix.releaseKeyAlias=$KEY_ALIAS"
+              echo "vibeFlix.releaseKeyPassword=$KEY_PASS"
+            } >> "$GRADLE_PROPS"
+            echo "VIBFLIX_RELEASE_STORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+            echo "VIBFLIX_RELEASE_STORE_PASSWORD=$STORE_PASS" >> "$GITHUB_ENV"
+            echo "VIBFLIX_RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "VIBFLIX_RELEASE_KEY_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
+            ls -lh "$KEYSTORE_PATH"
+            exit 0
+          fi
+
+          # Sin secrets: generar keystore efimero para builds de produccion / verificacion.
+          # IMPORTANTE: este keystore cambia en cada ejecucion si no se guarda como secret.
+          # Para Play Store necesitas un keystore estable: genera uno localmente y guardalo como
+          # ANDROID_KEYSTORE_BASE64 (base64 -w0 release.keystore) + passwords en Settings > Secrets.
+          echo "No hay keystore en secrets: generando keystore efimero para v0.0.3"
+          STORE_PASS="vibeflix-release-0.0.3"
+          KEY_ALIAS="vibeflix"
+          KEY_PASS="$STORE_PASS"
+          DNAME="CN=Vibe Flix, OU=Vibe Flix TV, O=Vibe Flix, L=Managua, S=Managua, C=NI"
+          keytool -genkeypair -v \
+            -keystore "$KEYSTORE_PATH" \
+            -alias "$KEY_ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+            -dname "$DNAME" > /dev/null
+          ls -lh "$KEYSTORE_PATH"
+          {
+            echo "vibeFlix.releaseStoreFile=$KEYSTORE_PATH"
+            echo "vibeFlix.releaseStorePassword=$STORE_PASS"
+            echo "vibeFlix.releaseKeyAlias=$KEY_ALIAS"
+            echo "vibeFlix.releaseKeyPassword=$KEY_PASS"
+          } >> "$GRADLE_PROPS"
+          echo "VIBFLIX_RELEASE_STORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "VIBFLIX_RELEASE_STORE_PASSWORD=$STORE_PASS" >> "$GITHUB_ENV"
+          echo "VIBFLIX_RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "VIBFLIX_RELEASE_KEY_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
+          echo "::notice::APK firmado con keystore efimero. Para Play Store guarda un keystore estable en Secrets."
+
+      - name: Compilar APK
         run: |
           set -o pipefail
           LOG="$RUNNER_TEMP/gradle-build.log"
-          if ./gradlew :app:assembleDebug --no-daemon --stacktrace > "$LOG" 2>&1; then
-            tail -n 25 "$LOG"
+          # Produccion real: tags vX.Y.Z sin sufijo -debug -> assembleRelease (minify + shrink, firmado)
+          # Debug: ramas, PRs y tags *-debug -> assembleDebug
+          REF="${GITHUB_REF:-}"
+          VARIANT="debug"
+          TASK=":app:assembleDebug"
+          if [[ "$REF" == refs/tags/v* ]] && [[ "$REF" != *-debug* ]]; then
+            VARIANT="release"
+            TASK=":app:assembleRelease"
+          fi
+          echo "Ref: $REF -> variant=$VARIANT task=$TASK"
+          echo "VARIANT=$VARIANT" >> "$GITHUB_ENV"
+          if ./gradlew "$TASK" --no-daemon --stacktrace > "$LOG" 2>&1; then
+            tail -n 35 "$LOG"
+            # Verificar firma en release
+            if [ "$VARIANT" = "release" ]; then
+              echo "--- Verificando APK release ---"
+              APK_OUT=$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)
+              echo "APK: $APK_OUT"
+              "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose "$APK_OUT" | head -n 20 || true
+              ls -lh "$APK_OUT" || true
+            fi
             exit 0
           fi
           tail -n 80 "$LOG" || true
@@ -112,8 +196,6 @@ jobs:
               out.write("\n```\n")
           print("::error::APK Android fallo. Detalle en el issue 'CI log Android'.")
           PYEOF
-          # Los logs de Actions no son legibles desde el sandbox de desarrollo:
-          # se deja el detalle en un issue del repositorio.
           ENV_TOKEN="${{ github.token }}"
           REPO="${{ github.repository }}"
           export GH_TOKEN="$ENV_TOKEN"
@@ -131,17 +213,35 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../artifacts
-          APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)"
-          echo "APK=$APK"
-          cp "$APK" ../artifacts/vibe-flix-tv-debug.apk
-          ls -lh ../artifacts
+          echo "VARIANT=$VARIANT"
+          if [ "$VARIANT" = "release" ]; then
+            APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+            echo "APK=$APK"
+            cp "$APK" ../artifacts/vibe-flix-tv-0.0.3-release.apk
+            cp "$APK" ../artifacts/vibe-flix-tv-release.apk
+            ls -lh ../artifacts
+            # checksum para verificacion
+            sha256sum ../artifacts/*.apk | tee ../artifacts/checksums.txt
+          else
+            APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)"
+            echo "APK=$APK"
+            cp "$APK" ../artifacts/vibe-flix-tv-debug.apk
+            ls -lh ../artifacts
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vibe-flix-debug-apk
-          path: artifacts/vibe-flix-tv-debug.apk
+          name: vibe-flix-apk-${{ env.VARIANT }}
+          path: artifacts/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - if: env.VARIANT == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibe-flix-checksums
+          path: artifacts/checksums.txt
+          if-no-files-found: warn
 
   release:
     name: Publicar APK en Releases
@@ -151,17 +251,66 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Determinar variante esperada
+        id: variant
+        run: |
+          REF="${{ github.ref }}"
+          if [[ "$REF" == *-debug* ]]; then
+            echo "artifact=vibe-flix-apk-debug" >> "$GITHUB_OUTPUT"
+            echo "apk=vibe-flix-tv-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "title_suffix=(debug)" >> "$GITHUB_OUTPUT"
+          else
+            echo "artifact=vibe-flix-apk-release" >> "$GITHUB_OUTPUT"
+            echo "apk=vibe-flix-tv-0.0.3-release.apk" >> "$GITHUB_OUTPUT"
+            echo "apk_alt=vibe-flix-tv-release.apk" >> "$GITHUB_OUTPUT"
+            echo "title_suffix=" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@v4
         with:
-          name: vibe-flix-debug-apk
+          name: ${{ steps.variant.outputs.artifact }}
           path: artifacts
+
+      - name: Verificar artefacto
+        run: ls -lh artifacts/ && sha256sum artifacts/*.apk || true
+
       - name: Crear release con el APK
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          APK: ${{ steps.variant.outputs.apk }}
         run: |
-          gh release create "$TAG" artifacts/vibe-flix-tv-debug.apk \
-            --title "Vibe Flix TV $TAG" \
-            --notes "APK debug generado automaticamente desde $TAG." \
+          set -euo pipefail
+          REF="${{ github.ref }}"
+          if [[ "$REF" == *-debug* ]]; then
+            TITLE="Vibe Flix TV $TAG (debug)"
+            NOTES="APK debug generado automáticamente desde $TAG (versionCode/variant debug, sin ofuscación)."
+          else
+            TITLE="Vibe Flix TV $TAG"
+            NOTES="APK de producción **$TAG** (versionName 0.0.3, versionCode 3) — firmado, ofuscado y optimizado (minify+shrink+proguard-android-optimize). Instalable en Android TV / Fire TV / TV Box con \`adb install\` o gestor de archivos.
+
+          **Instalación**
+          1. Descarga el APK de abajo.
+          2. En la TV: \`adb install vibe-flix-tv-0.0.3-release.apk\` o ábrelo desde el navegador/gestor.
+          3. Abre **Vibe Flix → ⚙ Servidor** y escribe la IP:PUERTO de tu servidor (ej: \`192.168.1.50:8181\`). \`10.0.2.2\` solo vale en emulador.
+
+          **Notas**
+          - Firmado con keystore de producción (si configuraste \`ANDROID_KEYSTORE_BASE64\` en Secrets) o con keystore efímero de CI en esta primera publicación. Para actualizaciones sin reinstalar, guarda un keystore estable en Secrets.
+          - \`minifyEnabled + shrinkResources + proguard-android-optimize.txt\` activos; reglas en \`proguard-rules.pro\` preservan DTOs Moshi."
+          fi
+          echo "Publicando $TAG: $TITLE con $APK"
+          ls -lh artifacts/
+          # El artefacto release contiene dos nombres; prioriza el versionado
+          FILE="artifacts/$APK"
+          if [ ! -f "$FILE" ] && [ -n "${{ steps.variant.outputs.apk_alt }}" ]; then
+            FILE="artifacts/${{ steps.variant.outputs.apk_alt }}"
+          fi
+          if [ ! -f "$FILE" ]; then
+            FILE="$(find artifacts -name '*.apk' | head -n 1)"
+          fi
+          echo "Usando: $FILE"
+          gh release create "$TAG" "$FILE" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
             --repo "$GH_REPO"

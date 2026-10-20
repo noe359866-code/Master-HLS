@@ -85,6 +85,8 @@ export interface ScrapeContext {
   postJson?: <T>(url: string, body: unknown, init?: { headers?: Record<string, string> }) => Promise<T>;
   /** User-Agent por defecto (los sitios de peliculas rechazan los bots). */
   userAgent: string;
+  /** Overrides de portalUrl/baseUrl por proveedor (StreamFlix: UserPreferences portalUrl). */
+  providerUrls?: Record<string, { portalUrl?: string; baseUrl?: string }>;
 }
 
 /**

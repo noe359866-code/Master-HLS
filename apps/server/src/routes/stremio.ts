@@ -76,6 +76,7 @@ import { configurePageHtml } from '../library/configure-page.js';
 export interface StremioRouteOptions {
   registry: AddonRegistry;
   getData: () => AppData;
+  save?: (mutate: (data: AppData) => void) => Promise<AppData | void>;
   appVersion: string;
   /** Correo de contacto del addon (opcional; lo recomienda el SDK). */
   contactEmail?: string;
@@ -324,7 +325,7 @@ function resourceSendOptions<T extends { cache?: CacheDirective }>(
 }
 
 export function registerStremioRoutes(router: Router, options: StremioRouteOptions): void {
-  const { registry, getData, appVersion, debrid, contactEmail, publicUrl } = options;
+  const { registry, getData, save, appVersion, debrid, contactEmail, publicUrl } = options;
 
   /** Reglas parentales del perfil activo (catálogos, búsqueda y streams). */
   const activeParental = () => {
@@ -439,8 +440,6 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     const id = stripJson(ctx.params['id'] ?? '');
     const data = getData();
     const language = config?.language ?? extra['language'] ?? undefined;
-    // `language` viaja como extra del catalogo (el SDK lo define asi); el
-    // registro no tiene parametro de idioma propio.
     const result = await registry.catalog({
       type,
       id,
@@ -450,6 +449,12 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     metas = applyParentalFilters(metas, activeParental());
     if (config?.hideAdult) {
       metas = applyContentFilters(metas, { ...data.settings.filters, hideAdult: true });
+    }
+    // WuPlay Hide Everywhere: titulos ocultos no aparecen en ningun catalogo
+    const hidden = data.hiddenTitles?.[data.activeProfileId] ?? [];
+    if (hidden.length) {
+      const hs = new Set(hidden.map((h) => h.id));
+      metas = metas.filter((m) => !hs.has(m.id));
     }
     sendJson(ctx.res, 200, { metas }, resourceSendOptions(ctx.req, DEFAULT_CACHE_POLICIES.catalog, result));
   };
@@ -523,8 +528,9 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       ? await debrid.resolveStreams(result.value.streams)
       : result.value.streams;
     const capped = applyConfigToStreams(resolved, config);
+    const badgeConfig = (data as unknown as { streamBadges?: import('../library/stream-badges.js').StreamBadgeConfig }).streamBadges;
     sendJson(ctx.res, 200, {
-      streams: presentStreams(capped, streamDisplayName(type, id, metadata.value.meta), 'vibeflix'),
+      streams: presentStreams(capped, streamDisplayName(type, id, metadata.value.meta), 'vibeflix', badgeConfig),
     }, resourceSendOptions(ctx.req, DEFAULT_CACHE_POLICIES.stream, result));
   };
 
@@ -571,17 +577,22 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
     const result = await registry.search(term, { type: query.get('type') ?? undefined });
     // Los filtros de contenido se aplican tambien a la busqueda (WuPlay los
     // aplica a todas las pantallas de catalogo).
-    const metas = applyParentalFilters(
+    let metas = applyParentalFilters(
       applyContentFilters(result.value.metas, getData().settings.filters),
       activeParental(),
     );
+    const hidden = getData().hiddenTitles?.[getData().activeProfileId] ?? [];
+    if (hidden.length) {
+      const hs = new Set(hidden.map((h) => h.id));
+      metas = metas.filter((m) => !hs.has(m.id));
+    }
     sendJson(res, 200, { metas }, resourceSendOptions(req, DEFAULT_CACHE_POLICIES.search, result));
   });
 
   /**
    * Ficha de persona: filmografia completa (WuPlay: "Cast & crew" con ficha
    * de persona). Se busca por nombre y se filtran los titulos en los que
-   * aparece.
+   * aparece. WuPlay v0.9.2 añade filtro por rol (Acting, Directing…).
    */
   router.get('/api/person', async ({ res, req, query }) => {
     const name = (query.get('name') ?? '').trim();
@@ -589,10 +600,12 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       sendJson(res, 400, { error: 'Falta name' });
       return;
     }
+    const role = query.get('role')?.trim();
     const result = await findPersonFilmography(registry, name, {
       type: query.get('type') ?? undefined,
+      role: role || undefined,
     });
-    sendJson(res, 200, { name: result.name, titles: result.titles, sources: result.sources }, {
+    sendJson(res, 200, { name: result.name, titles: result.titles, sources: result.sources, role: role ?? null }, {
       req,
       cache: DEFAULT_CACHE_POLICIES.meta,
     });
@@ -601,32 +614,35 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
   /**
    * Recomendaciones personalizadas (WuPlay: "Recommended by Wuplay").
    *
-   * Se calculan con los generos de los titulos valorados como "Me gusta":
+   * Se calculan con los generos de los titulos valorados como "Me gusta" / "Me encanta":
    * se recorren los catalogos del registro y se puntua cada meta por generos
-   * compartidos, descartando lo que ya se ha valorado.
+   * compartidos, descartando lo que ya se ha valorado y lo descartado por feedback negativo.
+   * WuPlay v0.9.2: Bad picks removed for good.
    */
   router.get('/api/recommended', async ({ res, req, query }) => {
     const data = getData();
     const profileId = query.get('profileId') ?? data.activeProfileId;
     const ratings = data.ratings?.[profileId] ?? [];
-    const likes = ratings.filter((entry) => entry.rating === 'like');
+    const likes = ratings.filter((entry) => entry.rating === 'like' || entry.rating === 'love');
     if (!likes.length) {
-      sendJson(res, 200, { titles: [] }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+      sendJson(res, 200, { titles: [], likedCount: 0 }, { req, cache: DEFAULT_CACHE_POLICIES.api });
       return;
     }
 
     const weights = new Map<string, number>();
     for (const entry of likes) {
+      const w = entry.rating === 'love' ? 2 : 1;
       for (const genre of entry.genres ?? []) {
-        weights.set(genre.toLowerCase(), (weights.get(genre.toLowerCase()) ?? 0) + 1);
+        weights.set(genre.toLowerCase(), (weights.get(genre.toLowerCase()) ?? 0) + w);
       }
     }
     if (!weights.size) {
-      sendJson(res, 200, { titles: [] }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+      sendJson(res, 200, { titles: [], likedCount: likes.length }, { req, cache: DEFAULT_CACHE_POLICIES.api });
       return;
     }
 
-    const excluded = new Set(ratings.map((entry) => entry.id));
+    const dismissed = new Set((data.dismissedRecommendations?.[profileId] ?? []));
+    const excluded = new Set([...ratings.map((entry) => entry.id), ...dismissed]);
     const catalogs = registry
       .catalogs()
       .filter((catalog) => catalog.type === 'movie' || catalog.type === 'series');
@@ -648,14 +664,171 @@ export function registerStremioRoutes(router: Router, options: StremioRouteOptio
       }
     }
 
+    const limit = Math.min(Math.max(Number(query.get('limit') ?? 20) || 20, 1), 50);
     const titles = applyParentalFilters(
       applyContentFilters(
-        [...scored.values()].sort((a, b) => b.score - a.score).slice(0, 20).map((entry) => entry.meta),
+        [...scored.values()].sort((a, b) => b.score - a.score).slice(0, limit).map((entry) => entry.meta),
         data.settings.filters,
       ),
       data.profiles.find((entry) => entry.id === profileId)?.parental,
     );
-    sendJson(res, 200, { titles }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+    sendJson(res, 200, { titles, likedCount: likes.length }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+  });
+
+  // WuPlay v0.9.2: Good / Bad feedback on recommended rows (bad picks removed for good)
+  router.post('/api/recommended/feedback', async ({ res, body: rawBody, query }) => {
+    if (!save) { sendJson(res, 500, { error: 'No save' }); return; }
+    const data = getData();
+    const profileId = (query.get('profileId') ?? data.activeProfileId) as string;
+    const body = (rawBody ?? {}) as { id?: string; feedback?: string };
+    const tid = String(body.id ?? '').trim();
+    const feedback = String(body.feedback ?? '').trim();
+    if (!tid) { sendJson(res, 400, { error: 'Falta id' }); return; }
+    if (feedback === 'bad') {
+      const list = data.dismissedRecommendations?.[profileId] ?? [];
+      if (!list.includes(tid)) {
+        await save((mutable: AppData) => {
+          (mutable.dismissedRecommendations ??= {})[profileId] ??= [];
+          if (!mutable.dismissedRecommendations[profileId]!.includes(tid)) {
+            mutable.dismissedRecommendations[profileId]!.push(tid);
+          }
+        });
+      }
+      sendJson(res, 200, { dismissed: true });
+      return;
+    }
+    if (feedback === 'good') {
+      const existing = data.ratings?.[profileId]?.find((r) => r.id === tid);
+      if (!existing) {
+        let metaInfo: { genres?: string[]; name?: string; type?: string; poster?: string } = {};
+        try {
+          const mr = await registry.meta({ type: 'movie', id: tid });
+          if (mr.value.meta) metaInfo = { genres: mr.value.meta.genres, name: mr.value.meta.name, type: mr.value.meta.type, poster: mr.value.meta.poster };
+          else {
+            const sr = await registry.meta({ type: 'series', id: tid });
+            if (sr.value.meta) metaInfo = { genres: sr.value.meta.genres, name: sr.value.meta.name, type: sr.value.meta.type, poster: sr.value.meta.poster };
+          }
+        } catch { /* ignore */ }
+        await save((mutable: AppData) => {
+          (mutable.ratings ??= {})[profileId] ??= [];
+          mutable.ratings[profileId]!.push({
+            id: tid, type: metaInfo.type ?? 'movie', name: metaInfo.name ?? tid,
+            poster: metaInfo.poster, rating: 'like' as const, genres: metaInfo.genres, updatedAt: Date.now(),
+          });
+        });
+      }
+      sendJson(res, 200, { liked: true });
+      return;
+    }
+    sendJson(res, 400, { error: 'feedback debe ser good o bad' });
+  });
+
+  // Preset catalogs: Upcoming / Trending / Latest (WuPlay v0.9.2 + v0.8.3)
+  router.get('/api/preset/:presetId', async ({ res, req, query, params }) => {
+    const presetId = params['presetId'] ?? '';
+    const type = query.get('type') ?? '';
+    const data = getData();
+    const profileId = query.get('profileId') ?? data.activeProfileId;
+    const hidden = data.hiddenTitles?.[profileId] ?? [];
+    const { hiddenIdsForProfile } = await import('../library/hidden.js');
+    const hiddenSet = hiddenIdsForProfile(data, profileId);
+    const allCatalogs = registry.catalogs();
+    let candidates = allCatalogs.filter((c) => !type || c.type === type || type === 'all');
+    if (!candidates.length) candidates = allCatalogs;
+    const allMetas: MetaPreview[] = [];
+    for (const catalog of candidates.slice(0, 6)) {
+      try {
+        const result = await registry.catalog({ type: catalog.type, id: catalog.id });
+        allMetas.push(...result.value.metas);
+      } catch { /* catalog failed */ }
+    }
+    // Dedupe
+    const deduped = [...new Map(allMetas.map((m) => [m.id, m])).values()];
+    let filtered = deduped;
+    // Preset-specific filtering
+    if (presetId === 'upcoming_movies' || presetId === 'upcoming_shows') {
+      const { isUpcoming } = await import('../library/filters.js');
+      filtered = deduped.filter((m) => isUpcoming(m));
+      if (!filtered.length) {
+        // Fallback: future year heuristic already in isUpcoming; if still empty, show high-rated unreleased hint
+        filtered = deduped.filter((m) => {
+          const y = Number((m as { year?: unknown }).year ?? 0);
+          return y >= new Date().getFullYear();
+        });
+      }
+      filtered = filtered.sort((a, b) => {
+        const ay = Number((a as { year?: unknown }).year ?? 0);
+        const by = Number((b as { year?: unknown }).year ?? 0);
+        return by - ay;
+      });
+    } else if (presetId === 'trending_today' || presetId === 'trending_week') {
+      filtered = deduped.sort((a, b) => {
+        const ar = Number(a.imdbRating ?? 0);
+        const br = Number(b.imdbRating ?? 0);
+        return br - ar;
+      });
+    } else if (presetId === 'latest_theaters') {
+      // Prefer movies with recent year
+      const curYear = new Date().getFullYear();
+      filtered = deduped.filter((m) => {
+        const y = Number((m as { year?: unknown }).year ?? 0);
+        return y >= curYear - 1;
+      }).sort((a, b) => Number((b as { year?: unknown }).year ?? 0) - Number((a as { year?: unknown }).year ?? 0));
+    } else if (presetId === 'popular_movies' || presetId === 'popular') {
+      filtered = deduped.sort((a, b) => Number(b.imdbRating ?? 0) - Number(a.imdbRating ?? 0));
+    }
+    // Apply global filters + hidden + parental
+    filtered = applyContentFilters(filtered, data.settings.filters);
+    filtered = filtered.filter((m) => !hiddenSet.has(m.id));
+    filtered = applyParentalFilters(filtered, data.profiles.find((e) => e.id === profileId)?.parental);
+    const limit = Math.min(Math.max(Number(query.get('limit') ?? 20) || 20, 1), 50);
+    sendJson(res, 200, { metas: filtered.slice(0, limit), presetId }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+  });
+
+  // Random episode (WuPlay v0.5.4)
+  router.get('/api/random-episode', async ({ res, req, query }) => {
+    const seriesId = (query.get('seriesId') ?? query.get('id') ?? '').trim();
+    const type = query.get('type') ?? 'series';
+    if (!seriesId) { sendJson(res, 400, { error: 'Falta seriesId' }); return; }
+    const metaResult = await registry.meta({ type, id: seriesId });
+    const meta = metaResult.value.meta as unknown as { videos?: Array<{ id: string; season?: number; episode?: number; title?: string; name?: string }> } | null;
+    if (!meta?.videos?.length) { sendJson(res, 404, { error: 'No hay episodios' }); return; }
+    const pick = meta.videos[Math.floor(Math.random() * meta.videos.length)]!;
+    sendJson(res, 200, { episode: pick, seriesId }, { req, cache: DEFAULT_CACHE_POLICIES.meta });
+  });
+
+  // Upcoming schedule (WuPlay v0.5.2 upcoming row: next airing episodes for shows in watchlist/history)
+  router.get('/api/upcoming', async ({ res, req, query }) => {
+    const data = getData();
+    const profileId = query.get('profileId') ?? data.activeProfileId;
+    const progress = data.progress?.[profileId] ?? [];
+    const history = data.history?.[profileId] ?? [];
+    const lists = Object.values(data.watchlists?.[profileId] ?? []);
+    const trackedIds = new Set<string>([
+      ...progress.filter((p) => p.mediaType === 'series' || p.mediaType === 'episode').map((p) => p.id),
+      ...history.map((h) => h.id),
+      ...lists.flatMap((l) => l.items.map((i) => i.id)),
+    ]);
+    if (!trackedIds.size) {
+      sendJson(res, 200, { upcoming: [] }, { req, cache: DEFAULT_CACHE_POLICIES.api });
+      return;
+    }
+    const upcoming: MetaPreview[] = [];
+    for (const sid of [...trackedIds].slice(0, 20)) {
+      try {
+        const mr = await registry.meta({ type: 'series', id: sid });
+        const meta = mr.value.meta as MetaPreview & { videos?: Array<{ released?: string }> } | null;
+        if (!meta) continue;
+        // If series has videos with future released dates, include it
+        const futureEps = (meta as unknown as { videos?: Array<{ released?: string }> }).videos?.filter((v) => {
+          if (!v.released) return false;
+          const d = Date.parse(v.released);
+          return Number.isFinite(d) && d > Date.now() && d < Date.now() + 30 * 24 * 60 * 60 * 1000;
+        });
+        if (futureEps?.length) upcoming.push(meta as MetaPreview);
+      } catch { /* ignore */ }
+    }
+    sendJson(res, 200, { upcoming: upcoming.slice(0, 20) }, { req, cache: DEFAULT_CACHE_POLICIES.api });
   });
 
   /**

@@ -36,6 +36,7 @@ export type PlayerAction =
   | { type: 'speed'; direction: 1 | -1 }
   | { type: 'speedReset' }
   | { type: 'subtitleDelay'; deltaMs: number }
+  | { type: 'audioDelay'; deltaMs: number }
   | { type: 'subtitleSize'; direction: 1 | -1 }
   | { type: 'toggleSubtitles' }
   | { type: 'menu'; menu: 'subtitles' | 'audio' | 'quality' | 'speed' | 'info' | 'stats' | 'episodes' }
@@ -125,11 +126,22 @@ export function playerAction(event: KeyLike): PlayerAction | undefined {
     case '\\':
       return { type: 'speedReset' };
 
-    // Stremio: G/H ajustan el desfase de subtitulos.
+    // Stremio: G/H ajustan el desfase de subtitulos; Shift+G/H → audio (NuvioTV: audioDelay).
     case 'g':
-      return { type: 'subtitleDelay', deltaMs: -SUBTITLE_DELAY_STEP };
+      return shift
+        ? { type: 'audioDelay', deltaMs: -SUBTITLE_DELAY_STEP }
+        : { type: 'subtitleDelay', deltaMs: -SUBTITLE_DELAY_STEP };
     case 'h':
-      return { type: 'subtitleDelay', deltaMs: SUBTITLE_DELAY_STEP };
+      return shift
+        ? { type: 'audioDelay', deltaMs: SUBTITLE_DELAY_STEP }
+        : { type: 'subtitleDelay', deltaMs: SUBTITLE_DELAY_STEP };
+    // NuvioTV: J/K alternan con Shift para retardo de audio (G/H ya usados).
+    case 'j':
+      if (shift) return { type: 'audioDelay', deltaMs: -SUBTITLE_DELAY_STEP };
+      return { type: 'seek', deltaSeconds: -10 };
+    case 'k':
+      if (shift) return { type: 'audioDelay', deltaMs: SUBTITLE_DELAY_STEP };
+      return { type: 'togglePlay' };
     case '+':
     case '=':
       return { type: 'subtitleSize', direction: 1 };

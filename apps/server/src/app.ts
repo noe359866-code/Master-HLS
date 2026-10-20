@@ -32,6 +32,10 @@ import { registerDeviceRoutes } from './routes/devices.js';
 import { registerSubtitleRoutes } from './routes/subtitles.js';
 import { registerBrowseRoutes } from './routes/browse.js';
 import { registerScraperRoutes } from './routes/scrapers.js';
+import { registerCollectionRoutes } from './routes/collections.js';
+import { registerStreamBadgeRoutes } from './routes/stream-badges.js';
+import { registerPartyRoutes } from './routes/party.js';
+import { registerTrackingRoutes } from './routes/tracking.js';
 import type { OpenSubtitlesService } from './services/opensubtitles.js';
 
 export const APP_VERSION = '1.0.0';
@@ -149,14 +153,19 @@ export function createApp(overrides: CreateAppOptions = {}): App {
    * servidor. Se registra en el mismo registro que el resto de addons, asi
    * que el fan-out, la cache y la fusion funcionan sin casos especiales.
    */
+  const scrapeContext = createScrapeContext({
+    fetchImpl,
+    lookup: dnsLookup,
+    allowPrivateHosts: config.allowPrivateHosts,
+  });
+  // Sync providerUrls overrides into live context (StreamFlix portalUrl/baseUrl via Mutex)
+  const syncScrapeContext = () => {
+    try { scrapeContext.providerUrls = getData().providerUrls ?? {}; } catch { /* before load */ }
+  };
   const scrapers = new ScraperRegistry({ timeoutMs: config.fanoutTimeoutMs });
   const nativeScrapers = new NativeScrapersAddon({
     registry: scrapers,
-    context: createScrapeContext({
-      fetchImpl,
-      lookup: dnsLookup,
-      allowPrivateHosts: config.allowPrivateHosts,
-    }),
+    context: scrapeContext,
     version: APP_VERSION,
     language: () => {
       const data = getData();
@@ -189,6 +198,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   registerStremioRoutes(router, {
     registry,
     getData,
+    save: (mutate: (data: AppData) => void) => store.update(mutate),
     appVersion: APP_VERSION,
     debrid,
     contactEmail: process.env['CONTACT_EMAIL'],
@@ -242,6 +252,10 @@ export function createApp(overrides: CreateAppOptions = {}): App {
     lookup: dnsLookup,
     allowPrivateHosts: config.allowPrivateHosts,
   });
+  registerCollectionRoutes(router, { getData, save });
+  registerStreamBadgeRoutes(router, { getData, save });
+  registerPartyRoutes(router, { getData, save });
+  registerTrackingRoutes(router, { getData, save });
 
   router.get('/api/health', ({ res }) => {
     sendJson(res, 200, {
@@ -301,6 +315,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
       // La cache interna del addon puede tener resultados de antes de cambiar
       // los proveedores: se invalida para que se vuelva a resolver.
       nativeScrapers.invalidateResourceCache();
+      syncScrapeContext();
     },
     /** Configura el proveedor de debrid segun los ajustes. */
     applyDebrid(data: AppData) {

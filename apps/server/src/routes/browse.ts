@@ -21,9 +21,10 @@ import type { AddonRegistry, MetaPreview } from '@vibeflix/addon-engine';
 import type { Router } from '../http/router.js';
 import { sendJson } from '../http/router.js';
 import type { AppData } from '../model.js';
-import { DECADES, GENRES } from '../library/genres.js';
+import { DECADES, GENRES, NETWORKS, PRESET_CATALOGS } from '../library/genres.js';
 import { applyContentFilters, ratingOf, yearOf } from '../library/filters.js';
 import { applyParentalFilters } from '../library/parental.js';
+import { applyHiddenFilter } from '../library/hidden.js';
 
 export interface BrowseRouteOptions {
   registry: AddonRegistry;
@@ -71,11 +72,19 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
 
   // ---------------------------------------------------------------- generos
   router.get('/api/genres', ({ res }) => {
-    sendJson(res, 200, { genres: GENRES, decades: DECADES });
+    sendJson(res, 200, { genres: GENRES, decades: DECADES, presets: PRESET_CATALOGS, networks: NETWORKS });
   });
 
   router.get('/api/decades', ({ res }) => {
     sendJson(res, 200, { decades: DECADES });
+  });
+
+  router.get('/api/presets', ({ res }) => {
+    sendJson(res, 200, { presets: PRESET_CATALOGS });
+  });
+
+  router.get('/api/networks', ({ res }) => {
+    sendJson(res, 200, { networks: NETWORKS });
   });
 
   // ------------------------------------------------------- contenido (browse)
@@ -87,17 +96,40 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
     const skip = Number(query.get('skip') ?? '0') || 0;
 
     const filters = getData().settings.filters;
+    const dataForBrowse = getData();
+    const hidden = dataForBrowse.hiddenTitles?.[dataForBrowse.activeProfileId] ?? [];
     // El control parental del perfil activo se aplica además de los filtros
     // globales: así búsqueda, géneros y décadas devuelven lo mismo.
-    const parental = getData().profiles.find(
-      (entry) => entry.id === getData().activeProfileId,
+    const parental = dataForBrowse.profiles.find(
+      (entry) => entry.id === dataForBrowse.activeProfileId,
     )?.parental;
+
+    const keyword = (query.get('keyword') ?? '').trim();
+    const network = (query.get('network') ?? '').trim();
+    const studio = (query.get('studio') ?? '').trim();
 
     // 1) Busqueda por texto: los catalogos que soportan `search`.
     if (search) {
       const result = await registry.search(search, { type: type || undefined });
-      const metas = applyParentalFilters(applyContentFilters(result.value.metas, filters), parental);
+      const metas = applyHiddenFilter(applyParentalFilters(applyContentFilters(result.value.metas, filters), parental), hidden);
       sendJson(res, 200, { metas: metas.slice(0, BROWSE_LIMIT), source: 'search' });
+      return;
+    }
+
+    // 1b) Por keyword / network / studio (WuPlay v0.9.1 detail chips)
+    if (keyword || network || studio) {
+      const term = keyword || network || studio;
+      const result = await registry.search(term, { type: type || undefined });
+      let metas = result.value.metas;
+      // Filtrar por presencia real del term en descripcion/generos para afinar
+      const needle = term.toLowerCase();
+      metas = metas.filter((m) =>
+        (m.name ?? '').toLowerCase().includes(needle) ||
+        (m.genres ?? []).some((g) => g.toLowerCase().includes(needle)) ||
+        (m.description ?? '').toLowerCase().includes(needle),
+      );
+      const filtered = applyHiddenFilter(applyParentalFilters(applyContentFilters(metas, filters), parental), hidden);
+      sendJson(res, 200, { metas: filtered.slice(0, BROWSE_LIMIT), source: keyword ? 'keyword' : network ? 'network' : 'studio' });
       return;
     }
 
@@ -123,7 +155,7 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
       const metas = dedupe(
         results.flatMap((result) => result.value.metas),
       );
-      const filtered = applyParentalFilters(applyContentFilters(metas, filters), parental);
+      const filtered = applyHiddenFilter(applyParentalFilters(applyContentFilters(metas, filters), parental), hidden);
       sendJson(res, 200, {
         metas: filtered.slice(skip, skip + BROWSE_LIMIT),
         source: 'genre',
@@ -140,7 +172,7 @@ export function registerBrowseRoutes(router: Router, options: BrowseRouteOptions
         return;
       }
       const metas = await byDecade(registry, decade.from, decade.to, type);
-      const filtered = applyParentalFilters(applyContentFilters(metas, filters), parental);
+      const filtered = applyHiddenFilter(applyParentalFilters(applyContentFilters(metas, filters), parental), hidden);
       sendJson(res, 200, {
         metas: filtered.slice(skip, skip + BROWSE_LIMIT),
         source: 'decade',

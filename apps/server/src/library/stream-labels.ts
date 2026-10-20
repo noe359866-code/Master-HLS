@@ -10,6 +10,8 @@
 import type { MetaDetail, Stream } from '@vibeflix/addon-engine';
 import { parseEpisodeId } from '@vibeflix/scrapers';
 
+import { badgesForStream, type StreamBadgeConfig } from './stream-badges.js';
+
 export function streamDisplayName(type: string, id: string, meta: MetaDetail | null): string {
   const title = meta?.name?.trim() || 'Vibe Flix';
   const { season, episode } = parseEpisodeId(type, id);
@@ -73,18 +75,32 @@ export function bingeGroupFor(stream: Stream, addonId?: string): string {
  * suele contener el nombre del servidor de origen, y la etiqueta publica de
  * Vibe Flix solo lleva titulo y temporada/episodio.
  */
-export function presentStreams(streams: Stream[], displayName: string, addonId?: string): Stream[] {
+export function presentStreams(
+  streams: Stream[],
+  displayName: string,
+  addonId?: string,
+  badgeConfig?: StreamBadgeConfig,
+): Stream[] {
   return streams.map((stream) => {
-    const hints = stream.behaviorHints;
-    const hasProxyHeaders = Boolean(hints?.proxyHeaders?.request || hints?.proxyHeaders?.response);
-    const behaviorHints = {
+    const hints = stream.behaviorHints as Record<string, unknown> | undefined;
+    const hasProxyHeaders = Boolean(
+      (hints as { proxyHeaders?: unknown })?.proxyHeaders,
+    );
+    // Badges del stream (NuvioTV: Stream.badge): se calculan del texto visible
+    // del stream y de las reglas personalizadas del usuario.
+    const haystack = [stream.name, stream.title, stream.description, (hints as { filename?: string })?.filename]
+      .filter(Boolean)
+      .join(' ');
+    const badges = badgesForStream(haystack, badgeConfig);
+    const behaviorHints: Record<string, unknown> = {
       // El SDK obliga a marcar `notWebReady` cuando se piden cabeceras.
-      ...(hasProxyHeaders ? { notWebReady: true } : hints?.notWebReady !== undefined ? { notWebReady: hints.notWebReady } : {}),
-      ...(hints?.countryWhitelist ? { countryWhitelist: hints.countryWhitelist } : {}),
-      ...(hints?.proxyHeaders ? { proxyHeaders: hints.proxyHeaders } : {}),
-      ...(hints?.videoHash ? { videoHash: hints.videoHash } : {}),
-      ...(hints?.videoSize ? { videoSize: hints.videoSize } : {}),
-      ...(typeof hints?.audioDelayMs === 'number' ? { audioDelayMs: hints.audioDelayMs } : {}),
+      ...(hasProxyHeaders ? { notWebReady: true } : hints?.['notWebReady'] !== undefined ? { notWebReady: hints!['notWebReady'] } : {}),
+      ...(hints?.['countryWhitelist'] ? { countryWhitelist: hints!['countryWhitelist'] } : {}),
+      ...(hints?.['proxyHeaders'] ? { proxyHeaders: hints!['proxyHeaders'] } : {}),
+      ...(hints?.['videoHash'] ? { videoHash: hints!['videoHash'] } : {}),
+      ...(hints?.['videoSize'] ? { videoSize: hints!['videoSize'] } : {}),
+      ...(typeof hints?.['audioDelayMs'] === 'number' ? { audioDelayMs: hints!['audioDelayMs'] } : {}),
+      ...(badges.length ? { streamBadges: badges } : {}),
       bingeGroup: bingeGroupFor(stream, addonId),
     };
     // `description` es el campo actual del protocolo y `title` esta deprecado,

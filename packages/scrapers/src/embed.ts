@@ -203,6 +203,33 @@ export function unbase(word: string, radix: number): number | undefined {
 }
 
 /**
+ * Subtitles extracted from an embed (e.g., Chillx encrypted payload carries them).
+ */
+export interface EmbedSubtitle {
+  file: string;
+  label: string;
+  kind?: string;
+}
+
+export interface EmbedResult {
+  streams: EmbedCandidate[];
+  subtitles: EmbedSubtitle[];
+}
+
+/**
+ * Extracts subtitles from a decrypted Chillx-style JSON blob.
+ */
+export function extractSubtitlesFromJson(json: string): EmbedSubtitle[] {
+  const out: EmbedSubtitle[] = [];
+  const pat = /\{"file":"([^"]+)","label":"([^"]+)","kind":"captions","default":\w+\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = pat.exec(json))) {
+    if (m[1] && m[2]) out.push({ file: m[1], label: m[2], kind: 'captions' });
+  }
+  return out;
+}
+
+/**
  * Resolves an embed URL: downloads the page and extracts the direct links.
  */
 export async function resolveEmbed(

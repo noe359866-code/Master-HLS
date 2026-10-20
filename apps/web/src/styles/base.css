@@ -791,6 +791,63 @@ img {
   font-size: 14px;
 }
 
+.detail__meta-card {
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+.detail__meta-row {
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detail__meta-row strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.chip--small {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.episode__rating {
+  grid-area: title;
+  justify-self: end;
+  font-size: 12px;
+  background: rgba(255, 200, 50, 0.15);
+  border: 1px solid rgba(255, 200, 50, 0.25);
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #ffc94d;
+}
+
+.episode__actions {
+  grid-area: overview;
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Frost UI (WuPlay v0.9.0+): glass + sectioned polish */
+.frost-glass {
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  background: var(--glass);
+  border: 1px solid var(--stroke);
+}
+
 .detail__section h2 {
   font-size: 21px;
   letter-spacing: -0.3px;

@@ -195,6 +195,43 @@ export function registerScraperRoutes(router: Router, options: ScraperRouteOptio
     });
   });
 
+  // Provider URL overrides (StreamFlix: portalUrl/baseUrl via UserPreferences + Mutex)
+  router.get('/api/scrapers/provider-urls', ({ res }) => {
+    sendJson(res, 200, { urls: (getData() as unknown as { providerUrls?: unknown }).providerUrls ?? {} });
+  });
+
+  router.put('/api/scrapers/provider-urls', async ({ res, body: rawBody }) => {
+    const body = (rawBody ?? {}) as Record<string, unknown>;
+    const urls = body['urls'];
+    if (!urls || typeof urls !== 'object' || Array.isArray(urls)) {
+      sendJson(res, 400, { error: 'urls debe ser un objeto { id: { portalUrl, baseUrl } }' });
+      return;
+    }
+    const clean: Record<string, { portalUrl?: string; baseUrl?: string }> = {};
+    for (const [id, entry] of Object.entries(urls as Record<string, unknown>)) {
+      if (!id || typeof id !== 'string' || id.length > 64) continue;
+      if (!entry || typeof entry !== 'object') continue;
+      const obj = entry as Record<string, unknown>;
+      const out: { portalUrl?: string; baseUrl?: string } = {};
+      for (const f of ['portalUrl', 'baseUrl'] as const) {
+        const v = obj[f];
+        if (typeof v !== 'string' || !v.trim()) continue;
+        try {
+          const u = new URL(v.trim());
+          if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+          if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname.endsWith('.local')) continue;
+          out[f] = u.toString();
+        } catch { /* skip invalid */ }
+      }
+      if (out.portalUrl || out.baseUrl) clean[id] = out;
+      if (Object.keys(clean).length > 32) break;
+    }
+    await save((data) => {
+      (data as unknown as { providerUrls: unknown }).providerUrls = clean;
+    });
+    sendJson(res, 200, { urls: clean });
+  });
+
   router.put('/api/scrapers', async ({ res, body: rawBody }) => {
     const body = (rawBody ?? {}) as {
       enabled?: boolean;

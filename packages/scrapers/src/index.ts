@@ -36,6 +36,8 @@ export * from './embed.js';
 export * from './ssrf.js';
 export * from './normalize.js';
 export * from './addon.js';
+export * from './crypto.js';
+export * from './provider-urls.js';
 export { createConfigProvider, fillTemplate } from './providers/config.js';
 export { archiveProvider, pickBestFile } from './providers/archive.js';
 export { cineHaxProvider, parseCineHaxPlayers, cineHaxLanguageOrder } from './providers/cinehax.js';

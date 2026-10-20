@@ -15,6 +15,8 @@ import {
   DEFAULT_SETTINGS,
   type AppData,
   type AppSettings,
+  type CustomHub,
+  type CustomScreen,
   type Profile,
   type ProgressEntry,
   type RatingEntry,
@@ -501,7 +503,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
 
   // ------------------------------------------------------------- valoracion
 
-  /** Valoraciones del perfil ("Me gusta" / "No para mi"). */
+  /** Valoraciones del perfil ("Me gusta" / "Loved" / "No para mi" WuPlay v0.9.1). */
   router.get('/api/ratings', ({ res, query }) => {
     const profileId = query.get('profileId') ?? getData().activeProfileId;
     sendJson(res, 200, { ratings: getData().ratings?.[profileId] ?? [] });
@@ -509,7 +511,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
 
   /**
    * Guarda (o quita) la valoracion de un titulo.
-   * Con `rating: ''` se elimina la valoracion.
+   * Con `rating: ''` se elimina la valoracion. WuPlay v0.9.1: like/dislike/love.
    */
   router.post('/api/ratings', async ({ res, body: rawBody, query }) => {
     const body = (rawBody ?? {}) as {
@@ -517,7 +519,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       type?: string;
       name?: string;
       poster?: string;
-      rating?: 'like' | 'dislike' | '';
+      rating?: 'like' | 'dislike' | 'love' | '';
       genres?: string[];
     };
     const profileId = query.get('profileId') ?? getData().activeProfileId;
@@ -538,7 +540,7 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
         type: body.type ?? 'movie',
         name: body.name ?? id,
         poster: body.poster,
-        rating: body.rating,
+        rating: body.rating as RatingEntry['rating'],
         genres: body.genres ?? (index >= 0 ? list[index]?.genres : undefined),
         updatedAt: Date.now(),
       };
@@ -546,6 +548,89 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       else list.push(entry);
     });
     sendJson(res, 200, { ratings: getData().ratings?.[profileId] ?? [] });
+  });
+
+  // ---------------------------------------------------------- hidden titles (WuPlay Hide Everywhere)
+  router.get('/api/hidden', ({ res, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    sendJson(res, 200, { hidden: getData().hiddenTitles?.[profileId] ?? [] });
+  });
+
+  router.post('/api/hidden', async ({ res, body: rawBody, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const body = (rawBody ?? {}) as { id?: string; type?: string; name?: string };
+    const tid = (body.id ?? '').trim();
+    if (!tid) { sendJson(res, 400, { error: 'Falta id' }); return; }
+    await save((data) => {
+      data.hiddenTitles ??= {};
+      data.hiddenTitles[profileId] ??= [];
+      if (!data.hiddenTitles[profileId].some((e) => e.id === tid)) {
+        data.hiddenTitles[profileId].push({ id: tid, type: body.type ?? 'movie', name: body.name ?? tid, hiddenAt: Date.now() });
+      }
+    });
+    sendJson(res, 200, { hidden: getData().hiddenTitles?.[profileId] ?? [] });
+  });
+
+  router.delete('/api/hidden/:id', async ({ res, params, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const tid = params['id'] ?? '';
+    await save((data) => {
+      data.hiddenTitles ??= {};
+      data.hiddenTitles[profileId] = (data.hiddenTitles[profileId] ?? []).filter((e) => e.id !== tid);
+    });
+    sendJson(res, 200, { hidden: getData().hiddenTitles?.[profileId] ?? [] });
+  });
+
+  router.delete('/api/hidden', async ({ res, query }) => {
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    await save((data) => {
+      data.hiddenTitles ??= {};
+      data.hiddenTitles[profileId] = [];
+    });
+    sendJson(res, 200, { hidden: [] });
+  });
+
+  // ---------------------------------------------------------- custom hubs/screens (WuPlay v0.8.0+)
+  router.get('/api/custom-hubs', ({ res }) => {
+    sendJson(res, 200, { hubs: getData().customHubs ?? [] });
+  });
+  router.post('/api/custom-hubs', async ({ res, body: rawBody }) => {
+    const body = (rawBody ?? {}) as { name?: string; type?: string; genre?: string; keyword?: string; network?: string; preset?: string; layout?: string };
+    const hub = {
+      id: randomUUID(),
+      name: (body.name ?? 'Nuevo hub').slice(0, 80),
+      type: (body.type as CustomHub['type']) ?? 'genre',
+      genre: body.genre, keyword: body.keyword, network: body.network, preset: body.preset,
+      layout: (body.layout as CustomHub['layout']) ?? 'rows',
+      createdAt: Date.now(),
+    } as import('../model.js').CustomHub;
+    await save((data) => { data.customHubs ??= []; data.customHubs.push(hub); });
+    sendJson(res, 200, { hub });
+  });
+  router.delete('/api/custom-hubs/:id', async ({ res, params }) => {
+    const cid = params['id'] ?? '';
+    await save((data) => { data.customHubs = (data.customHubs ?? []).filter((h) => h.id !== cid); });
+    sendJson(res, 200, { deleted: true });
+  });
+  router.get('/api/custom-screens', ({ res }) => {
+    sendJson(res, 200, { screens: getData().customScreens ?? [] });
+  });
+  router.post('/api/custom-screens', async ({ res, body: rawBody }) => {
+    const body = (rawBody ?? {}) as { name?: string; hubs?: string[]; layout?: string };
+    const screen = {
+      id: randomUUID(),
+      name: (body.name ?? 'Nueva pantalla').slice(0, 80),
+      hubs: Array.isArray(body.hubs) ? body.hubs.slice(0, 20) : [],
+      layout: (body.layout as CustomScreen['layout']) ?? 'rows',
+      createdAt: Date.now(),
+    } as import('../model.js').CustomScreen;
+    await save((data) => { data.customScreens ??= []; data.customScreens.push(screen); });
+    sendJson(res, 200, { screen });
+  });
+  router.delete('/api/custom-screens/:id', async ({ res, params }) => {
+    const cid = params['id'] ?? '';
+    await save((data) => { data.customScreens = (data.customScreens ?? []).filter((s) => s.id !== cid); });
+    sendJson(res, 200, { deleted: true });
   });
 
   // ----------------------------------------------------------------- progreso
@@ -594,6 +679,30 @@ export function registerLibraryRoutes(router: Router, options: LibraryRouteOptio
       );
     });
     sendJson(res, 200, { deleted: true });
+  });
+
+  // Next-up: siguiente episodio a ver (NuvioTV: ContinueWatchingNextUpReconciliation)
+  router.get('/api/progress/next-up', async ({ res, query }) => {
+    const contentId = (query.get('contentId') ?? '').trim();
+    if (!contentId) {
+      sendJson(res, 400, { error: 'Falta contentId' });
+      return;
+    }
+    const season = query.get('season') ? Number(query.get('season')) : undefined;
+    const episode = query.get('episode') ? Number(query.get('episode')) : undefined;
+    const profileId = query.get('profileId') ?? getData().activeProfileId;
+    const progress = profileScope(profileId).progress;
+    const current = progress.find(
+      (p) => p.id === contentId && (season === undefined || p.season === season) && (episode === undefined || p.episode === episode),
+    );
+    // La lista de episodios viene de la metadata; aquí devolvemos el estado
+    // del progreso para que el cliente proyecte el siguiente.
+    const completed = current ? current.position / Math.max(1, current.duration) >= 0.9 : false;
+    sendJson(res, 200, {
+      current: current ? { id: current.id, season: current.season, episode: current.episode, position: current.position, duration: current.duration } : null,
+      isCurrentCompleted: completed,
+      // El cliente resuelve nextEpisode contra meta.videos localmente.
+    });
   });
 
   // --------------------------------------------- preferencias de pista (Nuvio)

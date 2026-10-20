@@ -168,13 +168,22 @@
 - [ ] **Tomas de notas y listas por episodio**.
 - [ ] **Semáforo de concurrencia** en el fan-out de addons.
 - [ ] **Firmas `stremioAddonsConfig`** para addons oficiales verificados.
-- [ ] **Random Episode** (WuPlay v0.5.4) en series: botón aleatorio en la
-      ficha, decidiendo si abre el player directo o un candidato en Detail.
-- [ ] **Fallback de streams con temporizador de error** (WuPlay v0.6.4): qué
-      hacer cuando la fuente falla a mitad (rendirse, saltar al siguiente
-      stream, avisar). Requiere diseño.
-- [ ] **Borrado selectivo de datos** (WuPlay Privacy & Data): limpiar
-      historial por título/caché desde el panel de privacidad.
+- [x] **Random Episode** (WuPlay v0.5.4): `GET /api/random-episode` + botón 🎲 en Detail
+- [x] **Hide Everywhere** (WuPlay v0.6.5→0.8.3): `hiddenTitles` por perfil + `/api/hidden` + filtro en catálogos/búsqueda/recomendaciones + panel en Ajustes + botón en Detail + long-press en posters
+- [x] **Rating 3 niveles** (WuPlay v0.9.1): `like/love/dislike` en Detail + filas Loved/Liked en Home
+- [x] **Recommended By Vibe Flix v2** (WuPlay v0.9.2): motor por géneros con peso love×2, dismissed feedback `POST /api/recommended/feedback`, premiere badges, preset catalogs `GET /api/preset/:id`
+- [x] **Preset catalogs** (WuPlay v0.8.3→v0.9.2): Trending Today/Week, Upcoming Movies/Shows, Latest in Theaters/Digital, Popular, Top Rated vía `PRESET_CATALOGS` + `/api/presets`
+- [x] **Upcoming schedule** (WuPlay v0.5.2): `GET /api/upcoming` basado en progreso/historial/listas + fila en Home
+- [x] **Networks filter** (WuPlay v0.8.1): `NETWORKS` (8) + `filters.networks` + `GET /api/networks` + keyword/network/studio browse
+- [x] **Runtime/releaseStatus filters** (WuPlay v0.8.3): `min/maxRuntimeMinutes`, `releaseStatus`, `digitalReleaseOnly`
+- [x] **Filmografía por rol** (WuPlay v0.9.2): `FilmographyRole` + filtro Acting/Directing/Writing en Person
+- [x] **Similar new engine** (WuPlay v0.9.2): cast/director/año ponderados + fallback por género
+- [x] **Detail expandido** (WuPlay v0.9.1): tarjeta con country/language/network/studios/keywords/budget/revenue/awards + rating por episodio + mark watched + chips → browse
+- [x] **Custom hubs/screens** (WuPlay v0.8.0+): `customHubs/customScreens` + CRUD APIs + UI en Ajustes
+- [x] **Player confirm seek + fallback controls** (WuPlay v0.9.3+v0.6.4): `confirmSeek`, `disableAutoFallback`, `autoFallbackDelayMs` en playback
+- [x] **Poster long-press menu** (WuPlay v0.4.2): 650ms hold → modal con Ver detalles / No mostrar
+- [x] **Frost UI polish** (WuPlay v0.9.0+): `detail__meta-card` glass, `frost-glass` utility
+- [ ] **Borrado selectivo de datos** (WuPlay Privacy & Data): limpiar caché por título desde panel privacidad (export ya existe)
 
 ## Decisiones abiertas
 

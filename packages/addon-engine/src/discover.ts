@@ -28,17 +28,34 @@ function normalizeName(value: string): string {
     .trim();
 }
 
+export type FilmographyRole = 'all' | 'acting' | 'directing' | 'writing' | 'crew';
+
 /** ¿Aparece esta persona en el reparto o la direccion de esta meta? */
-export function personAppearsIn(meta: MetaPreview, person: string): boolean {
+export function personAppearsIn(meta: MetaPreview, person: string, role: FilmographyRole = 'all'): boolean {
   const target = normalizeName(person);
   if (!target) return false;
-  // `cast`/`director` llegan como string o como array segun el addon.
-  const people = [
-    ...(toStringArray(meta.cast) ?? []),
-    ...(toStringArray(meta.director) ?? []),
-    ...(toStringArray(meta.writer) ?? []),
-  ];
+  const pools: Record<FilmographyRole, string[]> = {
+    all: [
+      ...(toStringArray(meta.cast) ?? []),
+      ...(toStringArray(meta.director) ?? []),
+      ...(toStringArray(meta.writer) ?? []),
+    ],
+    acting: [...(toStringArray(meta.cast) ?? [])],
+    directing: [...(toStringArray(meta.director) ?? [])],
+    writing: [...(toStringArray(meta.writer) ?? [])],
+    crew: [...(toStringArray(meta.director) ?? []), ...(toStringArray(meta.writer) ?? [])],
+  };
+  const people = pools[role] ?? pools.all;
   return people.some((entry) => normalizeName(entry).includes(target));
+}
+
+/** Rol detectado para esta meta (para filtrar filmografia por rol). */
+export function roleOfPersonIn(meta: MetaPreview, person: string): FilmographyRole[] {
+  const roles: FilmographyRole[] = [];
+  if (personAppearsIn(meta, person, 'acting')) roles.push('acting');
+  if (personAppearsIn(meta, person, 'directing')) roles.push('directing');
+  if (personAppearsIn(meta, person, 'writing')) roles.push('writing');
+  return roles.length ? roles : [];
 }
 
 /**
@@ -51,17 +68,18 @@ export function personAppearsIn(meta: MetaPreview, person: string): boolean {
 export async function findPersonFilmography(
   registry: AddonRegistry,
   name: string,
-  options: { type?: string; limit?: number; maxCandidates?: number } = {},
+  options: { type?: string; limit?: number; maxCandidates?: number; role?: string } = {},
 ): Promise<PersonFilmography> {
+  const role = (options.role as FilmographyRole) ?? 'all';
   const result = await registry.search(name, { type: options.type });
-  const candidates = result.value.metas.slice(0, options.maxCandidates ?? 12);
+  const candidates = result.value.metas.slice(0, options.maxCandidates ?? 16);
 
   const detailed = await Promise.all(
     candidates.map(async (candidate) => {
-      if (personAppearsIn(candidate, name)) return candidate;
+      if (personAppearsIn(candidate, name, role)) return candidate;
       try {
         const meta = await registry.meta({ type: candidate.type ?? 'movie', id: candidate.id });
-        if (meta.value.meta && personAppearsIn(meta.value.meta, name)) {
+        if (meta.value.meta && personAppearsIn(meta.value.meta, name, role)) {
           return { ...candidate, ...meta.value.meta };
         }
       } catch {
@@ -93,8 +111,7 @@ export function searchTermForTitle(title: string): string {
 }
 
 /**
- * Titulos similares: se busca por el nombre del titulo y se priorizan los que
- * comparten generos con el original.
+ * Titulos similares: nuevo motor WuPlay v0.9.2 (generos + cast + año).
  */
 export async function findSimilarTitles(
   registry: AddonRegistry,
@@ -103,22 +120,30 @@ export async function findSimilarTitles(
 ): Promise<MetaPreview[]> {
   const term = searchTermForTitle(meta.name ?? '');
   if (!term) return [];
-
-  const result = await registry.search(term, { type: options.type ?? meta.type });
+  let result = await registry.search(term, { type: options.type ?? meta.type });
+  const primaryGenre = meta.genres?.[0];
+  if (result.value.metas.length < 4 && primaryGenre) {
+    try {
+      const byGenre = await registry.catalog({ type: (meta.type ?? 'movie') as string, id: 'top', extra: { genre: primaryGenre } });
+      const existing = new Set(result.value.metas.map((m) => m.id));
+      for (const m of byGenre.value.metas) if (!existing.has(m.id)) result.value.metas.push(m);
+    } catch { /* no catalog */ }
+  }
   const genres = new Set((meta.genres ?? []).map((genre) => genre.toLowerCase()));
-
+  const castSet = new Set((toStringArray(meta.cast) ?? []).map((c) => normalizeName(c)));
+  const dirSet = new Set((toStringArray(meta.director) ?? []).map((c) => normalizeName(c)));
   return result.value.metas
     .filter((candidate) => candidate.id !== meta.id)
     .map((candidate) => {
-      const shared = (candidate.genres ?? []).filter((genre) =>
-        genres.has(genre.toLowerCase()),
-      ).length;
+      const shared = (candidate.genres ?? []).filter((genre) => genres.has(genre.toLowerCase())).length;
       const sameType = candidate.type === meta.type ? 1 : 0;
-      return { candidate, shared, score: shared * 10 + sameType * 3 + ratingValue(candidate) };
+      const castOverlap = (toStringArray(candidate.cast) ?? []).filter((c) => castSet.has(normalizeName(c))).length;
+      const dirOverlap = (toStringArray(candidate.director) ?? []).filter((c) => dirSet.has(normalizeName(c))).length;
+      const yearBonus = (() => { const y1 = Number((meta as { year?: unknown }).year ?? 0); const y2 = Number((candidate as { year?: unknown }).year ?? 0); if (y1 && y2) return Math.max(0, 5 - Math.abs(y1 - y2) / 5); return 0; })();
+      const score = shared * 12 + sameType * 3 + ratingValue(candidate) * 2 + castOverlap * 4 + dirOverlap * 6 + yearBonus;
+      return { candidate, shared, score };
     })
-    // Sin generos en comun no es un titulo "similar": solo coincidencias de
-    // nombre, que no aportan valor.
-    .filter((entry) => entry.shared > 0)
+    .filter((entry) => entry.shared > 0 || entry.score > 5)
     .sort((a, b) => b.score - a.score)
     .slice(0, options.limit ?? 12)
     .map((entry) => entry.candidate);

@@ -23,6 +23,8 @@ export interface TrackPreference {
   subtitleLanguage?: string;
   /** Desfase de subtítulo en ms (solo para este vídeo). */
   delayMs?: number;
+  /** Desfase de audio en ms (solo para este vídeo; NuvioTV: AudioDelayRouteDataStore). */
+  audioDelayMs?: number;
   /** Velocidad de reproducción (1 = normal). */
   speed?: number;
   /** Cuándo se guardó (para podar las entradas más antiguas). */
@@ -58,6 +60,10 @@ export function sanitizeTrackPreferencePatch(input: unknown): TrackPreferencePat
     // Mismo rango que el reproductor (±180 s, como WuPlay v0.5.0).
     patch.delayMs = Math.round(clamp(raw.delayMs, -180_000, 180_000));
   }
+  if ('audioDelayMs' in raw && typeof raw.audioDelayMs === 'number' && Number.isFinite(raw.audioDelayMs)) {
+    // Retardo de audio por vídeo (NuvioTV: AudioDelayRouteDataStore, ±60 s).
+    patch.audioDelayMs = Math.round(clamp(raw.audioDelayMs, -60_000, 60_000));
+  }
   if ('speed' in raw && typeof raw.speed === 'number' && Number.isFinite(raw.speed)) {
     patch.speed = clamp(raw.speed, 0.25, 4);
   }
@@ -78,12 +84,13 @@ export function upsertTrackPreference(
     ...patch,
     updatedAt: now,
   };
-  const { audioLanguage, subtitleKey, subtitleLanguage, delayMs, speed } = merged;
+  const { audioLanguage, subtitleKey, subtitleLanguage, delayMs, audioDelayMs, speed } = merged;
   const hasAnything =
     (audioLanguage ?? '') !== '' ||
     subtitleKey !== undefined ||
     (subtitleLanguage ?? '') !== '' ||
     (delayMs ?? 0) !== 0 ||
+    (audioDelayMs ?? 0) !== 0 ||
     (speed ?? 1) !== 1;
   return hasAnything ? merged : null;
 }
