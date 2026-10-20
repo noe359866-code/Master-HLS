@@ -76,7 +76,34 @@ jobs:
           "$SM" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
 
       - name: Compilar APK debug
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          LOG="$RUNNER_TEMP/gradle-build.log"
+          if ./gradlew :app:assembleDebug --no-daemon --stacktrace > "$LOG" 2>&1; then
+            tail -n 20 "$LOG"
+            exit 0
+          fi
+          tail -n 60 "$LOG"
+          # Los logs de Actions no siempre son legibles desde fuera: se publica
+          # el resumen del error como anotacion del check (legible via API).
+          python3 - "$LOG" <<'PYEOF' >> "$GITHUB_STEP_SUMMARY"
+          import sys, urllib.parse
+          path = sys.argv[1]
+          lines = []
+          with open(path, errors="replace") as fh:
+              for line in fh:
+                  line = line.rstrip()
+                  if line.startswith("e: ") or line.startswith("error:") or "What went wrong" in line or line.startswith("> Task") and "FAILED" in line:
+                      lines.append(line)
+          lines = lines[:60] or ["(sin lineas e:/error en el log)"]
+          msg = "\n".join(lines)[:60000]
+          print("::error::" + msg.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+          print("### Errores de compilacion")
+          print("```")
+          print(msg)
+          print("```")
+          PYEOF
+          exit 1
 
       - name: Tests unitarios Kotlin
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
