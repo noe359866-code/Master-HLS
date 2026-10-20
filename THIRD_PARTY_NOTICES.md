@@ -49,6 +49,15 @@ attribution:
 
 Keep that NOTICE file next to the module if you reuse it.
 
+## Radarr and the Servarr ecosystem
+
+[`reference/radarr/`](reference/radarr/README.md) and
+[`reference/ecosystem.md`](reference/ecosystem.md) contain **only** documentation,
+links and an example `docker-compose.yml`. No Radarr source code is vendored
+here, so no GPL obligation is added by those files. Radarr itself is GPL-3.0
+(<https://github.com/Radarr/Radarr>); the example compose file follows the
+publicly documented parameters of the `linuxserver/radarr` image.
+
 ## Trademarks
 
 "WuPlay", "NuvioTV", "Stremio", "Android TV", "Google TV" and "Fire TV" are

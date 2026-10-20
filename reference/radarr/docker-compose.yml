@@ -1,0 +1,23 @@
+# Radarr — ejemplo mínimo basado en la documentación de linuxserver/radarr
+# https://docs.linuxserver.io/images/docker-radarr/
+#
+# No forma parte de WuPlay: es solo una configuración de referencia.
+# Ajusta PUID/PGID/TZ y las rutas antes de usarlo.
+
+services:
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Managua
+    volumes:
+      - ./data:/config
+      # Biblioteca y descargas: usa rutas reales del host.
+      # Mismo sistema de archivos en ambas para permitir hardlinks.
+      - /srv/media/movies:/movies
+      - /srv/media/downloads:/downloads
+    ports:
+      - "127.0.0.1:7878:7878" # solo accesible desde el propio host
+    restart: unless-stopped
