@@ -1,0 +1,849 @@
+# Changelog
+
+Please consider donating to the project :-)
+
+https://ko-fi.com/wuplaydev
+
+Discord https://discord.gg/PvZjHVGtE9
+
+Downloader code 5781040
+
+GitHub https://github.com/wuplayapp/wuplay-releases
+
+## v0.9.3-beta
+
+The two headlines for this release are:
+1. Increased fluidity while scrolling
+2. Preview thumbnails during fast-forward and rewind (what? no way. he didn't did he? oh yes he did.)
+
+### New Feature
+- Preview thumbnails: see a frame of the video while rewinding or fast-forwarding (experimental, english only for now, new setting, on by default)
+
+### Added
+- Player: Confirm seek with OK. After skipping left or right, playback waits at the new position until you press OK; Back cancels (new setting, off by default, Settings > Interface > Player)
+- The "Can't reach Wuplay servers" screen now runs a network check and sends a diagnostic report, for help with troubleshooting 
+
+### Changed
+- Smooth scrolling: holding left or right glides through a row, and holding up or down glides down poster-row screens
+- The hero area now updates once you settle on a card instead of on every card you pass (the previous method could cause jitter)
+- Episode long-press menu: Streams is now the first item
+- Every number (player clock, Ends at, counts, seasons, ages, slider values) now uses standard digits in every language
+
+### Fixed
+- Upcoming and premiere date badges were a day behind in Europe and other regions east of the Americas
+- Startup could hang and fail to reach Wuplay servers on networks that advertise IPv6 but can't route it
+- Some custom-built Android boxes were wrongly shown the "phone or tablet" notice and couldn't open the app
+- Wuplay home screen could load with nothing focused (first D-pad press jumped somewhere random)
+- Player: holding a seek no longer dims the screen and pulses the logo as if buffering
+- Dialogs left a thin undimmed strip along the edge of the screen on some devices
+- Pulsing logo now appears when changing streams from in-player stream picker
+
+## v0.9.2-beta
+
+The headline for this release is Recommended by Wuplay, a personal recommendations catalog built from what you watch and rate. The more titles you rate, the better it gets. The player's audio and subtitle pickers also get a new look, and every supported language is fully translated again.
+
+### New Feature
+- Recommended by Wuplay: personal recommendations (no third-party required)
+
+### Added
+- Good / Bad Recommendation on the long-press menu of Recommended by Wuplay rows (bad picks are removed for good)
+- New My Stuff catalogs: Liked by You, Loved by You
+- Person screen: filter filmography by role (Acting, Directing, Writing and more)
+- Posters of upcoming shows now show the premiere date ("Premieres Today" on the day)
+- New preset catalogs: Upcoming Movies, Upcoming Shows
+- Player: Settings tab in the audio and subtitle pickers (preferred languages, Clean SDH, subtitles only for foreign audio)
+- Profiles: Remove from Device no longer needs the PIN (offered after a wrong PIN)
+
+### Changed
+- Player: Redesigned audio and subtitle pickers, matching the stream picker
+- Focused rows in pickers and drawers are outlined instead of filled, for better readability
+- Episode and season ratings show a simple star instead of the IMDb badge
+- Details: shows that haven't premiered yet show their premiere date and keep the Play button
+- Details: watchlist button uses a bookmark icon
+- Similar Titles: new engine for better matches
+- TMDB catalog filter: Release Status now available for shows
+- Installing the TV app on a phone or tablet now shows a notice instead of an app that won't open
+
+### Fixed
+- Playback failed on some devices whose audio output doesn't support Dolby Digital (now falls back to standard audio)
+- Importing a PIN-protected profile could skip the PIN prompt
+- Episodes watched on Trakt or Simkl could be marked on the wrong episode when TVDB and TMDB numbering differ
+- Stream picker: pressing right on an addon filter could land on the wrong list or row
+- Details: Back from a similar title now returns to the Similar Titles view
+- Newer screens and settings are now translated in every supported language
+- Screen names like Genres now translate on custom screens too
+- Some languages were missing from Android's per-app language setting
+- IMDb ratings now use standard digits in every language
+
+## v0.9.1-beta
+
+This is a really big release with lots of visual changes, so you're either going to love it or hate it. This is the second round of the UI redesign. There will be at least one more, primarily focusing on the player screen. 
+
+### New Feature
+- New details screen (default; gear icon switches back to classic)
+
+### Added
+- Details: full-screen Episodes, Cast & Crew, Similar Titles and Streams views
+- Details: expanded info card with studios, networks, keywords, release dates, budget, revenue, country and language
+- Details: keyword, studio and network chips open a browse screen for that keyword, studio or network
+- Details: Trakt reviews with sort and hide-spoilers options
+- Details: title ratings (Not for me / I like this / Love this!)
+- Details: Quick Settings drawer (episode source, blur unwatched thumbnails, auto-play addon, max bitrate)
+- Details/Player: Redesigned stream picker
+- IMDb rating on each episode and season (refreshed daily)
+- Malayalam language support
+- Frost UI: second round (long-press menu icons, sectioned search settings drawer, glass player error dialog)
+
+### Changed
+- Suggested keywords are age-graded (kids / 13+ / 17+) instead of all-or-nothing
+- Single-catalog hubs: media filter and gear move above the grid; the one-item catalog list is hidden
+- All Movies and All Shows from My Stuff can now be shared in screen/hub
+
+### Fixed
+- Kids profiles no longer get grown-up keyword suggestions
+- Clean SDH left stray punctuation after stripping speaker names (Arabic SDH files)
+- A second media filter/gear band could appear on hub screens
+- Player: pulsing logo no longer shows behind an open modal
+- Grid layout: addon catalogs load more titles as you scroll
+
+## v0.9.0-beta
+
+The headline for this release is two-fold. First, community sharing is live (screen and hubs to start). I think this is going to be an awesome feature and I can't wait to see what the community does with it.
+
+Next is the first round of UI updates. More UI elements will be updated over the next few weeks. There is a new setting to disable the new "Frost" UI if you want to keep it minimal.
+
+### New Feature
+- Community sharing: screens and hubs with more to come
+
+### Added
+- Frost UI: first round of changes
+- Recovery email: recover lost profile key (web config > settings > profile)
+- Create a custom hub using a system hub as a starter
+
+### Changed
+- Term change: Hub cards are now Hub folders
+- Content filters disabled in native search by default for newly created profiles
+- Web Config UI polish
+
+### Fixed
+- Some Arabic subtitles display gibberish
+- Increased localization translation coverage across multiple languages 
+
+## v0.8.3-beta
+
+This update has a little something for everyone. There are no big flashy new features as it mainly focuses on metadata and content discovery. The TVDB implementation is a structural change. There will be bugs. They will be fixed.
+
+### Added
+- Season and episode level cast and crew
+- New setting: Preferred addon for auto-play (playback settings screen)
+- TVDB as primary provider for season/episode data (w/override per show)
+- MDBList recommendations
+- Quick settings gear icon to season/episode list on details screen
+- New setting: Dolby Digital Conversion which transcodes non-AC3 multichannel audio to AC3 for increased device compatibility (device settings screen)
+- New subtitle style setting: opacity
+- New subtitle colors: green, gray
+- New preset catalogs: Latest in Theaters (movies), Trending Today (movies/shows/all)
+- New TMDB catalog filter: runtime
+- Mark Episode Watched to continue watching long press menu
+- New general presets: subgenres
+
+### Changed
+- Poster card long-press "Don't Show Again" changed to "Hide Everywhere" with confirmation dialog 
+- Cinemeta general presets have been deprecated
+- Ratings are now updated daily for titles released within the last 2 years
+- Unsupported audio tracks are now transcoded to AC-3 instead of failing
+- Updated preset catalogs: Latest on Digital (formerly New Movies), Latest Shows (formerly New Shows TMDB), Trending This Week (formerly Trending Movies/Shows TMDB)
+- Expanded deeplinking support for third-party launchers
+
+### Fixed
+- Third-party addon catalogs now respect media type filter if they are tagged properly as movie|series
+- Trailers fixed (for now, YT may block again in future)
+
+## v0.8.2-beta
+
+The headline of this release is Simkl and MDBList integration. These are initial releases and will be refined over the next few updates. You can technically have all 3 providers connected at the same time but my recommendation would be to pick one and stick with it.
+
+### New Feature
+- MDBList integration
+- Simkl integration
+
+### Added
+- New setting: Show subtitles only for foreign audio (AndroidTV > Settings > Playback)
+
+### Changed
+- My Stuff screen can now be customized like any other screen (re-arrange catalogs, layout, etc)
+- Media type filter chips do a better job of hiding catalogs that don't contain any titles matching the selected filter (the way the old discover screen worked)
+
+### Fixed
+- Manifest urls with querystrings now work
+- Unwatch now works for trakt integration (and simkl/mdblist)
+
+## v0.8.1-beta
+
+The headline for this release is Custom Hubs. When you add this to the recently released Custom Screens and the existing Native Catalog System, you can now turn Wuplay into pretty much anything you want.
+
+NOTE: Sharing features are coming. This will allow you to show off your custom screens and hubs and share them with the Wuplay community. Start building now so you will be ready when the sharing feature launches.
+
+### New Feature
+- Custom hubs: Web Config > Hubs > Add
+
+### Added
+- New hub: Movie Collections
+- Networks filter to native TMDB catalog filters
+- New native catalog type: Movie Collection (TMDB collection)
+- Support for addons hosted on local network (local IP)
+
+### Changed
+- Dpad right on last column of grid now loops to the next row
+- Watch Next continue watching row on Android TV home (and custom launchers) now shows landscape cards instead of poster cards
+- Movies/Shows/All media type filters no longer auto fire on focus, This prevents you from accidentally changing the media type filter while navigating to the gear icon
+
+### Fixed
+- My Stuff lists were not showing poster images on grid layout
+- Media type filter would reset to All on layout change
+- Selected catalog/hub item not retained on layout change
+- DASH based streams would cause hard app crash
+- Localized poster images from addon catalogs are no longer swapped to TMDB localized posters
+- Title with missing metadata could cause app crash on play button click
+- Filmography not sorted properly when sorted by release date
+- Some live streams were showing error message of container not supported
+- Subtitles on/off flag now set at tv show level instead of episode level so if you turn off subs in one ep, they will be off in other eps for the same show
+
+
+## v0.8.0-beta
+
+There are a couple of exciting new features in this release: custom screens and layout options. 
+
+There is also another terminology change. Web config > Sidebar is now Screens. Terminology changes are part of the beta process and will settle down soon.
+
+### New Feature
+- Custom screens (Web Config > Screens)
+- Screen/hub layout choices: poster rows, grid, filter chips
+
+### Added
+- Dedicated hubs tab in web config (custom hubs are coming soon)
+- Estonia language support
+- New setting: confirm dialog on app exit (default is on)
+
+### Changed
+- Terminology change: Sidebar > Screens
+- Discover is no longer part of the default screens on new profile create
+- Subtitle tracks are now sorted by preferred subtitle languages first, app language second, and alpha for the remaining
+
+### Fixed
+- When a shared addon was deleted, it would not fully delete from managed profiles that it has been shared with
+- Subtitle offset +/- controls were reversed
+- Non-English metadata fixes
+
+
+## v0.7.5-beta
+
+This update is mainly UI refinements and performance optimizations
+
+### Added
+- Metadata now shows on grid screens
+
+### Changed
+- Genre hub cards are localized for non-english languages (reverted to previous handling)
+- Grid poster cards now honor poster size setting
+- UI polish and performance optimization
+- Boring backend optimizations
+
+### Fixed
+- Digital release only content filter is now honored on new genres/decades screens
+
+
+## v0.7.4-beta
+
+### Added
+- New Decades screen
+- New Decades hub
+- Ability to manage sidebar items in web configurator
+- Stylized genre hub cards on home screen
+- New streaming services: Binge, SBS On Demand
+
+### Changed
+- Web Config > Layout is now Web Config > Sidebar (you'll see why)
+- Removed anime from all genres except anime
+- Genres screen list and grid now honor existing "Back scrolls to row start" interface setting.
+
+### Fixed
+- Better error reporting for random incompatible stream errors
+- Minor search engine bugs and tuning
+- "Do not show again" on search and genre screens did not immediately hide the title
+- Preferred subtitle lang of pt-BR was not properly using embedded subtitles
+
+
+## v0.7.3-beta
+
+### Added
+- New Genres screen
+- New genres: reality and anime
+- Lithuania to preferred subtitle and audio languages
+
+### Changed
+- Modified trakt scrobble flow to reduces api calls to trakt
+- Anime no longer shows in Animation genre
+
+### Fixed
+- No compatible streams error when resuming a stream that has a cached link that is expired or otherwise returns an error
+- FLAC audio tracks are unstable in exoplayer so they are now transcoded
+- Naving to a similar title detail page then using remote back took you all the way back to the top level screen
+- Playing next episode from continue watching was not honoring binge group
+
+
+## v0.7.2-beta
+
+This update contains some key terminology changes (you'll live, I promise)
+
+### Added
+- Long press on backspace clears entire search query (native search screen)
+- New keyword catalog type. Web Configurator > Layout > Add
+- Include/exclude keywords in TMDB native catalogs
+- Exclude keywords and genres in content filters (formerly catalog filters)
+- "Copy url" drawer option for mdblist and trakt based catalogs in the layout tab
+- Avg runtime to show detail page
+
+### Changed
+- App-wide terminlogy changes: Series > Shows, My Lists > My Stuff, Catalog Filters > Content Filters
+- More polish and refinements to the native search screen
+- Deprecated the filmography min votes setting, uses global content filters min votes instead
+- DV7 to HDR conversion forced when setting is enabled even if device advertises support
+
+### Fixed
+- Another Fire TV bug that prevented users from doing multiple voice searches without navigating away from the search screen then back again 
+- Filmography row edge case bug that caused app crash
+- Edge case where playback would get stuck and required an additional dpad left/right tap to get unstuck
+- Mbps was not displayed in player screen when resuming from cached link
+
+
+## v0.7.1-beta
+
+### New Feature
+
+### Added
+- Long press poster menu on native search screen
+
+### Changed
+- Search history chips no longer auto fetch results, use remote enter instead
+- Polish and refinements to the new native search screen
+
+### Fixed
+- Stream picker addon chips not scrolling properly
+- Several focus system bugs on new native search screen 
+
+## v0.7.0-beta
+
+The headline for this release is the new native search feature. This is the initial release of a major feature so you can expect minor changes over the coming of weeks.
+
+### New Feature
+- Native search, no addons required
+
+### Added
+- New adult titles catalog filter (Web Config > Settings > Catalog Filters > General)
+
+### Changed
+- Web config: Privacy & Data tab moved to Settings
+- UI: Narrower sidebar and less padding. The result is a wider content area.
+
+### Fixed
+- Croatian (and other Serbo-Croatian, Indonesian, and Norwegian) subtitles and audio tracks not being detected or auto-selected when tagged with combined language codes
+- Subtitles button sometimes not displayed in player
+
+
+## v0.6.7-beta
+
+Hotfix release — bug fixes only.
+
+### Fixed
+- Wrong episode playing when advancing to next episode or manually choosing an episode
+- Error message when trying to advance to the next episode
+
+## v0.6.6-beta
+
+### Added
+- Español (México) and "Português (Portugal) languages
+- AMC+ to Streaming Services
+
+### Changed
+- Reduced time-to-first-frame when resuming a stream
+- Episode card will show series background when episode background is unavailable
+- Episodes auto load on season chip change instead of having to press enter (detail screen)
+
+### Fixed
+- Some series weren't correctly showing in watch history
+- Poster row scrolling could be laggy on some devices
+- Hub logos sometimes showed as white rectangles
+
+## v0.6.5-beta
+
+### New Feature
+- Don't Show Again: the ability to hide titles in catalogs app-wide (new long press menu item)
+- Are You Still Watching? (new setting, default 3 episodes)
+
+### Added
+- Search history
+- Bulk-add addon catalogs to home/discover screens (web config > layout)
+- Bulk-remove catalogs from home/discover screens (web config > layout)
+
+### Changed
+- Audio track picker now includes technical details
+- Subtitle min. size reduced from 50% to 25%
+- Subtitle max. offset increased from 30% to 95%
+
+### Fixed
+- Skipping forward/backward in player could trigger some addons to hit rate limits
+- Some addons with valid streams were throwing 403 errors
+
+
+## v0.6.4-beta
+
+### New Feature
+- Autoplay trailers (new setting, disabled by default)
+
+### Added
+- View Details and View Trailer added to poster long-press menu
+- Ability to change addon names
+- Option to disable stream auto fallback (new setting)
+- Adjustable stream auto fallback delay (new setting)
+- New global catalog filters: digital release only, min vote, min rating (Webconfig > Settings > Catalog Filters)
+
+### Changed
+- Last played stream now tracked on filename instead of result index
+- You can now mark a movie watched/unwatched without first clearing the current watch progress
+
+### Fixed
+- My Lists based rows in Discover screen were showing blank posters.
+- Tunneled playback would get stuck on loading screen
+- Race issue that would cause continue watching items from one profile to appear in another profile on the same device.
+- Keyboard would take a long time to display on search screen when many or slow search addons were installed
+- Playback could get stuck on flashing logo screen when seeking forward/backward
+- Preferred audio language of original language was not always honored when played from continue watching row. 
+
+## v0.6.3-beta
+
+### Added
+- Dolby Vision profile 7 to HDR fallback (new setting, enabled by default)
+- Catalog filters now apply to hubs, presets, mdblist, and trakt native catalogs (set in web config > settings > catalog filters)
+- Gujarati and Marathi languages to catalog filters
+
+### Changed
+- New trailer implementation that will hopefully fix the random issues some users have reported as well as increase quality and speed
+- Removed Import Data option in web config privacy & data tab (may return in future)
+- Information-based stream cards now show in the stream picker. (ie aioratings, stremshare)
+- Webconfig change: added Settings > Catalog Filters. Global filters, currently only language and country but more will be added
+- Re-designed add/edit addon UI in web config
+- Some anime series now display both relative and absolute episode numbering (ie hunter x hunter, one piece)
+
+### Fixed
+- More anime fixes (damn you one piece)
+
+## v0.6.2-beta
+
+### New Features
+- IntroDB integration: skip intro, recap, outro when available
+
+### Added
+- Subtitle track ID to subtitle picker (if present)
+- Vietnamese language localization. 
+
+### Changed
+- Series level cast and crew now shows directors and producers as well as episode count for all cast and crew (make take up to 7 days to fully propagate, immediate with clear app cache)
+- Switched positions of the random episode button and the trailer button for series on the detail screen
+- Total episodes displayed on detail screen in addition to total seasons
+- Added an original language option to preferred audio language settings
+- Option to show indicators on unfocused posters (new setting)
+- Removed cancel button from next episode popup (use back button instead)
+- Upcoming Schedule now requires at least one fully watched episode for a show to appear (matches trakt Up Next logic)
+- Organized interface settings screen into sections
+- Option to only show next episode on upcoming schedule instead of all future episodes. (new setting)
+
+### Fixed
+- "Coming Soon" was not being displayed on the collection and search screens for unreleased upcoming movies
+- Poster ratings did not show correctly for search results and filmography (person screen)
+- Some third-party addon catalogs were showing as empty
+- Episode cards were not being blurred in player screen episode list (when blurred setting is enabled)
+- Age restrictions: setting max age to young child (0-7) was letting US PG rated movies slip through (users with age restricted profiles should clear app cache, not needed for non age restricted users)
+- Badly behaving addons that mark series incorrectly as movies
+- Some poster images and backdrops were not being updated properly
+- Edge case where a dropped show would later reappear in the upcoming schedule 
+
+## v0.6.1-beta
+
+### Added
+- New native TMDB catalogs with 10 filters (unlimited custom catalog options)
+- Bulgarian language option for subtitles
+- Ability to filter MDBList, Trakt, and My Lists based catalogs by type (mixed, movies only, series only)
+- Settings for catalog languages and catalog countries to filter native catalogs
+- Saved collections can now be added to home and discover screens
+- New permission in Profile Manager to hide profile key and QR code in Android TV app
+
+### Changed
+- Added filtering to latest release catalogs in Hubs to produce higher quality results
+- When the stream picker is open, D-pad left and right now cycles through the individual addon chips
+- Person page now loads faster for non-age restricted profiles
+
+### Fixed
+- Hero content was rendered on the search screen even if all results were filtered out by age restrictions
+- Some anime seasons were not being divided properly
+- Advancing to the next episode would show the previous episode's subtitles
+- Season 0 episodes no longer show in upcoming schedule row.
+- Upcoming schedule card would show the wrong number of days in the count down badge for some time zones. (hopefully finally fixed)
+
+## v0.6.0-beta
+
+### New Features
+- Profile Manager: new web configurator feature for managing multiple profiles from a single interface (new menu tab)
+- Age Restrictions: Set age restrictions per profile in web configurator settings screen (new menu tab)
+
+### Added
+- Sinhala language to preferred subtitle languages
+- Hungarian language localization
+
+### Changed
+- Moved episodes button under the play button on the detail screen
+- Increased localization coverage for app UI elements
+- You can now update your profile display name, avatar, theme color and pin from the web configurator settings screen (new menu tab). 
+- More detailed error messages on stream failover
+
+### Fixed
+- Subtitle color could not be set in RTL language mode
+- Some unsupported streams that previously failed over quickly were getting stuck and causing long delays before failover to next stream
+- Enter button on some third-party remotes was not working 
+- Long press button release could accidentally select first item in context menu for some third-party remotes.
+- More formatting cleanup of .ass subtitles (proper .ass support in future update)
+- Some specialty anime addon catalogs were not showing as expected. 
+- Upcoming schedule card would show the wrong number of days in the count down badge for some time zones. 
+- Switching episodes in player screen did not always honor autoplay first stream setting
+- Some series were not showing episodes on detail screen when using a kitsu id instead of imdb id or tmdb id
+
+## v0.5.5-beta
+
+### Added
+- New 16:9 launch icon - shoutout @Branding_Brevity on discord (android tv device reboot required to see new version)
+- Setting to enable tunneled playback
+- Setting to show today's airing episode in Continue Watching instead of Upcoming Schedule
+- New subtitle style settings
+- Subtitle style settings in player screen with preview
+- Trakt icon on recommended movies and recommended series catalogs
+- New streaming services
+
+### Changed
+- In Continue Watching and Upcoming Schedule, focusing on an episode now shows the episode information in the hero area instead of the series information (new setting)
+- Consolidated several settings screens into a new Configuration settings screen
+- Continue Watching row now shows episode thumbnails instead of series-level thumbnails (new setting)
+- Show embedded subtitle track names (e.g. "English — Signs / Songs", "English — Dialogue") so multiple same-language tracks are distinguishable in the picker
+- Stream picker now honors line breaks in description
+- Discover screen now shows chips for media types that are not movie or series
+
+### Fixed
+- Videos would start in a paused state on some Android TV devices when frame rate matching is enabled
+- Future episodes with no release date were showing in the upcoming schedule and continue watching
+- Third-party addon catalog pagination getting stuck on discover screen
+- Cleaned up .ass subtitles that were displaying gibberish
+- Movie catalogs were showing on series and series catalogs were showing on movies in the Discover screen
+- Stream timeout setting greater than 45 seconds was not being honored
+
+## v0.5.4-beta
+
+### New Features
+- Google Home Integration: Nearby devices like Google Nest displays and the Google Home app now show and control what's playing, and Google Home speakers can control playback by voice ("Hey Google, pause")
+
+### Added
+- Option for back button to scroll to first poster/card in row instead of navigation drawer (new setting)
+- Ability to reorder catalogs within hubs
+- New streaming services
+- Setting to control whether newly aired episodes show in continue watching
+- Brazilian Portuguese added to subtitle languages
+- Ability to play random episodes of a series
+- Setting to control the size of landscape cards and poster cards
+
+### Changed
+- All player controls are now dimmed to match subtitles when in HDR mode
+- In-player modals now hide the rest of the player controls on open
+- Player screen now shows logo instead of text title (new setting)
+- Updated Dutch translation
+- Dates are now localized based on the user's language region
+- If you close the app while in the player screen, it is no longer reset to the detail screen when you open it again
+- Updated nav menu item styles for higher visibility
+
+### Fixed
+- Error message was displayed for slow-loading catalogs from third-party addons on the discover screen
+- Long pressing the play button for too long to display the stream picker would automatically select the first stream
+- Metadata would not show for titles with a TMDB ID but no IMDB ID
+- Exiting the app from the nav drawer would cause the nav drawer to be open when you opened the app again
+- Newly aired episodes were jumping to the front of continue watching even if other titles had been watched since the episode aired
+- Android 7 devices could not use the in-app updater
+- Remote volume buttons did not control Bluetooth soundbars and some other audio devices while the app was in the foreground
+
+## v0.5.3-beta
+
+### Added
+- Localization for genre hub cards and hub detail screen catalog titles
+- Added support for TV addons (not IPTV)
+- Trakt-style drop show feature that removes a show from the continue watching row and the upcoming schedule row
+- Stream information on the player screen: resolution, Dolby Vision/HDR, audio codec, and avg bitrate
+- New streaming services: AsianCrush, BBC iPlayer, BritBox, Kocowa, OnDemandKorea, Viu, Watcha
+- Added unwatched episodes batch to continue watching cards (new setting)
+
+### Changed
+- P2P/torrent streams are now filtered from the streams list so they do not appear
+- Upcoming schedule row now shows all series with watch progress instead of only series from lists
+- Back button during playback now exits the player immediately; if the OSD is showing, back hides it instead (matches convention of major streaming apps)
+- RTL progress bars and player controls updated to LTR to match industry conventions
+
+### Fixed
+- Episodes were being marked as watched in WuPlay but not in Trakt
+- Watching a previously watched episode did not save progress
+- Error message could be displayed over top of a video while it is playing
+- Inaccurate scrobble state sent to Trakt when fast forwarding or rewinding while paused
+- Preset catalogs only showing 20 items on the discover screen
+- TMDB id based search catalogs showing stale metadata
+
+## v0.5.2-beta
+
+### New Features
+- Ratings poster feature (new setting)
+- RTL support app-wide
+- Upcoming schedule row on home screen (new setting)
+
+### Added
+- Localization support for Hindi, Tamil, Telugu, Bengali, Marathi, Arabic (RTL), and Hebrew (RTL)
+- Time remaining on the player screen
+- Release date on future release movies on poster card and detail screen (new setting)
+- Profile-scoped language setting
+- Ability to add multiple instances of the same addon
+
+### Changed
+- Updated list indicator and watched indicator on poster cards to use theme color
+- Made refinements to the Trakt recommendations implementation
+- SDH subtitle clean up now handles speaker labels
+- New episodes of currently airing series now show on continue watching row
+- Stream addon results now show in the same order in the stream picker as they do in the web configurator
+
+### Fixed
+- Frame rate matching did not work as expected when resuming a title
+- Crash in the stream picker when many stream addons are installed
+
+## v0.5.1-beta
+
+### Added
+- Experimental - Aspect ratio control button in player (remove black bars)
+- Recommendations to Trakt sync
+- 13 new streaming services (US, CA, IN)
+- Setting to clean up SDH subtitles
+- Episodes inside the player screen
+- Ability to modify hub items in the layout configurator without having to remove the hub and add it back
+- Number of seasons and series status on the series detail screen
+
+### Changed
+- Minor UI changes to detail screen
+- Episode cards are now infinite scroll — no need to manually switch seasons
+- Increased localization support app-wide
+
+### Fixed
+- App crash when viewing the info screen in the player
+- MDBList catalogs not updating
+- Adding an item to your watchlist from the home screen did not update the watchlist row until navigating away and back
+- Unable to change the default filmography sort order
+
+## v0.5.0-beta
+
+### Added
+- New Feature: Hubs (streaming services, genres, studios)
+- New Feature: Layout, new way of managing content on home and discover screens
+- New Feature: Native catalogs, no need for catalog addons anymore
+- Automatic subtitle dimming for HDR and Dolby Vision content
+- High contrast subtitle style option
+- Catalog caching to improve catalog loading speed. TTL is adjustable in the layout settings screen
+
+### Changed
+- Catalogs are now part of the new Layouts feature
+- Playback-related aspects of the app (play button, etc.) are no longer visible unless a valid stream addon is detected
+- Increased maximum subtitle offset from 10 seconds to 180 seconds
+- Increased maximum stream timeout from 120 seconds to 300 seconds
+
+### Fixed
+- Support for collection-based catalogs
+- App crash when trying to play certain titles for localized users
+- Certain anime series were not being divided into seasons properly
+- Newly added watch list items did not show in the home screen watch list until navigating away and back
+
+### Deprecated
+- Save search results to list
+
+## v0.4.2-beta
+
+### Added
+- Display metadata for similar titles on detail screen
+- Display awards in hero and on detail screen
+
+### Changed
+- Increased memory heap size to prevent out-of-memory crashes
+- Forced subtitles are now shown by default if available
+- Increased robustness of localized metadata
+
+### Fixed
+- App crash on audio track selection in player
+- Broken metadata fetching for anime (Kitsu, MAL) and TVDB catalogs
+- Several crash sites related to the focusing system
+
+## v0.4.1-beta
+
+### Added
+- Device-level setting to specify the maximum bitrate for streams
+- Device-level setting to skip Dolby Vision streams that lack an HDR fallback
+- Device-level setting for stream timeout
+- Remove option added to Continue Watching long-press menu
+- Ability to specify sort order for lists
+- More descriptive error messages on stream playback failure
+- Crash reports are now sent to the backend to help troubleshoot random app crashes
+- Now supports Android SDK version down to 24
+
+### Fixed
+- Home screen crash when a single catalog contained the same item multiple times
+- App crash on the person screen
+- Non-HTTPS (HTTP) streams now supported
+- Single remote back button press during playback no longer exits the player
+- Clearing progress for an episode would mark all episodes in the entire series as unwatched
+
+## v0.4.0-beta
+
+### Added
+- Collections — groups related titles together (e.g., Star Wars collection), powered by TMDB
+- Rotten Tomatoes ratings
+
+### Changed
+- Refactored the cast button in the player to provide information about the item being watched in addition to cast
+- Continue watching row now auto-plays the last played stream (enabled by default, can be turned off in settings)
+
+### Fixed
+- External subtitles were not set based on preferred subtitle language
+- Miscellaneous Trakt integration fixes
+- Miscellaneous fixes to increase robustness of playback
+
+## v0.3.1-beta
+
+### Added
+- "Ends at" time on the player screen
+
+### Changed
+- Switched from displaying text titles to displaying logos
+- Redesigned details screen
+- Miscellaneous changes to improve the robustness of series progress tracking
+- Poster progress bar now only shows when poster is focused
+
+### Fixed
+- Some streams would fail after aggressive seek forward or seek back
+- Stream fallback during playback now resumes from the current position instead of starting from the beginning
+
+## v0.3.0-beta
+
+### Added
+- Trakt integration for scrobbling, watchlist, continue watching, watch history, and personal lists
+- Ability to display lists, including Trakt lists, on home and discover screens
+
+### Changed
+- Updated portions of the web configurator UI
+- Redesigned the continue watching row
+- Style changes to various parts of the UI
+- Refactored Watchlists to Lists
+- Catalog visibility and order is now managed exclusively in the web configurator
+
+### Fixed
+- "Who's Watching" screen was not being displayed as expected
+
+## v0.2.2-beta
+
+### Added
+- Voice search support for non-Gboard keyboard users
+- Redesigned My Lists screen with a setting to switch back to the original design
+- Frame rate matching — automatically switches the display refresh rate to match video content (configurable in Playback settings)
+- Episode information on continue watching row for series
+
+### Fixed
+- Titles were updating their last watched timestamp prematurely
+
+## v0.2.1-beta
+
+### Added
+- Subtitle and Audio track preferred language support for Telugu, Croatian, Serbian and Bosnian languages (user requested)
+- Long-press menu item on episode cards to start over an episode that is currently in progress
+- Ability to change subtitle size and vertical position
+- Long-press menu item on episode cards to manually select a stream when autoplay is enabled
+- Setting to bypass or show the "Who's Watching" screen on app start
+- Default watch list (Favorites) created on new profile creation
+
+### Changed
+- Remote back button out of navigation drawer now directly exits the app instead of dropping into the "Who's Watching" screen
+- Internal scrobbling system changes to more accurately track TV series
+- Restructured parts of the settings screen
+- Refactored portions of the focus system to eliminate occasional focus loss experienced by some users
+
+### Fixed
+- Play progress was being inaccurately created for titles that were never actually played
+- Completed series were still showing in the continue watching row
+
+## v0.2.0-beta
+
+### Added
+- Continue watching row now bypasses the detail screen and goes straight to the player which then honors autoplay setting behavior
+- Meta caching for library items to reduce calls to meta addons
+- Clear progress option in episode card long-press context menu
+- Long-press on Play, Resume, and Start Over buttons to display the stream picker even when autoplay is enabled
+- Enhanced support for TMDB addon
+- Localization support for English, Spanish, Portuguese, French, German, Italian, Russian, Dutch, Polish, Turkish, and Hindi — more languages available on request
+
+### Changed
+- Returning to the app after exiting with the back button now skips the "Who's Watching" screen and goes directly to the home screen for the last active profile
+- Refactored home screen catalog loading to improve speed for slow meta addons
+- Creating a new profile now drops you into the home screen instead of the "Who's Watching" screen
+
+### Fixed
+- Accidentally exiting the app when pressing D-pad left
+- HTML-encoded characters not displaying properly
+
+## v0.1.3-beta
+
+### Added
+- Skip forward and skip back buttons on supported remotes
+
+### Changed
+- Minor UI adjustments
+
+### Fixed
+- Pin protection could be bypassed on app resume
+- Several bugs related to non-English subtitles
+- App crash when watching series with a large number of seasons
+- Subtitle selection now persists across stream restarts
+- Episodes and seasons could not be marked as unwatched
+
+## v0.1.2-beta
+
+### Added
+- Support for Android TV 9 (Pie) and above (previously required Android TV 11+)
+
+### Changed
+- Poster rows use skeleton cards as loading indicators and to prevent screen jumping
+
+### Fixed
+- Non-English metadata was displayed as English
+- Cast and crew returned no results
+- Misc focusing system issues
+- Black screen when trying to exit the app with the remote back button
+
+## v0.1.1-beta
+
+### Added
+- In-app updates
+- Cinemeta as default addon — provides default catalogs, meta, and search (can be disabled in configurator)
+
+### Fixed
+- Back button not exiting the app
+- Search catalogs not returning results for some addons
+- 403 error when trying to add certain addons
+- Several meta-related bugs
+
+## v0.1.0-beta
+
+- Initial beta release
