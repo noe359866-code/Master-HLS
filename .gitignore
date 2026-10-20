@@ -1,0 +1,37 @@
+# Android / Gradle
+*.iml
+.gradle/
+build/
+**/build/
+/local.properties
+local.properties
+local.dev.properties
+.externalNativeBuild/
+.cxx/
+/captures/
+*.jks
+*.keystore
+keystore.properties
+
+# IDE
+.idea/*
+!.idea/.gitignore
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# Python (release tooling)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Logs / temporary output
+*.log
+logs/
+*.tmp
+release-notes.md
+release-note-quality.md
+
+# OS
+Thumbs.db

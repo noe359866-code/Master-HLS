@@ -1,1 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
+contact_links:
+  - name: Download the latest release
+    url: https://github.com/wuplayapp/wuplay-releases/releases/latest
+    about: Grab the latest WuPlay APK from GitHub Releases.
+  - name: Install guide and changelog
+    url: https://github.com/wuplayapp/wuplay-releases#install
+    about: Read the README for install steps and the current changelog.
+  - name: Discord community
+    url: https://discord.gg/PvZjHVGtE9
+    about: Ask usage questions and chat with other WuPlay users.
