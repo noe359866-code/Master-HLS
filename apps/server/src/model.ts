@@ -400,6 +400,11 @@ export interface AppData {
   streamBadges: StreamBadgeConfig;
   /** Salas de watch party (NuvioTV: Party). */
   partyRooms: PartyRoom[];
+  /**
+   * Overrides de URLs base/portal por proveedor (StreamFlix: portalUrl/baseUrl
+   * via UserPreferences con Mutex). Permite rotar espejos sin redeploy.
+   */
+  providerUrls: Record<string, { portalUrl?: string; baseUrl?: string }>;
   settings: AppSettings;
 }
 
@@ -585,6 +590,7 @@ export function normalizeData(data: AppData): AppData {
   (data as { collections?: unknown }).collections ??= [];
   (data as { streamBadges?: unknown }).streamBadges ??= { imports: [] };
   (data as { partyRooms?: unknown }).partyRooms ??= [];
+  (data as { providerUrls?: unknown }).providerUrls ??= {};
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0]?.id ?? '';
   return data;
 }
@@ -611,6 +617,7 @@ export function emptyData(): AppData {
     collections: [],
     streamBadges: { imports: [] },
     partyRooms: [],
+    providerUrls: {},
     settings: { ...DEFAULT_SETTINGS },
   };
 }

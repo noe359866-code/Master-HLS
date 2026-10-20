@@ -1,7 +1,7 @@
 /**
  * Inventario de la carpeta `providers/` de StreamFlix Reborn, no un registro de
- * fuentes reproducibles de Vibe Flix. Corte: main@6dca4ea4ce77a817eb28c332a9c3cfd4d406c7e5
- * (14 oct 2026). `Provider.kt` es la fuente de verdad para `registered` y los
+ * fuentes reproducibles de Vibe Flix. Corte: main@f4aca8672cee225543324b14879c8600da200ea1
+ * (19 oct 2026). `Provider.kt` es la fuente de verdad para `registered` y los
  * flags movies/tvShows; cada archivo aporta `language` y especialización.
  *
  * El idioma es el del catálogo/instancia upstream, NO una garantía de audio.
@@ -10,7 +10,7 @@
  * https://git.gay/streamflix-reborn2/streamflix/src/branch/main/app/src/main/java/com/streamflixreborn/streamflix/providers
  */
 
-export const STREAMFLIX_UPSTREAM_COMMIT = '6dca4ea4ce77a817eb28c332a9c3cfd4d406c7e5';
+export const STREAMFLIX_UPSTREAM_COMMIT = 'f4aca8672cee225543324b14879c8600da200ea1';
 export const STREAMFLIX_PROVIDERS_URL =
   'https://git.gay/streamflix-reborn2/streamflix/src/branch/main/app/src/main/java/com/streamflixreborn/streamflix/providers';
 
