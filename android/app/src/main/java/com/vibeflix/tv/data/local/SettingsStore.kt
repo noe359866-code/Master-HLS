@@ -1,6 +1,7 @@
 package com.vibeflix.tv.data.local
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -21,7 +22,7 @@ private val Context.dataStore by preferencesDataStore(name = "master_hls_setting
  */
 @Singleton
 class SettingsStore @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
 ) {
 
     val maxHeight: Flow<Int> = context.dataStore.data.map { it[MAX_HEIGHT] ?: 1080 }
