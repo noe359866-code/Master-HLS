@@ -1,0 +1,709 @@
+import type {
+  AppSettings,
+  Catalog,
+  CustomHub,
+  CustomScreen,
+  HiddenTitle,
+  Decade,
+  Genre,
+  NetworkEntry,
+  PresetCatalog,
+  OpenSubtitleEntry,
+  SearchHistoryEntry,
+  SidebarItem,
+  SkipIntroResult,
+  HistoryEntry,
+  InstalledAddon,
+  Manifest,
+  MasterInfo,
+  Meta,
+  ProxySubtitleResult,
+  Thumbnail,
+  ProgressEntry,
+  Profile,
+  ProfilePatch,
+  Rating,
+  Stream,
+  Subtitle,
+  Video,
+  TrackPreference,
+  Watchlist,
+  WatchlistItem,
+} from './types';
+import { getAdminToken, getDeviceToken, getParentalPin, setDeviceToken } from './session';
+
+/** Error HTTP con el mensaje del servidor y la marca `requiresPin`. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly requiresPin: boolean;
+  readonly adminRequired: boolean;
+  /** Código de negocio del servidor (p. ej. `parental_blocked`). */
+  readonly code?: string;
+
+  constructor(status: number, message: string, payload?: Record<string, unknown>) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.requiresPin = payload?.['requiresPin'] === true;
+    this.adminRequired = payload?.['adminRequired'] === true;
+    this.code = typeof payload?.['code'] === 'string' ? payload['code'] : undefined;
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getDeviceToken();
+  const adminToken = getAdminToken();
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      'content-type': 'application/json',
+      // Token del dispositivo (biblioteca compartida entre dispositivos).
+      ...(token ? { 'x-vibe-flix-token': token } : {}),
+      // Token de administración (scrapers, ajustes y emisión de vínculos).
+      ...(adminToken ? { 'x-vibe-flix-admin-token': adminToken } : {}),
+      // PIN de desbloqueo parental (solo esta pestaña).
+      ...(getParentalPin() ? { 'x-vibe-flix-parental-pin': getParentalPin()! } : {}),
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let payload: Record<string, unknown> | undefined;
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      payload = undefined;
+    }
+    const message = typeof payload?.['error'] === 'string'
+      ? payload['error']
+      : `${response.status} ${response.statusText}: ${text.slice(0, 200)}`;
+    throw new ApiError(response.status, message, payload);
+  }
+  return (await response.json()) as T;
+}
+
+function query(params: Record<string, string | number | boolean | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+    search.set(key, String(value));
+  }
+  const text = search.toString();
+  return text ? `?${text}` : '';
+}
+
+export const api = {
+  // ------------------------------------------------------------- addon Stremio
+  async manifest(): Promise<Manifest> {
+    return request<Manifest>('/manifest.json');
+  },
+
+  async catalog(
+    type: string,
+    id: string,
+    extra: Record<string, string | number> = {},
+  ): Promise<{ metas: Meta[] }> {
+    const suffix = Object.keys(extra).length
+      ? `/${Object.entries(extra)
+          .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+          .join('&')}`
+      : '';
+    return request<{ metas: Meta[] }>(`/catalog/${type}/${id}${suffix}.json`);
+  },
+
+  async meta(type: string, id: string): Promise<{ meta: Meta }> {
+    return request<{ meta: Meta }>(`/meta/${type}/${encodeURIComponent(id)}.json`);
+  },
+
+  async streams(type: string, id: string): Promise<{ streams: Stream[] }> {
+    return request<{ streams: Stream[] }>(`/stream/${type}/${encodeURIComponent(id)}.json`);
+  },
+
+  async subtitles(type: string, id: string): Promise<{ subtitles: Subtitle[] }> {
+    return request<{ subtitles: Subtitle[] }>(`/subtitles/${type}/${encodeURIComponent(id)}.json`);
+  },
+
+  async search(term: string): Promise<{ metas: Meta[] }> {
+    return request<{ metas: Meta[] }>(`/api/search${query({ q: term })}`);
+  },
+
+  // ----------------------------------------------------------------- addons
+  async addons(): Promise<{
+    addons: InstalledAddon[];
+    catalogs: Catalog[];
+    preferences: Array<{ key: string; order: number; hidden: boolean }>;
+  }> {
+    return request('/api/addons');
+  },
+
+  async installAddon(manifestUrl: string, config?: Record<string, string>): Promise<InstalledAddon> {
+    const body = await request<{ addon: InstalledAddon }>('/api/addons', {
+      method: 'POST',
+      body: JSON.stringify({ manifestUrl, config }),
+    });
+    return body.addon;
+  },
+
+  async removeAddon(id: string): Promise<void> {
+    await request(`/api/addons/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  async refreshAddons(): Promise<InstalledAddon[]> {
+    const body = await request<{ addons: InstalledAddon[] }>('/api/addons/refresh', { method: 'POST' });
+    return body.addons;
+  },
+
+  async saveCatalogPreferences(
+    preferences: Array<{ key: string; order?: number; hidden?: boolean }>,
+  ): Promise<void> {
+    await request('/api/catalogs', {
+      method: 'PUT',
+      body: JSON.stringify({ preferences }),
+    });
+  },
+
+  // --------------------------------------------------------------- perfiles
+  async profiles(): Promise<{ profiles: Profile[]; activeProfileId: string }> {
+    return request('/api/profiles');
+  },
+
+  async createProfile(
+    profile: Partial<Profile> & { currentPin?: string },
+  ): Promise<Profile> {
+    const body = await request<{ profile: Profile }>('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify(profile),
+    });
+    return body.profile;
+  },
+
+  async updateProfile(
+    id: string,
+    patch: ProfilePatch,
+  ): Promise<Profile> {
+    const body = await request<{ profile: Profile }>(`/api/profiles/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+    return body.profile;
+  },
+
+  /** Borrar un perfil protegido exige su PIN (cuerpo o cabecera). */
+  async deleteProfile(id: string, pin?: string): Promise<void> {
+    await request(`/api/profiles/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      ...(pin ? { body: JSON.stringify({ pin }) } : {}),
+    });
+  },
+
+  async activateProfile(id: string, pin?: string): Promise<string> {
+    const body = await request<{ activeProfileId: string }>(
+      `/api/profiles/${encodeURIComponent(id)}/activate`,
+      { method: 'POST', body: JSON.stringify({ pin }) },
+    );
+    return body.activeProfileId;
+  },
+
+  /** Ficha de persona con su filmografia (cast & crew). */
+  async person(name: string, role?: string): Promise<{ name: string; titles: Meta[] }> {
+    return request<{ name: string; titles: Meta[] }>(`/api/person${query({ name, role })}`);
+  },
+
+  /** Titulos similares a partir de un id. */
+  async similar(id: string, type: string): Promise<{ titles: Meta[] }> {
+    return request<{ titles: Meta[] }>(`/api/similar${query({ id, type })}`);
+  },
+
+  // -------------------------------------------------------------- watchlists
+  async lists(profileId?: string): Promise<Watchlist[]> {
+    const body = await request<{ lists: Watchlist[] }>(`/api/lists${query({ profileId })}`);
+    return body.lists;
+  },
+
+  async createList(name: string, profileId?: string): Promise<Watchlist> {
+    const body = await request<{ list: Watchlist }>(`/api/lists${query({ profileId })}`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    return body.list;
+  },
+
+  async deleteList(id: string, profileId?: string): Promise<void> {
+    await request(`/api/lists/${encodeURIComponent(id)}${query({ profileId })}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /** Anade varios titulos a una lista de una vez (guardar resultados). */
+  async addListItems(listId: string, items: WatchlistItem[]): Promise<{ list: Watchlist }> {
+    return request<{ list: Watchlist }>(`/api/lists/${listId}/items/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  },
+
+  async toggleListItem(
+    listId: string,
+    item: WatchlistItem,
+    profileId?: string,
+  ): Promise<Watchlist | undefined> {
+    const body = await request<{ list?: Watchlist }>(
+      `/api/lists/${encodeURIComponent(listId)}/items${query({ profileId })}`,
+      { method: 'POST', body: JSON.stringify({ item }) },
+    );
+    return body.list;
+  },
+
+  // ------------------------------------------------------- historial/progreso
+  async history(profileId?: string): Promise<HistoryEntry[]> {
+    const body = await request<{ history: HistoryEntry[] }>(`/api/history${query({ profileId })}`);
+    return body.history;
+  },
+
+  async pushHistory(
+    entry: { id: string; type: string; name: string; poster?: string; streamName?: string },
+    profileId?: string,
+  ): Promise<void> {
+    await request(`/api/history${query({ profileId })}`, {
+      method: 'POST',
+      body: JSON.stringify(entry),
+    });
+  },
+
+  async clearHistory(profileId?: string): Promise<void> {
+    await request(`/api/history${query({ profileId })}`, { method: 'DELETE' });
+  },
+
+  async progress(profileId?: string): Promise<ProgressEntry[]> {
+    const body = await request<{ progress: ProgressEntry[] }>(`/api/progress${query({ profileId })}`);
+    return body.progress;
+  },
+
+  async saveProgress(entry: Partial<ProgressEntry> & { id: string }, profileId?: string): Promise<void> {
+    await request(`/api/progress${query({ profileId })}`, {
+      method: 'POST',
+      body: JSON.stringify(entry),
+    });
+  },
+
+  // ------------------------------------------ preferencias de pista (Nuvio)
+  /** Pistas/desfase/velocidad recordados para este vídeo. */
+  async trackPref(videoId: string, profileId?: string): Promise<TrackPreference | null> {
+    const body = await request<{ pref: TrackPreference | null }>(
+      `/api/track-prefs/${encodeURIComponent(videoId)}${query({ profileId })}`,
+    );
+    return body.pref;
+  },
+
+  async saveTrackPref(
+    videoId: string,
+    patch: Partial<Omit<TrackPreference, 'updatedAt'>> & { profileId?: string },
+  ): Promise<TrackPreference | null> {
+    const body = await request<{ pref: TrackPreference | null }>(
+      `/api/track-prefs/${encodeURIComponent(videoId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      },
+    );
+    return body.pref;
+  },
+
+  // ------------------------------------------------------------------ ajustes
+  async settings(): Promise<AppSettings> {
+    const body = await request<{ settings: AppSettings }>('/api/settings');
+    return body.settings;
+  },
+
+  async saveSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+    const body = await request<{ settings: AppSettings }>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+    return body.settings;
+  },
+
+  // ------------------------------------------------------------- dispositivos
+
+  /** Estado de vinculacion del dispositivo. */
+  async session(): Promise<{
+    pairingRequired: boolean;
+    adminRequired: boolean;
+    authenticated: boolean;
+    device: { id: string; name: string } | null;
+  }> {
+    return request('/api/session');
+  },
+
+  /** Dispositivos vinculados al servidor. */
+  async devices(): Promise<{
+    pairingRequired: boolean;
+    device: { id: string; name: string; createdAt: number } | null;
+    devices: Array<{
+      id: string;
+      name: string;
+      createdAt: number;
+      lastSeenAt: number;
+      current: boolean;
+    }>;
+  }> {
+    return request('/api/devices');
+  },
+
+  /** Crea un codigo de vinculacion y vincula este dispositivo. */
+  async createPairing(name: string): Promise<{ code: string; expiresAt: number; token: string }> {
+    const body = await request<{ code: string; expiresAt: number; token: string }>('/api/pairing', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    setDeviceToken(body.token);
+    return body;
+  },
+
+  /** Canjea un codigo de vinculacion por el token de este dispositivo. */
+  async claimPairing(code: string, name: string): Promise<{ token: string }> {
+    const body = await request<{ token: string }>('/api/pairing/claim', {
+      method: 'POST',
+      body: JSON.stringify({ code, name }),
+    });
+    setDeviceToken(body.token);
+    return body;
+  },
+
+  /** Desvincula un dispositivo. */
+  async unlinkDevice(id: string): Promise<void> {
+    await request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  /** Valoraciones del perfil activo. */
+  async ratings(): Promise<Rating[]> {
+    const body = await request<{ ratings: Rating[] }>('/api/ratings');
+    return body.ratings;
+  },
+
+  /** Guarda (o quita con `rating: ''`) la valoracion de un titulo. WuPlay v0.9.1: like/dislike/love */
+  async rate(entry: {
+    id: string;
+    type: string;
+    name: string;
+    poster?: string;
+    rating: 'like' | 'dislike' | 'love' | '';
+    genres?: string[];
+  }): Promise<Rating[]> {
+    const body = await request<{ ratings: Rating[] }>('/api/ratings', {
+      method: 'POST',
+      body: JSON.stringify(entry),
+    });
+    return body.ratings;
+  },
+
+  /** Recomendaciones personalizadas segun las valoraciones (WuPlay v0.9.2). */
+  async recommended(params?: { limit?: number }): Promise<Meta[]> {
+    const body = await request<{ titles: Meta[] }>(`/api/recommended${params?.limit ? `?limit=${params.limit}` : ''}`);
+    return body.titles;
+  },
+
+  async recommendedFeedback(id: string, feedback: 'good' | 'bad'): Promise<void> {
+    await request('/api/recommended/feedback', { method: 'POST', body: JSON.stringify({ id, feedback }) });
+  },
+
+  // Hidden titles (WuPlay Hide Everywhere)
+  async hidden(): Promise<HiddenTitle[]> {
+    const body = await request<{ hidden: HiddenTitle[] }>('/api/hidden');
+    return body.hidden;
+  },
+  async hideTitle(entry: { id: string; type?: string; name?: string }): Promise<HiddenTitle[]> {
+    const body = await request<{ hidden: HiddenTitle[] }>('/api/hidden', { method: 'POST', body: JSON.stringify(entry) });
+    return body.hidden;
+  },
+  async unhideTitle(id: string): Promise<HiddenTitle[]> {
+    const body = await request<{ hidden: HiddenTitle[] }>(`/api/hidden/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return body.hidden;
+  },
+  async clearHidden(): Promise<void> {
+    await request('/api/hidden', { method: 'DELETE' });
+  },
+
+  // Preset catalogs & networks (WuPlay Trending/Upcoming)
+  async preset(presetId: string, params?: { type?: string; limit?: number }): Promise<{ metas: Meta[] }> {
+    return request<{ metas: Meta[] }>(`/api/preset/${presetId}${query(params ?? {})}`);
+  },
+  async randomEpisode(seriesId: string, type = 'series'): Promise<{ episode: Video }> {
+    return request<{ episode: Video }>(`/api/random-episode${query({ seriesId, type })}`);
+  },
+  async upcoming(): Promise<{ upcoming: Meta[] }> {
+    return request<{ upcoming: Meta[] }>('/api/upcoming');
+  },
+  async markWatched(entry: { id: string; type?: string; name?: string; poster?: string; season?: number; episode?: number }): Promise<void> {
+    await request('/api/progress', { method: 'POST', body: JSON.stringify({ id: entry.id, type: entry.type, name: entry.name, poster: entry.poster, position: 0, duration: 0, mediaType: 'episode', season: entry.season, episode: entry.episode }) });
+  },
+  // Custom hubs/screens (WuPlay v0.8.0+)
+  async customHubs(): Promise<CustomHub[]> {
+    const body = await request<{ hubs: CustomHub[] }>('/api/custom-hubs');
+    return body.hubs;
+  },
+  async createCustomHub(payload: { name: string; type?: string; genre?: string; keyword?: string; network?: string; preset?: string; layout?: string }): Promise<CustomHub> {
+    const body = await request<{ hub: CustomHub }>('/api/custom-hubs', { method: 'POST', body: JSON.stringify(payload) });
+    return body.hub;
+  },
+  async deleteCustomHub(id: string): Promise<void> { await request(`/api/custom-hubs/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async customScreens(): Promise<CustomScreen[]> {
+    const body = await request<{ screens: CustomScreen[] }>('/api/custom-screens');
+    return body.screens;
+  },
+
+  /** Estado del proveedor de debrid configurado en el servidor. */
+  async debridStatus(): Promise<import('./types').DebridStatus> {
+    const body = await request<{ debrid: import('./types').DebridStatus }>('/api/debrid');
+    return body.debrid;
+  },
+
+  /** Estado de los scrapers nativos (addon de streams del servidor). */
+  async scrapers(): Promise<import('./types').ScraperStatus> {
+    return request<import('./types').ScraperStatus>('/api/scrapers');
+  },
+
+  /** Activa/desactiva los scrapers nativos y sus proveedores. */
+  async saveScrapers(payload: {
+    enabled: boolean;
+    providers: string[];
+    configs: import('./types').ProviderConfig[];
+  }): Promise<void> {
+    await request('/api/scrapers', { method: 'PUT', body: JSON.stringify(payload) });
+  },
+
+  /** Prueba un proveedor de scrapers con un titulo. */
+  async testScraper(payload: {
+    config?: import('./types').ProviderConfig;
+    title: string;
+    year?: number;
+  }): Promise<{ provider: string; sources: Array<{ url: string; quality?: string }>; error: string | null }> {
+    return request('/api/scrapers/test', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  /** Comprueba las credenciales del proveedor de debrid. */
+  async testDebrid(): Promise<{ ok: boolean; message: string }> {
+    return request<{ ok: boolean; message: string }>('/api/debrid/test', { method: 'POST' });
+  },
+
+  // ------------------------------------------------- subtitulos y omitir intro
+
+  /** Segmento saltable (intro/recap) detectado por el servidor. */
+  async skipIntro(params: {
+    type?: string;
+    id?: string;
+    imdbId?: string;
+    season?: number;
+    episode?: number;
+    duration?: number;
+  }): Promise<SkipIntroResult> {
+    return request<SkipIntroResult>(`/api/skip-intro${query({ ...params })}`);
+  },
+
+  /** Busca subtitulos en OpenSubtitles (nativo, sin addon). */
+  async openSubtitles(params: {
+    imdbId?: string;
+    season?: number;
+    episode?: number;
+    lang?: string;
+    q?: string;
+  }): Promise<{ enabled: boolean; subtitles: OpenSubtitleEntry[] }> {
+    return request<{ enabled: boolean; subtitles: OpenSubtitleEntry[] }>(
+      `/api/opensubtitles${query({ ...params })}`,
+    );
+  },
+
+  /** Descarga un subtitulo y devuelve su URL en WebVTT. */
+  async downloadOpenSubtitle(fileId: number): Promise<{ path: string; url: string }> {
+    return request<{ path: string; url: string }>(
+      `/api/opensubtitles/download${query({ fileId })}`,
+    );
+  },
+
+  // ------------------------------------------------- generos, decadas y menu
+
+  /** Generos y decadas de las pantallas de contenido. */
+  async genres(): Promise<{ genres: Genre[]; decades: Decade[]; presets: PresetCatalog[]; networks: NetworkEntry[] }> {
+    return request<{ genres: Genre[]; decades: Decade[]; presets: PresetCatalog[]; networks: NetworkEntry[] }>('/api/genres');
+  },
+
+  async presets(): Promise<{ presets: PresetCatalog[] }> {
+    return request<{ presets: PresetCatalog[] }>('/api/presets');
+  },
+
+  /**
+   * Contenido por genero, decada, keyword, network o texto.
+   */
+  async browse(params: {
+    type?: string;
+    genre?: string;
+    decade?: string;
+    q?: string;
+    skip?: number;
+    keyword?: string;
+    network?: string;
+    studio?: string;
+  }): Promise<{ metas: Meta[]; source: string; total?: number }> {
+    return request<{ metas: Meta[]; source: string; total?: number }>(
+      `/api/browse${query({ ...params })}`,
+    );
+  },
+
+  /** Historial de busquedas del perfil. */
+  async searchHistory(): Promise<{ history: SearchHistoryEntry[] }> {
+    return request<{ history: SearchHistoryEntry[] }>('/api/search-history');
+  },
+
+  /** Anade una busqueda al historial. */
+  async addSearchHistory(term: string): Promise<{ history: SearchHistoryEntry[] }> {
+    return request<{ history: SearchHistoryEntry[] }>('/api/search-history', {
+      method: 'POST',
+      body: JSON.stringify({ term }),
+    });
+  },
+
+  /** Vacia el historial de busquedas. */
+  async clearSearchHistory(): Promise<{ history: SearchHistoryEntry[] }> {
+    return request<{ history: SearchHistoryEntry[] }>('/api/search-history', {
+      method: 'DELETE',
+    });
+  },
+
+  /** Personalizacion del menu de navegacion. */
+  async saveSidebar(items: SidebarItem[]): Promise<{ items: SidebarItem[] }> {
+    return request<{ items: SidebarItem[] }>('/api/sidebar', {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
+    });
+  },
+
+  // --------------------------------------------------------------------- HLS
+  /**
+   * Miniaturas de previsualizacion del salto.
+   *
+   * Sigue `#EXT-X-IMAGE-STREAM-INF` del master y devuelve los recortes ya
+   * calculados (WuPlay v0.9.3 los usa en la barra de progreso).
+   */
+  async thumbnails(url: string, headers?: Record<string, string>): Promise<{
+    thumbnails: Thumbnail[];
+    imageStreams: MasterInfo['imageStreams'];
+    url: string;
+  }> {
+    const encodedHeaders = headers
+      ? btoa(unescape(encodeURIComponent(JSON.stringify(headers))))
+      : undefined;
+    return request(`/hls/thumbnails${query({ url, h: encodedHeaders })}`);
+  },
+
+  /**
+   * Subtitulos externos normalizados por el servidor.
+   *
+   * Resuelve los tres problemas de cargar un subtitulo del addon directamente en
+   * el navegador: formato (SRT/ASS → WebVTT), codificacion (windows-1252/1256 →
+   * UTF-8, con reparacion de mojibake) y CORS. Con `format: 'json'` devuelve las
+   * cues para el renderizador propio, que es el unico que permite desfase,
+   * Clean SDH y cambios de estilo en caliente.
+   */
+  async subtitleProxy(params: {
+    url: string;
+    lang?: string;
+    clean?: boolean;
+    offsetMs?: number;
+    format?: 'vtt' | 'json';
+  }): Promise<{ url: string; text?: string; json?: ProxySubtitleResult }> {
+    const path = `/api/subtitles/proxy${query({
+      url: params.url,
+      lang: params.lang,
+      clean: params.clean === undefined ? undefined : params.clean ? '1' : '0',
+      offset: params.offsetMs,
+      format: params.format,
+    })}`;
+    if (params.format === 'json') {
+      return { url: path, json: await request<ProxySubtitleResult>(path) };
+    }
+    const response = await fetch(path);
+    if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status}`);
+    return { url: path, text: await response.text() };
+  },
+
+  async masterInfo(
+    url: string,
+    options: { headers?: Record<string, string>; maxHeight?: number; audioLang?: string } = {},
+  ): Promise<MasterInfo> {
+    const encodedHeaders = options.headers
+      ? btoa(unescape(encodeURIComponent(JSON.stringify(options.headers))))
+      : undefined;
+    return request<MasterInfo>(
+      `/hls/master${query({
+        url,
+        h: encodedHeaders,
+        maxHeight: options.maxHeight,
+        audioLang: options.audioLang,
+      })}`,
+    );
+  },
+
+  // -------------------------------------------------- colecciones (NuvioTV: Collection)
+  async collections(): Promise<{ collections: import('./types').CollectionDefinition[] }> {
+    return request('/api/collections');
+  },
+  async collectionPresets(): Promise<{ presets: Array<{ title: string; sourceType: string; sourceId: string; mediaType: string; emoji: string; color: string; description: string }> }> {
+    return request('/api/collections/presets');
+  },
+  async createCollection(payload: Record<string, unknown>): Promise<{ collection: import('./types').CollectionDefinition }> {
+    return request('/api/collections', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async deleteCollection(id: string): Promise<void> {
+    await request(`/api/collections/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // -------------------------------------------------- badges (NuvioTV: StreamBadgeRules)
+  async streamBadges(): Promise<{ config: import('./types').StreamBadgeConfig }> {
+    return request('/api/stream-badges');
+  },
+  async saveStreamBadges(config: import('./types').StreamBadgeConfig): Promise<{ config: import('./types').StreamBadgeConfig }> {
+    return request('/api/stream-badges', { method: 'PUT', body: JSON.stringify(config) });
+  },
+  async badgePreview(haystack: string): Promise<{ badges: import('./types').StreamBadge[]; haystack: string }> {
+    return request(`/api/stream-badges/preview${query({ haystack })}`);
+  },
+
+  // -------------------------------------------------- tracking (NuvioTV: TrackingProvider)
+  async trackingProviders(): Promise<{ providers: import('./types').TrackingProvider[] }> {
+    return request('/api/tracking/providers');
+  },
+  async setTrackingProvider(id: string, payload: { connected: boolean; token?: string }): Promise<{ providers: import('./types').TrackingProvider[] }> {
+    return request(`/api/tracking/providers/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  async trackScrobble(action: 'start' | 'pause' | 'stop' | 'seek', event: Record<string, unknown>): Promise<{ action: string; event: string; results: Array<{ providerId: string; ok: boolean; error?: string }> }> {
+    return request('/api/tracking/scrobble', { method: 'POST', body: JSON.stringify({ action, event }) });
+  },
+
+  // -------------------------------------------------- watch party (NuvioTV: Party)
+  async partyRooms(): Promise<{ rooms: import('./types').PartyRoom[] }> {
+    return request('/api/party');
+  },
+  async createPartyRoom(payload: Record<string, unknown>): Promise<{ room: import('./types').PartyRoom }> {
+    return request('/api/party', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async partyRoom(id: string): Promise<{ room: import('./types').PartyRoom }> {
+    return request(`/api/party/${encodeURIComponent(id)}`);
+  },
+  async updatePartyRoom(id: string, patch: Record<string, unknown>): Promise<{ room: import('./types').PartyRoom }> {
+    return request(`/api/party/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
+  },
+  async joinPartyRoom(id: string, payload: { memberId?: string; memberName?: string; position?: number; paused?: boolean }): Promise<{ room: import('./types').PartyRoom; memberId: string }> {
+    return request(`/api/party/${encodeURIComponent(id)}/join`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async leavePartyRoom(id: string, memberId: string): Promise<{ room: import('./types').PartyRoom }> {
+    return request(`/api/party/${encodeURIComponent(id)}/leave`, { method: 'POST', body: JSON.stringify({ memberId }) });
+  },
+  async deletePartyRoom(id: string): Promise<void> {
+    await request(`/api/party/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  // -------------------------------------------------- progreso mejorado (continue watching)
+  async nextUp(contentId: string, season?: number, episode?: number): Promise<{ nextEpisode: { id: string; season: number; episode: number } | null; current: { id: string; season: number; episode: number } | null; isCurrentCompleted: boolean }> {
+    return request(`/api/progress/next-up${query({ contentId, season, episode })}`);
+  },
+};

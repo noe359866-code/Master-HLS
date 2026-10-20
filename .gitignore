@@ -1,37 +1,34 @@
-# Android / Gradle
-*.iml
-.gradle/
+# Dependencias
+node_modules/
+.pnp/
+.pnp.js
+
+# Builds
+dist/
 build/
-**/build/
-/local.properties
-local.properties
-local.dev.properties
-.externalNativeBuild/
-.cxx/
-/captures/
-*.jks
-*.keystore
-keystore.properties
+out/
+*.tsbuildinfo
 
-# IDE
-.idea/*
-!.idea/.gitignore
-.DS_Store
-
-# Kotlin
-.kotlin/
-
-# Python (release tooling)
-__pycache__/
-*.py[cod]
-.venv/
-
-# Logs / temporary output
+# Datos locales del servidor (addons, perfiles, historial)
+/data/
 *.log
-logs/
-*.tmp
-release-notes.md
-release-note-quality.md
 
-# OS
-Thumbs.db
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/.idea/
+*.apk
+*.aab
+*.iml
+
+# Editores / SO
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Entorno
+.env
+.env.local

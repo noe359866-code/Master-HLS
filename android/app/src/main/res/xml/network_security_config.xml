@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  El servidor Vibe Flix se despliega normalmente en la LAN
+  (http://192.168.x.x:8181), por lo que se permite trafico claro.
+  El trafico a Internet sigue usando HTTPS siempre que el addon lo permita.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
