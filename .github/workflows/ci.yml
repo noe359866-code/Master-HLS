@@ -2,16 +2,22 @@ name: CI
 
 on:
   push:
-    branches: ['main', 'arena/**']
+    branches: ['main', 'arena/**', 'fix/**', 'feat/**']
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   node:
     name: Servidor, paquetes y web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -28,17 +34,88 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew
-      - run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      # Las imagenes ubuntu-latest ya traen el SDK de Android preinstalado
+      # (ANDROID_HOME apunta a /usr/local/lib/android/sdk). Antes se usaba
+      # android-actions/setup-android@v3, que rompia el job en las imagenes
+      # nuevas antes de llegar a compilar.
+      - name: Preparar Android SDK
+        working-directory: .
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            SDK=/usr/local/lib/android/sdk
+          fi
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SM" ]; then
+            SM="$SDK/cmdline-tools/bin/sdkmanager"
+          fi
+          if [ ! -x "$SM" ]; then
+            SM="$(command -v sdkmanager || true)"
+          fi
+          if [ -z "$SM" ] || [ ! -x "$SM" ]; then
+            echo "::error::No se encontro sdkmanager. SDK=$SDK"
+            ls -la "$SDK" || true
+            exit 1
+          fi
+          echo "sdkmanager: $SM"
+
+          yes | "$SM" --licenses > /dev/null 2>&1 || true
+          "$SM" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Compilar APK debug
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Tests unitarios Kotlin
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Renombrar APK
+        run: |
+          set -euo pipefail
+          mkdir -p ../artifacts
+          APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)"
+          echo "APK=$APK"
+          cp "$APK" ../artifacts/vibe-flix-tv-debug.apk
+          ls -lh ../artifacts
+
       - uses: actions/upload-artifact@v4
         with:
           name: vibe-flix-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          path: artifacts/vibe-flix-tv-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publicar APK en Releases
+    needs: android
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vibe-flix-debug-apk
+          path: artifacts
+      - name: Crear release con el APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" artifacts/vibe-flix-tv-debug.apk \
+            --title "Vibe Flix TV $TAG" \
+            --notes "APK debug generado automaticamente desde $TAG." \
+            --repo "$GH_REPO"
