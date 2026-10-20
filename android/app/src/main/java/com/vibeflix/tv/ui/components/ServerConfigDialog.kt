@@ -95,27 +95,37 @@ fun ServerConfigDialog(
                     color = Color(0xFF98A2B8),
                 )
 
-                // Fila de accesos rapidos comunes para TVs
+                // Accesos rapidos: esquema/puerto y prefijos habituales de LAN.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    val presets = listOf(
-                        "http://192.168.1." to "http://192.168.1.",
-                        "http://192.168.0." to "http://192.168.0.",
-                        ":8181" to ":8181",
-                        "http://" to "http://",
-                        "https://" to "https://",
-                    )
-                    presets.forEach { (label, value) ->
+                    listOf("http://", "https://", ":8181").forEach { preset ->
                         Button(
                             onClick = {
-                                urlText = if (value.startsWith("http")) value else urlText + value
+                                urlText = urlText + preset
                                 testResult = null
                             },
                             colors = ButtonDefaults.colors(containerColor = Color(0xFF1E283C)),
                         ) {
-                            Text(label)
+                            Text(preset)
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("http://192.168.1.", "http://192.168.0.").forEach { preset ->
+                        Button(
+                            onClick = {
+                                urlText = preset
+                                testResult = null
+                            },
+                            colors = ButtonDefaults.colors(containerColor = Color(0xFF1E283C)),
+                        ) {
+                            Text(preset)
                         }
                     }
                     Button(
