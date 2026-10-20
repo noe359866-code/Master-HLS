@@ -349,10 +349,39 @@ cd android
 - Compose for TV + Media3 (ExoPlayer) + Hilt + Retrofit/Moshi + DataStore.
 - La app **no implementa el protocolo de addons**: consume el servidor como si
   fuera un addon Stremio, igual que harían Stremio, WuPlay o Nuvio.
-- `BuildConfig.DEFAULT_SERVER_URL` apunta a `http://10.0.2.2:8181` (emulador);
-  en un dispositivo real, a la IP LAN del servidor.
+- `BuildConfig.DEFAULT_SERVER_URL` apunta a `http://10.0.2.2:8181` (emulador de
+  Android). En una TV física esa dirección **no existe**, así que la app pide
+  la IP del servidor la primera vez (ver más abajo).
 - La pantalla inicial de perfiles guarda nombre e idioma en el servidor antes
   de entrar; desde Inicio se puede reabrir para cambiar de perfil/idioma.
+
+### Conectar la APK con tu servidor (TV real, TV Box, Fire TV o móvil)
+
+`10.0.2.2` es el alias del PC anfitrión **solo dentro del emulador**. En una TV
+hay que indicar la dirección real del servidor:
+
+1. Arranca el servidor en tu PC: `npm start` (escucha en `0.0.0.0:8181`).
+2. Averigua la IP LAN del PC: `ipconfig` (Windows) o `ip addr` / `ifconfig`
+   (Linux/macOS). Ejemplo: `192.168.1.50`.
+3. En la TV abre **Vibe Flix → ⚙ Servidor** (también aparece en la pantalla de
+   perfiles y en el aviso de error).
+4. Escribe `192.168.1.50:8181` (o elige la URL completa), pulsa
+   **Probar conexión** y luego **Guardar y Conectar**.
+
+La dirección se guarda en el dispositivo con DataStore y se aplica a **todas**
+las peticiones (perfiles, catálogos, fichas, streams, HLS y subtítulos) mediante
+un interceptor de OkHttp, sin reconstruir Retrofit ni reiniciar la app. En la
+primera ejecución, si no hay servidor guardado, el diálogo se abre solo.
+
+También se acepta una **URL pública o remota** (`https://tu-dominio.com`), útil
+para usarla fuera de casa. En ese caso:
+
+- Publica el servidor detrás de HTTPS (reverse proxy con certificado válido) y
+  define `PUBLIC_URL=https://tu-dominio.com` para que las URLs del proxy HLS,
+  del manifest y de los subtítulos salgan con ese dominio.
+- No actives `ALLOW_PRIVATE_HOSTS=1` en un servidor expuesto a Internet.
+- Si hay un proxy inverso con prefijo de ruta (`https://host/vibeflix`), el
+  interceptor conserva ese prefijo al reescribir las peticiones.
 - El wrapper de Gradle **8.14.3** está incluido (`android/gradlew`,
   `android/gradle/wrapper/`), y el catálogo declara `hilt-compiler`. Solo
   hace falta JDK 17 y Android SDK 36.

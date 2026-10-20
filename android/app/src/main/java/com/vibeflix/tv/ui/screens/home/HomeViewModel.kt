@@ -2,6 +2,7 @@ package com.vibeflix.tv.ui.screens.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vibeflix.tv.data.local.ServerConfigStore
 import com.vibeflix.tv.data.remote.dto.CatalogDto
 import com.vibeflix.tv.data.remote.dto.MetaDto
 import com.vibeflix.tv.data.repository.VibeFlixRepository
@@ -20,6 +21,7 @@ data class HomeUiState(
     val rows: List<CatalogRow> = emptyList(),
     /** Secciones visibles segun la personalizacion del menu. */
     val visibleSections: Set<String> = setOf("search", "genres", "decades"),
+    val serverUrl: String = "",
 )
 
 data class CatalogRow(
@@ -30,18 +32,25 @@ data class CatalogRow(
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: VibeFlixRepository,
+    private val serverConfigStore: ServerConfigStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            serverConfigStore.serverUrl.collect { url ->
+                _state.value = _state.value.copy(serverUrl = url)
+            }
+        }
         refresh()
     }
 
     fun refresh() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            val currentUrl = serverConfigStore.getCurrentUrl()
+            _state.value = _state.value.copy(loading = true, error = null, serverUrl = currentUrl)
             try {
                 val catalogs = repository.manifest().catalogs.filter { it.showInHome != false }
 
@@ -68,13 +77,25 @@ class HomeViewModel @Inject constructor(
                     loading = false,
                     rows = rows,
                     visibleSections = visible,
+                    serverUrl = currentUrl,
                 )
             } catch (error: Throwable) {
                 _state.value = HomeUiState(
                     loading = false,
                     error = error.message ?: "No se pudo cargar el catalogo",
+                    serverUrl = currentUrl,
                 )
             }
         }
     }
+
+    fun saveServerUrl(url: String) {
+        viewModelScope.launch {
+            serverConfigStore.setServerUrl(url)
+            refresh()
+        }
+    }
+
+    suspend fun testConnection(url: String): Result<String> =
+        serverConfigStore.testConnection(url)
 }

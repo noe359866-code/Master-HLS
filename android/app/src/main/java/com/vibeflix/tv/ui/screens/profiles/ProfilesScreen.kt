@@ -12,20 +12,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.vibeflix.tv.ui.components.ServerConfigDialog
 
 private val languages = listOf(
     "es-419" to "Español latino",
@@ -50,6 +59,13 @@ fun ProfilesScreen(
     viewModel: ProfilesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showServerConfig by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.autoPromptServerConfig) {
+        if (state.autoPromptServerConfig) {
+            showServerConfig = true
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -59,7 +75,20 @@ fun ProfilesScreen(
             .padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text("VIBE FLIX · PERFILES", style = MaterialTheme.typography.labelMedium, color = Color(0xFF35D6C4))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("VIBE FLIX · PERFILES", style = MaterialTheme.typography.labelMedium, color = Color(0xFF35D6C4))
+            Button(
+                onClick = { showServerConfig = true },
+                colors = ButtonDefaults.colors(containerColor = Color(0xFF151C2C)),
+            ) {
+                Text("⚙ Servidor: ${state.serverUrl.ifBlank { "Configurar" }}")
+            }
+        }
+
         Text("¿Quién está viendo?", style = MaterialTheme.typography.headlineMedium)
         Text(
             "El idioma se guarda en tu perfil junto a tus listas y progreso. " +
@@ -123,10 +152,51 @@ fun ProfilesScreen(
                 Button(onClick = viewModel::back) { Text("Elegir otro perfil") }
             }
         }
-        state.error?.let {
-            Text(it, color = Color(0xFFFF6B7D))
-            Button(onClick = viewModel::reload) { Text("Reintentar conexión") }
+
+        state.error?.let { errorMessage ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF281118))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "⚠️ Error de conexión",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(0xFFFF6B7D),
+                )
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFFFA6B0),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { showServerConfig = true }) {
+                        Text("⚙ Configurar Servidor (IP / URL)")
+                    }
+                    Button(
+                        onClick = viewModel::reload,
+                        colors = ButtonDefaults.colors(containerColor = Color(0xFF361E28)),
+                    ) {
+                        Text("🔄 Reintentar conexión")
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(12.dp))
+    }
+
+    if (showServerConfig) {
+        ServerConfigDialog(
+            currentUrl = state.serverUrl,
+            onSave = { newUrl ->
+                showServerConfig = false
+                viewModel.saveServerUrl(newUrl)
+            },
+            onDismiss = { showServerConfig = false },
+            onTestConnection = { testUrl -> viewModel.testConnection(testUrl) },
+        )
     }
 }

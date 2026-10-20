@@ -18,6 +18,7 @@
  * y devuelve los recortes ya calculados, listos para pintar con CSS.
  */
 
+import type { IncomingMessage } from 'node:http';
 import {
   BlockedDestinationError,
   createGuardedFetch,
@@ -160,7 +161,7 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
     }
   };
 
-  router.get('/hls/proxy', async ({ res, query }) => {
+  router.get('/hls/proxy', async ({ req, res, query }) => {
     const target = query.get('url');
     if (!target) {
       sendJson(res, 400, { error: 'Falta url' });
@@ -196,8 +197,9 @@ export function registerHlsRoutes(router: Router, options: HlsRouteOptions = {})
       }
 
       const text = await readLimitedText(response, maxPlaylistBytes, timeoutMs);
+      const base = publicBase(req);
       const rewritten = rewritePlaylist(text, target, (absolute) => {
-        const proxied = new URL('/hls/proxy', publicBase());
+        const proxied = new URL('/hls/proxy', base);
         proxied.searchParams.set('url', absolute);
         if (encodedHeaders) proxied.searchParams.set('h', encodedHeaders);
         return proxied.toString();
@@ -404,6 +406,17 @@ function parsePreferences(query: URLSearchParams): SelectionPreferences {
   };
 }
 
-function publicBase(): string {
-  return process.env['PUBLIC_URL'] ?? `http://localhost:${process.env['PORT'] ?? 8181}`;
+function isUsableUrl(value: string | undefined): value is string {
+  return Boolean(value) && !value!.endsWith(':0') && !value!.includes('localhost:0');
+}
+
+function publicBase(req?: IncomingMessage): string {
+  const fromEnv = process.env['PUBLIC_URL'];
+  if (isUsableUrl(fromEnv)) return fromEnv.replace(/\/$/, '');
+  const host = req?.headers['host'];
+  if (host) {
+    const proto = String(req?.headers['x-forwarded-proto'] ?? 'http').split(',')[0]?.trim() || 'http';
+    return `${proto}://${host}`;
+  }
+  return `http://localhost:${process.env['PORT'] ?? 8181}`;
 }
