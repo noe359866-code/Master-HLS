@@ -125,15 +125,49 @@ function isUsableUrl(value: string | undefined): value is string {
   return Boolean(value) && !value!.endsWith(':0') && !value!.includes('localhost:0');
 }
 
-function publicBase(req?: IncomingMessage, configuredUrl?: () => string): string {
-  const fromEnv = process.env['PUBLIC_URL'];
-  if (isUsableUrl(fromEnv)) return fromEnv.replace(/\/$/, '');
-  if (isUsableUrl(configuredUrl?.())) return configuredUrl!().replace(/\/$/, '');
-  const host = req?.headers['host'];
-  if (host) {
-    const proto = String(req?.headers['x-forwarded-proto'] ?? 'http').split(',')[0]?.trim() || 'http';
-    return `${proto}://${host}`;
+/** true si el host solo tiene sentido dentro de la propia maquina. */
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+}
+
+function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Base publica con la que se construyen las URLs del manifest y del proxy.
+ *
+ * `PUBLIC_URL` manda cuando esta definido (es lo que el operador ha publicado)
+ * y, si no, la URL configurada. La excepcion es un `localhost` configurado
+ * viendo una peticion remota: una TV en la LAN recibiria `http://localhost`
+ * (su propia TV) y el logo, el manifest o el proxy HLS no cargarian nunca. En
+ * ese caso se usa el `Host` con el que llego la peticion.
+ */
+export function publicBase(req?: IncomingMessage, configuredUrl?: () => string): string {
+  const host = req?.headers['host'];
+  const proto =
+    String(req?.headers['x-forwarded-proto'] ?? 'http').split(',')[0]?.trim() || 'http';
+  const requestBase = host ? `${proto}://${host}` : '';
+  const requestHostname = requestBase ? hostnameOf(requestBase) : null;
+  const requestIsLocal = requestHostname ? isLoopbackHostname(requestHostname) : true;
+
+  for (const candidate of [process.env['PUBLIC_URL'], configuredUrl?.()]) {
+    if (!isUsableUrl(candidate)) continue;
+    const hostname = hostnameOf(candidate);
+    if (hostname && isLoopbackHostname(hostname) && !requestIsLocal) continue;
+    return candidate.replace(/\/$/, '');
+  }
+  if (requestBase) return requestBase;
   return `http://localhost:${process.env['PORT'] ?? 8181}`;
 }
 

@@ -106,7 +106,7 @@ export function registerSubtitleRoutes(
     }
   });
 
-  router.get('/api/opensubtitles/download', async ({ res, query }) => {
+  router.get('/api/opensubtitles/download', async ({ req, res, query }) => {
     const apiKey = getData().settings.opensubtitles?.apiKey ?? '';
     if (!apiKey) {
       sendJson(res, 400, { error: 'Falta la API key de OpenSubtitles' });
@@ -124,8 +124,11 @@ export function registerSubtitleRoutes(
       const name = `os-${fileId}.vtt`;
       await fs.mkdir(cacheDir, { recursive: true });
       await fs.writeFile(path.join(cacheDir, name), subtitle.vtt, 'utf8');
+      const host = req?.headers['host'];
+      const proto = String(req?.headers['x-forwarded-proto'] ?? 'http').split(',')[0]?.trim() || 'http';
+      const base = (publicUrl() && !publicUrl().includes('localhost:')) ? publicUrl() : (host ? `${proto}://${host}` : publicUrl());
       sendJson(res, 200, {
-        url: `${publicUrl()}/api/opensubtitles/file/${name}`,
+        url: `${base}/api/opensubtitles/file/${name}`,
         path: `/api/opensubtitles/file/${name}`,
         cues: subtitle.cues.length,
         format: subtitle.format,

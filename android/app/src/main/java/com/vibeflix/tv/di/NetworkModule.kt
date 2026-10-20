@@ -1,6 +1,8 @@
 package com.vibeflix.tv.di
 
 import com.vibeflix.tv.BuildConfig
+import com.vibeflix.tv.data.local.ServerConfigStore
+import com.vibeflix.tv.data.remote.ServerUrlInterceptor
 import com.vibeflix.tv.data.remote.VibeFlixApi
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -27,7 +29,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttp(): OkHttpClient {
+    fun provideOkHttp(serverUrlInterceptor: ServerUrlInterceptor): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BASIC
@@ -36,6 +38,7 @@ object NetworkModule {
             }
         }
         return OkHttpClient.Builder()
+            .addInterceptor(serverUrlInterceptor)
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -43,9 +46,9 @@ object NetworkModule {
     }
 
     /**
-     * La URL base se fija en tiempo de compilacion; el usuario puede cambiarla
-     * en los ajustes, y en ese caso la app reconstruye el cliente (ver
-     * `ServerConfigStore`).
+     * La URL base por defecto se fija en tiempo de compilación; las peticiones
+     * son reescritas dinámicamente por [ServerUrlInterceptor] según la URL
+     * guardada por el usuario en [ServerConfigStore].
      */
     @Provides
     @Singleton
