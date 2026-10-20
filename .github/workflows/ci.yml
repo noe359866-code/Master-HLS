@@ -96,15 +96,19 @@ jobs:
           errors = [
               line for line in lines
               if line.startswith("e: ")
-              or line.startswith("error:")
+              or "error:" in line
               or "What went wrong" in line
               or ("FAILED" in line and line.startswith("> Task"))
               or line.startswith("Caused by")
+              or line.strip().startswith("symbol:")
+              or line.strip().startswith("location:")
           ]
-          errors = errors[:150] or ["(sin lineas e:/error en el log)"]
+          tail = lines[-120:]
           with open(report, "w") as out:
               out.write("### Error de compilacion del APK\n\n```\n")
-              out.write("\n".join(errors)[:55000])
+              out.write("\n".join(errors[:150]) or "(sin lineas de error reconocibles)")
+              out.write("\n\n--- ultimas 120 lineas ---\n")
+              out.write("\n".join(tail))
               out.write("\n```\n")
           print("::error::APK Android fallo. Detalle en el issue 'CI log Android'.")
           PYEOF
