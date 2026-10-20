@@ -47,7 +47,6 @@ fun PosterRow(
             items(items, key = { it.id }) { meta ->
                 Card(
                     onClick = { onSelect(meta) },
-                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.width(140.dp),
                 ) {
                     AsyncImage(
@@ -69,7 +68,7 @@ fun PosterRow(
 /** Cartel con titulo (util cuando el poster no identifica la pelicula). */
 @Composable
 fun PosterCard(meta: MetaDto, onSelect: (MetaDto) -> Unit) {
-    Card(onClick = { onSelect(meta) }, shape = RoundedCornerShape(12.dp)) {
+    Card(onClick = { onSelect(meta) }) {
         AsyncImage(
             model = meta.poster,
             contentDescription = meta.name,

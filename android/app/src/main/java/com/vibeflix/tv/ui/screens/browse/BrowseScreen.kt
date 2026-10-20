@@ -68,7 +68,6 @@ fun GenresScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(96.dp),
-                    shape = RoundedCornerShape(14.dp),
                 ) {
                     Column(horizontalAlignment = Alignment.Start) {
                         Text(text = genre.emoji, style = MaterialTheme.typography.titleLarge)
@@ -118,7 +117,6 @@ fun DecadesScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(84.dp),
-                    shape = RoundedCornerShape(14.dp),
                 ) {
                     Column(horizontalAlignment = Alignment.Start) {
                         Text(
