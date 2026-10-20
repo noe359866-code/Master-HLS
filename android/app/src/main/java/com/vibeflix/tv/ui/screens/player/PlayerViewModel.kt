@@ -84,6 +84,8 @@ class PlayerViewModel @Inject constructor(
             // `playbackUrl` se limpia para que el reproductor no cargue la URL
             // original y luego la variante: espera a la resolucion del master.
             _state.value = _state.value.copy(loading = true, playbackUrl = null)
+            var segment: SkipSegmentDto? = null
+            var next: NextEpisode? = null
             try {
                 val maxHeight = settingsStore.maxHeight.first()
                 val supportsHdr = settingsStore.supportsHdr.first()
@@ -103,7 +105,7 @@ class PlayerViewModel @Inject constructor(
                 val imdbId = id.substringBefore(':')
                 val season = id.substringAfter(':', "").toIntOrNull()
                 val episode = id.substringAfter(':', "").substringAfter(':', "").toIntOrNull()
-                val segment = runCatching {
+                segment = runCatching {
                     val result = repository.skipIntro(
                         type = type.ifBlank { null },
                         id = imdbId.ifBlank { null },
@@ -114,7 +116,7 @@ class PlayerViewModel @Inject constructor(
                     // Si el usuario lo desactivo en los ajustes, no hay boton.
                     if (result.enabled) result.segment else null
                 }.getOrNull()
-                val next = if (type == "episode") findNextEpisode(id, imdbId) else null
+                next = if (type == "episode") findNextEpisode(id, imdbId) else null
 
                 if (!info.isMaster) {
                     _state.value = _state.value.copy(

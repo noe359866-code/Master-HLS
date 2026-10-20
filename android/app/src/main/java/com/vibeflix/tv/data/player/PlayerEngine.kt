@@ -17,10 +17,8 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -175,7 +173,7 @@ class PlayerEngine(
         }
         if (!subtitleUrl.isNullOrBlank()) {
             val subtitle = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                .setMimeType(MimeTypes.APPLICATION_VTT)
+                .setMimeType("text/vtt")
                 .setLanguage("und")
                 .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                 .build()
@@ -319,7 +317,7 @@ class PlayerEngine(
             .build()
 
         return ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(VibeFlixMediaSourceFactory(cached))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(cached))
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
             .build()
@@ -348,7 +346,8 @@ class PlayerEngine(
             subtitleTracks = collectTracks(C.TRACK_TYPE_TEXT),
             selectedAudioTrack = currentOverride(C.TRACK_TYPE_AUDIO),
             selectedSubtitleTrack = currentOverride(C.TRACK_TYPE_TEXT),
-            subtitlesEnabled = !player.trackSelectionParameters.isTrackTypeDisabled(C.TRACK_TYPE_TEXT),
+            subtitlesEnabled = !player.trackSelectionParameters.disabledTrackTypes
+                .contains(C.TRACK_TYPE_TEXT),
             isEnded = player.playbackState == Player.STATE_ENDED,
         )
     }
@@ -361,7 +360,7 @@ class PlayerEngine(
         groups.forEachIndexed { groupIndex, group ->
             if (group.type != type) return@forEachIndexed
             val override = overrides[group.mediaTrackGroup] ?: return@forEachIndexed
-            val index = override.trackIndex
+            val index = override.trackIndices.firstOrNull() ?: return@forEachIndexed
             if (index !in 0 until group.length) return@forEachIndexed
             val format = group.getTrackFormat(index)
             return TrackOption(
@@ -415,32 +414,5 @@ class PlayerEngine(
 
         /** Frecuencia de actualizacion del estado (ms). */
         const val STATE_POLL_MS: Long = 500L
-    }
-}
-
-/**
- * Fabrica de fuentes de medios con un tratamiento especifico para HLS.
- *
- * `DefaultMediaSourceFactory` no permite ajustar el factory de HLS, asi que
- * aqui se enruta: los `.m3u8` van a [HlsMediaSource] con sus parametros y el
- * resto (mp4, etc.) al factory por defecto.
- */
-@androidx.annotation.OptIn(UnstableApi::class)
-internal class VibeFlixMediaSourceFactory(
-    private val dataSourceFactory: DataSource.Factory,
-) : MediaSource.Factory {
-
-    private val defaultFactory: DefaultMediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-
-    private val hlsFactory: HlsMediaSource.Factory = HlsMediaSource.Factory(dataSourceFactory)
-        .setAllowChunklessPreparation(false)
-
-    override fun createMediaSource(mediaItem: MediaItem): MediaSource {
-        val mimeType = mediaItem.localConfiguration?.mimeType
-        return if (mimeType == MimeTypes.APPLICATION_M3U8) {
-            hlsFactory.createMediaSource(mediaItem)
-        } else {
-            defaultFactory.createMediaSource(mediaItem)
-        }
     }
 }

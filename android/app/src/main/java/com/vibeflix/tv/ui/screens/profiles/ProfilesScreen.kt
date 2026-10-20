@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -25,7 +26,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import androidx.tv.material3.TextField
 
 private val languages = listOf(
     "es-419" to "Español latino",
@@ -83,14 +83,14 @@ fun ProfilesScreen(
                 if (state.creating) "Nuevo perfil" else "Nombre e idioma del perfil",
                 style = MaterialTheme.typography.titleLarge,
             )
-            TextField(
+            OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::setName,
                 placeholder = { Text("¿Cómo te llamas?") },
                 modifier = Modifier.width(400.dp),
             )
             if (state.selected?.pin?.isNotBlank() == true) {
-                TextField(
+                OutlinedTextField(
                     value = state.pin,
                     onValueChange = viewModel::setPin,
                     placeholder = { Text("PIN del perfil") },

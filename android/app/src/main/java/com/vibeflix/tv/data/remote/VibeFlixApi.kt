@@ -10,6 +10,7 @@ import com.vibeflix.tv.data.remote.dto.MasterInfoDto
 import com.vibeflix.tv.data.remote.dto.MetaResponseDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitleDownloadDto
 import com.vibeflix.tv.data.remote.dto.OpenSubtitlesResponseDto
+import com.vibeflix.tv.data.remote.dto.PersonResponseDto
 import com.vibeflix.tv.data.remote.dto.ProfileResponseDto
 import com.vibeflix.tv.data.remote.dto.ProfilesResponseDto
 import com.vibeflix.tv.data.remote.dto.RatingsResponseDto
@@ -17,6 +18,7 @@ import com.vibeflix.tv.data.remote.dto.BrowseResponseDto
 import com.vibeflix.tv.data.remote.dto.GenresResponseDto
 import com.vibeflix.tv.data.remote.dto.SearchHistoryDto
 import com.vibeflix.tv.data.remote.dto.SettingsResponseDto
+import com.vibeflix.tv.data.remote.dto.SimilarResponseDto
 import com.vibeflix.tv.data.remote.dto.SkipIntroResponseDto
 import com.vibeflix.tv.data.remote.dto.StreamResponseDto
 import retrofit2.http.Body

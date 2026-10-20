@@ -356,9 +356,17 @@ cd android
 - El wrapper de Gradle **8.14.3** está incluido (`android/gradlew`,
   `android/gradle/wrapper/`), y el catálogo declara `hilt-compiler`. Solo
   hace falta JDK 17 y Android SDK 36.
-- Esta compilación **no se ha podido ejecutar** en el entorno de revisión por
-  falta de JDK/Android SDK, no por el wrapper. `./gradlew :app:assembleDebug`
-  resuelve las dependencias desde Google Maven/Maven Central.
+- **APK listo para instalar:** cada push a `main` o a una rama `arena/**`
+  compila el APK debug en GitHub Actions (job *APK Android TV*) y lo sube como
+  artefacto `vibe-flix-debug-apk`. Al empujar un tag `v*` se publica además en
+  **Releases** como `vibe-flix-tv-debug.apk`, que es el enlace que se instala en
+  la TV (`adb install` o desde el navegador del dispositivo).
+- El job usa el SDK de Android preinstalado en los runners (sin
+  `android-actions/setup-android`) e instala `platforms;android-36` y
+  `build-tools;36.0.0` si faltan. También corre `testDebugUnitTest`.
+- Si la compilación falla en CI, el detalle (`e:` de Kotlin, errores de Dagger,
+  últimas 120 líneas de Gradle) se publica como comentario en el issue
+  *“CI log Android”*; los logs crudos de Actions no siempre son accesibles.
 
 ### Reproductor Media3 (HLS optimizado)
 
