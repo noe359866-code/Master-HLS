@@ -95,7 +95,6 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.datasource)
     implementation(libs.media3.datasource.okhttp)
-    implementation(libs.media3.datasource.cache)
     implementation(libs.media3.database)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
