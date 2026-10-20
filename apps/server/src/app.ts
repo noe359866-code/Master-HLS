@@ -189,6 +189,7 @@ export function createApp(overrides: CreateAppOptions = {}): App {
   registerStremioRoutes(router, {
     registry,
     getData,
+    save: (mutate: (data: AppData) => void) => store.update(mutate),
     appVersion: APP_VERSION,
     debrid,
     contactEmail: process.env['CONTACT_EMAIL'],

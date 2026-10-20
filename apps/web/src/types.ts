@@ -18,6 +18,15 @@ export interface Meta {
   country?: string;
   language?: string;
   awards?: string;
+  countryList?: string[];
+  languageList?: string[];
+  network?: string;
+  networks?: string[];
+  studio?: string;
+  studios?: string[];
+  keywords?: string[];
+  budget?: string;
+  revenue?: string;
   imdb_id?: string;
   slug?: string;
   landscapePoster?: string;
@@ -243,6 +252,10 @@ export interface AppSettings {
     progressIntervalSeconds: number;
     /** «¿Sigues viendo?» tras N episodios automáticos (0 = nunca). */
     stillWatchingAfter: number;
+    confirmSeek: boolean;
+    preferredAddonId: string;
+    disableAutoFallback: boolean;
+    autoFallbackDelayMs: number;
   };
   /** Apariencia y comportamiento de los subtitulos. */
   subtitles: {
@@ -277,13 +290,18 @@ export interface AppSettings {
     /** Proveedores propios descritos por configuracion. */
     configs: ProviderConfig[];
   };
-  /** Filtros de contenido (WuPlay: Content Filters). */
+  /** Filtros de contenido (WuPlay: Content Filters + runtime/networks). */
   filters: {
     includeGenres: string[];
     excludeGenres: string[];
     excludeKeywords: string[];
     minRating: number;
     hideAdult: boolean;
+    minRuntimeMinutes: number;
+    maxRuntimeMinutes: number;
+    releaseStatus: 'all' | 'released' | 'upcoming';
+    digitalReleaseOnly: boolean;
+    networks: string[];
   };
   /** Menu de navegacion personalizable (mostrar/ocultar y orden). */
   sidebar: SidebarItem[];
@@ -350,15 +368,56 @@ export interface OpenSubtitleEntry {
   release: string;
 }
 
-/** Valoracion de un titulo ("Me gusta" / "No para mi"). */
+/** Valoracion de un titulo (WuPlay v0.9.1: 3 niveles). */
 export interface Rating {
   id: string;
   type: string;
   name: string;
   poster?: string;
-  rating: 'like' | 'dislike';
+  rating: 'like' | 'dislike' | 'love';
   genres?: string[];
   updatedAt: number;
+}
+
+export interface HiddenTitle {
+  id: string;
+  type: string;
+  name: string;
+  hiddenAt: number;
+}
+
+export interface PresetCatalog {
+  id: string;
+  name: string;
+  type: string;
+  hint: string;
+  emoji: string;
+}
+
+export interface NetworkEntry {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
+export interface CustomHub {
+  id: string;
+  name: string;
+  type: string;
+  genre?: string;
+  keyword?: string;
+  network?: string;
+  preset?: string;
+  layout: string;
+  createdAt: number;
+}
+
+export interface CustomScreen {
+  id: string;
+  name: string;
+  hubs: string[];
+  layout: string;
+  createdAt: number;
 }
 
 /** Proveedor de scrapers descrito por configuracion (sin codigo). */

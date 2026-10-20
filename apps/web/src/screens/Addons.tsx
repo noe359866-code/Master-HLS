@@ -581,6 +581,38 @@ export function SettingsScreen() {
         {!essential ? (
           <>
         <label className="setting">
+          <span>Confirmar salto con OK (WuPlay v0.9.3)</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={Boolean(settings.playback?.confirmSeek)}
+            onChange={(event) =>
+              void saveSettings({ playback: { ...settings.playback, confirmSeek: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>Desactivar fallback automático (WuPlay v0.6.4)</span>
+          <input
+            type="checkbox"
+            data-focusable="true"
+            checked={Boolean(settings.playback?.disableAutoFallback)}
+            onChange={(event) =>
+              void saveSettings({ playback: { ...settings.playback, disableAutoFallback: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="setting">
+          <span>Delay fallback automático (ms)</span>
+          <select
+            data-focusable="true"
+            value={settings.playback?.autoFallbackDelayMs ?? 5000}
+            onChange={(event) => void saveSettings({ playback: { ...settings.playback, autoFallbackDelayMs: Number(event.target.value) } })}
+          >
+            {[1500, 3000, 5000, 8000, 12000].map((ms) => <option key={ms} value={ms}>{ms} ms</option>)}
+          </select>
+        </label>
+        <label className="setting">
           <span>{t('PLAYER_THUMBNAILS')}</span>
           <input
             type="checkbox"
@@ -1236,6 +1268,36 @@ export function SettingsScreen() {
             );
           })}
         </div>
+        <label className="setting">
+          <span>Duración mínima (min)</span>
+          <input type="number" min={0} max={400} step={5} data-focusable="true" value={filters.minRuntimeMinutes ?? 0} onChange={(e) => void saveFilters({ minRuntimeMinutes: Number(e.target.value) || 0 })} />
+        </label>
+        <label className="setting">
+          <span>Duración máxima (min)</span>
+          <input type="number" min={0} max={400} step={5} data-focusable="true" value={filters.maxRuntimeMinutes ?? 0} onChange={(e) => void saveFilters({ maxRuntimeMinutes: Number(e.target.value) || 0 })} />
+        </label>
+        <label className="setting">
+          <span>Estado de estreno</span>
+          <select data-focusable="true" value={filters.releaseStatus ?? 'all'} onChange={(e) => void saveFilters({ releaseStatus: e.target.value as 'all' | 'released' | 'upcoming' })}>
+            <option value="all">Todos</option>
+            <option value="released">Estrenados</option>
+            <option value="upcoming">Próximos</option>
+          </select>
+        </label>
+        <label className="setting">
+          <span>Solo estrenos digitales</span>
+          <input type="checkbox" data-focusable="true" checked={Boolean(filters.digitalReleaseOnly)} onChange={(e) => void saveFilters({ digitalReleaseOnly: e.target.checked })} />
+        </label>
+      </section>
+
+      <section className="panel">
+        <h2>Títulos ocultos — Hide Everywhere (WuPlay v0.6.5)</h2>
+        <HiddenSection />
+      </section>
+
+      <section className="panel">
+        <h2>Hubs y pantallas personalizadas (WuPlay v0.8.0+)</h2>
+        <CustomHubsSection />
       </section>
         </>
       ) : null}
@@ -1285,7 +1347,6 @@ export function SettingsScreen() {
         <Button
           variant="ghost"
           onClick={() => {
-            // Descarga directa: el servidor responde con `content-disposition`.
             const anchor = document.createElement('a');
             anchor.href = '/api/export';
             anchor.download = 'vibeflix-export.json';
@@ -1296,5 +1357,64 @@ export function SettingsScreen() {
         </Button>
       </section>
     </div>
+  );
+}
+
+function HiddenSection() {
+  const [hidden, setHidden] = useState<import('../types').HiddenTitle[]>([]);
+  useEffect(() => { void api.hidden().then(setHidden).catch(() => setHidden([])); }, []);
+  if (!hidden.length) return <p className="panel__hint">No hay títulos ocultos. Usa “No mostrar” en la ficha de un título para ocultarlo en toda la app.</p>;
+  return (
+    <>
+      <p className="panel__hint">{hidden.length} título(s) oculto(s).</p>
+      <ul className="addon-list">
+        {hidden.map((entry) => (
+          <li key={entry.id} className="addon">
+            <span>{entry.name} <em>{entry.type}</em></span>
+            <Button variant="ghost" onClick={() => void api.unhideTitle(entry.id).then(setHidden)}>Mostrar</Button>
+          </li>
+        ))}
+      </ul>
+      <Button variant="danger" onClick={() => void api.clearHidden().then(() => setHidden([]))}>Mostrar todos</Button>
+    </>
+  );
+}
+
+function CustomHubsSection() {
+  const [hubs, setHubs] = useState<import('../types').CustomHub[]>([]);
+  const [name, setName] = useState('');
+  const [type, setType] = useState('genre');
+  useEffect(() => { void api.customHubs().then(setHubs).catch(() => setHubs([])); }, []);
+  const create = async () => {
+    if (!name.trim()) return;
+    const hub = await api.createCustomHub({ name: name.trim(), type });
+    setHubs((prev) => [...prev, hub]);
+    setName('');
+  };
+  return (
+    <>
+      <p className="panel__hint">Crea hubs con géneros, keywords, networks o presets. WuPlay v0.8.1 custom hubs.</p>
+      <div className="addons__install">
+        <input className="addons__input" type="text" value={name} placeholder="Nombre del hub" onChange={(e) => setName(e.target.value)} />
+        <select data-focusable="true" value={type} onChange={(e) => setType(e.target.value)}>
+          <option value="genre">Género</option>
+          <option value="keyword">Palabra clave</option>
+          <option value="network">Network</option>
+          <option value="preset">Preset</option>
+          <option value="collection">Colección</option>
+        </select>
+        <Button onClick={() => void create()}>Crear hub</Button>
+      </div>
+      {hubs.length ? (
+        <ul className="addon-list">
+          {hubs.map((hub) => (
+            <li key={hub.id} className="addon">
+              <span><strong>{hub.name}</strong> <em>{hub.type}</em></span>
+              <Button variant="danger" onClick={() => void api.deleteCustomHub(hub.id).then(() => setHubs((prev) => prev.filter((h) => h.id !== hub.id)))}>Quitar</Button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="panel__hint">Sin hubs personalizados aún.</p>}
+    </>
   );
 }

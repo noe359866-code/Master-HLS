@@ -1,11 +1,13 @@
 import type {
   AppSettings,
   Catalog,
-  DebridStatus,
-  ProviderConfig,
-  ScraperStatus,
+  CustomHub,
+  CustomScreen,
+  HiddenTitle,
   Decade,
   Genre,
+  NetworkEntry,
+  PresetCatalog,
   OpenSubtitleEntry,
   SearchHistoryEntry,
   SidebarItem,
@@ -23,6 +25,7 @@ import type {
   Rating,
   Stream,
   Subtitle,
+  Video,
   TrackPreference,
   Watchlist,
   WatchlistItem,
@@ -202,8 +205,8 @@ export const api = {
   },
 
   /** Ficha de persona con su filmografia (cast & crew). */
-  async person(name: string): Promise<{ name: string; titles: Meta[] }> {
-    return request<{ name: string; titles: Meta[] }>(`/api/person${query({ name })}`);
+  async person(name: string, role?: string): Promise<{ name: string; titles: Meta[] }> {
+    return request<{ name: string; titles: Meta[] }>(`/api/person${query({ name, role })}`);
   },
 
   /** Titulos similares a partir de un id. */
@@ -378,13 +381,13 @@ export const api = {
     return body.ratings;
   },
 
-  /** Guarda (o quita con `rating: ''`) la valoracion de un titulo. */
+  /** Guarda (o quita con `rating: ''`) la valoracion de un titulo. WuPlay v0.9.1: like/dislike/love */
   async rate(entry: {
     id: string;
     type: string;
     name: string;
     poster?: string;
-    rating: 'like' | 'dislike' | '';
+    rating: 'like' | 'dislike' | 'love' | '';
     genres?: string[];
   }): Promise<Rating[]> {
     const body = await request<{ ratings: Rating[] }>('/api/ratings', {
@@ -394,35 +397,84 @@ export const api = {
     return body.ratings;
   },
 
-  /** Recomendaciones personalizadas segun las valoraciones. */
-  async recommended(): Promise<Meta[]> {
-    const body = await request<{ titles: Meta[] }>('/api/recommended');
+  /** Recomendaciones personalizadas segun las valoraciones (WuPlay v0.9.2). */
+  async recommended(params?: { limit?: number }): Promise<Meta[]> {
+    const body = await request<{ titles: Meta[] }>(`/api/recommended${params?.limit ? `?limit=${params.limit}` : ''}`);
     return body.titles;
   },
 
+  async recommendedFeedback(id: string, feedback: 'good' | 'bad'): Promise<void> {
+    await request('/api/recommended/feedback', { method: 'POST', body: JSON.stringify({ id, feedback }) });
+  },
+
+  // Hidden titles (WuPlay Hide Everywhere)
+  async hidden(): Promise<HiddenTitle[]> {
+    const body = await request<{ hidden: HiddenTitle[] }>('/api/hidden');
+    return body.hidden;
+  },
+  async hideTitle(entry: { id: string; type?: string; name?: string }): Promise<HiddenTitle[]> {
+    const body = await request<{ hidden: HiddenTitle[] }>('/api/hidden', { method: 'POST', body: JSON.stringify(entry) });
+    return body.hidden;
+  },
+  async unhideTitle(id: string): Promise<HiddenTitle[]> {
+    const body = await request<{ hidden: HiddenTitle[] }>(`/api/hidden/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return body.hidden;
+  },
+  async clearHidden(): Promise<void> {
+    await request('/api/hidden', { method: 'DELETE' });
+  },
+
+  // Preset catalogs & networks (WuPlay Trending/Upcoming)
+  async preset(presetId: string, params?: { type?: string; limit?: number }): Promise<{ metas: Meta[] }> {
+    return request<{ metas: Meta[] }>(`/api/preset/${presetId}${query(params ?? {})}`);
+  },
+  async randomEpisode(seriesId: string, type = 'series'): Promise<{ episode: Video }> {
+    return request<{ episode: Video }>(`/api/random-episode${query({ seriesId, type })}`);
+  },
+  async upcoming(): Promise<{ upcoming: Meta[] }> {
+    return request<{ upcoming: Meta[] }>('/api/upcoming');
+  },
+  async markWatched(entry: { id: string; type?: string; name?: string; poster?: string; season?: number; episode?: number }): Promise<void> {
+    await request('/api/progress', { method: 'POST', body: JSON.stringify({ id: entry.id, type: entry.type, name: entry.name, poster: entry.poster, position: 0, duration: 0, mediaType: 'episode', season: entry.season, episode: entry.episode }) });
+  },
+  // Custom hubs/screens (WuPlay v0.8.0+)
+  async customHubs(): Promise<CustomHub[]> {
+    const body = await request<{ hubs: CustomHub[] }>('/api/custom-hubs');
+    return body.hubs;
+  },
+  async createCustomHub(payload: { name: string; type?: string; genre?: string; keyword?: string; network?: string; preset?: string; layout?: string }): Promise<CustomHub> {
+    const body = await request<{ hub: CustomHub }>('/api/custom-hubs', { method: 'POST', body: JSON.stringify(payload) });
+    return body.hub;
+  },
+  async deleteCustomHub(id: string): Promise<void> { await request(`/api/custom-hubs/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async customScreens(): Promise<CustomScreen[]> {
+    const body = await request<{ screens: CustomScreen[] }>('/api/custom-screens');
+    return body.screens;
+  },
+
   /** Estado del proveedor de debrid configurado en el servidor. */
-  async debridStatus(): Promise<DebridStatus> {
-    const body = await request<{ debrid: DebridStatus }>('/api/debrid');
+  async debridStatus(): Promise<import('./types').DebridStatus> {
+    const body = await request<{ debrid: import('./types').DebridStatus }>('/api/debrid');
     return body.debrid;
   },
 
   /** Estado de los scrapers nativos (addon de streams del servidor). */
-  async scrapers(): Promise<ScraperStatus> {
-    return request<ScraperStatus>('/api/scrapers');
+  async scrapers(): Promise<import('./types').ScraperStatus> {
+    return request<import('./types').ScraperStatus>('/api/scrapers');
   },
 
   /** Activa/desactiva los scrapers nativos y sus proveedores. */
   async saveScrapers(payload: {
     enabled: boolean;
     providers: string[];
-    configs: ProviderConfig[];
+    configs: import('./types').ProviderConfig[];
   }): Promise<void> {
     await request('/api/scrapers', { method: 'PUT', body: JSON.stringify(payload) });
   },
 
   /** Prueba un proveedor de scrapers con un titulo. */
   async testScraper(payload: {
-    config?: ProviderConfig;
+    config?: import('./types').ProviderConfig;
     title: string;
     year?: number;
   }): Promise<{ provider: string; sources: Array<{ url: string; quality?: string }>; error: string | null }> {
@@ -471,14 +523,16 @@ export const api = {
   // ------------------------------------------------- generos, decadas y menu
 
   /** Generos y decadas de las pantallas de contenido. */
-  async genres(): Promise<{ genres: Genre[]; decades: Decade[] }> {
-    return request<{ genres: Genre[]; decades: Decade[] }>('/api/genres');
+  async genres(): Promise<{ genres: Genre[]; decades: Decade[]; presets: PresetCatalog[]; networks: NetworkEntry[] }> {
+    return request<{ genres: Genre[]; decades: Decade[]; presets: PresetCatalog[]; networks: NetworkEntry[] }>('/api/genres');
+  },
+
+  async presets(): Promise<{ presets: PresetCatalog[] }> {
+    return request<{ presets: PresetCatalog[] }>('/api/presets');
   },
 
   /**
-   * Contenido por genero, decada o texto.
-   *
-   * El servidor aplica los filtros de contenido configurados.
+   * Contenido por genero, decada, keyword, network o texto.
    */
   async browse(params: {
     type?: string;
@@ -486,6 +540,9 @@ export const api = {
     decade?: string;
     q?: string;
     skip?: number;
+    keyword?: string;
+    network?: string;
+    studio?: string;
   }): Promise<{ metas: Meta[]; source: string; total?: number }> {
     return request<{ metas: Meta[]; source: string; total?: number }>(
       `/api/browse${query({ ...params })}`,

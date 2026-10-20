@@ -66,6 +66,44 @@ export const DECADES = [
   { id: '2020s', label: 'Años 2020', from: 2020, to: 2029 },
 ] as const;
 
+/** Preset catalogs (WuPlay v0.8.3 / v0.9.2 Trending, Upcoming, Latest in Theaters). */
+export interface PresetCatalog {
+  id: string;
+  name: string;
+  type: 'movie' | 'series' | 'all';
+  hint: string;
+  emoji: string;
+}
+
+export const PRESET_CATALOGS: PresetCatalog[] = [
+  { id: 'trending_today', name: 'Tendencia hoy', type: 'all', hint: 'Lo más visto hoy', emoji: '🔥' },
+  { id: 'trending_week', name: 'Tendencia esta semana', type: 'all', hint: 'Top de la semana', emoji: '📈' },
+  { id: 'upcoming_movies', name: 'Próximos estrenos', type: 'movie', hint: 'Películas que vienen', emoji: '🎬' },
+  { id: 'upcoming_shows', name: 'Próximas series', type: 'series', hint: 'Series esperadas', emoji: '📺' },
+  { id: 'latest_theaters', name: 'En cines', type: 'movie', hint: 'Recién en cartelera', emoji: '🍿' },
+  { id: 'latest_digital', name: 'Novedades digitales', type: 'movie', hint: 'Estrenos en streaming', emoji: '💿' },
+  { id: 'popular_movies', name: 'Películas populares', type: 'movie', hint: 'Las más vistas', emoji: '⭐' },
+  { id: 'top_rated', name: 'Mejor valoradas', type: 'all', hint: 'Top puntuación', emoji: '🏆' },
+];
+
+/** Streaming services / Networks (WuPlay v0.8.1+). */
+export interface NetworkEntry {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
+export const NETWORKS: NetworkEntry[] = [
+  { id: 'netflix', name: 'Netflix', emoji: '🔴' },
+  { id: 'prime', name: 'Prime Video', emoji: '🔵' },
+  { id: 'disney', name: 'Disney+', emoji: '✨' },
+  { id: 'hbo', name: 'HBO / Max', emoji: '🟣' },
+  { id: 'apple', name: 'Apple TV+', emoji: '🍎' },
+  { id: 'hulu', name: 'Hulu', emoji: '🟢' },
+  { id: 'paramount', name: 'Paramount+', emoji: '⛰️' },
+  { id: 'crunchyroll', name: 'Crunchyroll', emoji: '🟠' },
+];
+
 /** Devuelve la decada de un ano (si esta en la lista). */
 export function decadeOf(year: number): (typeof DECADES)[number] | undefined {
   return DECADES.find((decade) => year >= decade.from && year <= decade.to);

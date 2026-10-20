@@ -19,39 +19,52 @@ export interface PosterProps {
 
 export function Poster({ meta, onSelect, progress, badge, className }: PosterProps) {
   const [failed, setFailed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const landscape = meta.posterShape === 'landscape' || Boolean(meta.landscapePoster);
   const image = failed ? '' : landscape ? (meta.landscapePoster ?? meta.poster) : meta.poster;
-
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const openMenu = () => setMenuOpen(true);
+  const closeMenu = () => setMenuOpen(false);
+  const onPointerDown = () => { timerRef.current = setTimeout(openMenu, 650); };
+  const onPointerUp = () => { if (timerRef.current) clearTimeout(timerRef.current); };
   return (
-    <button
-      type="button"
-      data-focusable="true"
-      className={`poster ${landscape ? 'poster--landscape' : ''} ${className ?? ''}`}
-      // Identidad del titulo: la pantalla de inicio la lee con un unico
-      // listener de `focusin` para actualizar el destacado (WuPlay v0.9.3).
-      data-meta-id={meta.id}
-      data-meta-type={meta.type ?? undefined}
-      onClick={() => onSelect(meta)}
-      onErrorCapture={() => setFailed(true)}
-      aria-label={meta.name ?? meta.id}
-    >
-      {image ? (
-        <img
-          src={posterUrl(image)}
-          alt={meta.name ?? ''}
-          loading="lazy"
-          decoding="async"
-        />
-      ) : (
-        <div className="poster__fallback" aria-hidden="true">
-          <span>{meta.name?.slice(0, 2).toUpperCase() ?? '—'}</span>
-        </div>
-      )}
-      {badge ? <span className="poster__badge">{badge}</span> : null}
-      {typeof progress === 'number' && progress > 0 ? (
-        <span className="poster__progress" style={{ width: `${Math.min(progress, 100)}%` }} />
+    <>
+      <button
+        type="button"
+        data-focusable="true"
+        className={`poster ${landscape ? 'poster--landscape' : ''} ${className ?? ''}`}
+        data-meta-id={meta.id}
+        data-meta-type={meta.type ?? undefined}
+        onClick={() => onSelect(meta)}
+        onContextMenu={(e) => { e.preventDefault(); openMenu(); }}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+        onErrorCapture={() => setFailed(true)}
+        aria-label={meta.name ?? meta.id}
+      >
+        {image ? (
+          <img src={posterUrl(image)} alt={meta.name ?? ''} loading="lazy" decoding="async" />
+        ) : (
+          <div className="poster__fallback" aria-hidden="true">
+            <span>{meta.name?.slice(0, 2).toUpperCase() ?? '—'}</span>
+          </div>
+        )}
+        {badge ? <span className="poster__badge">{badge}</span> : null}
+        {typeof progress === 'number' && progress > 0 ? (
+          <span className="poster__progress" style={{ width: `${Math.min(progress, 100)}%` }} />
+        ) : null}
+      </button>
+      {menuOpen ? (
+        <Modal title={meta.name ?? meta.id} onClose={closeMenu}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Button onClick={() => { closeMenu(); onSelect(meta); }}>Ver detalles</Button>
+            <Button variant="ghost" onClick={() => { closeMenu(); window.dispatchEvent(new CustomEvent('vibeflix:hide', { detail: meta })); }}>No mostrar</Button>
+            <Button variant="ghost" onClick={closeMenu}>Cerrar</Button>
+          </div>
+        </Modal>
       ) : null}
-    </button>
+    </>
   );
 }
 
